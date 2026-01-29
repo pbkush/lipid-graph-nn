@@ -1,0 +1,1 @@
+pip install --use-pep517 .
