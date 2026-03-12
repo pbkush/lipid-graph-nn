@@ -1,3 +1,5 @@
+import fnmatch
+from pathlib import Path
 
 import MDAnalysis as mda
 import torch
@@ -7,122 +9,175 @@ from MDAnalysis.lib.distances import capped_distance
 from sklearn.preprocessing import LabelEncoder
 
 
-def create_hetero_lipid_graph(structure_file, topology_file, spatial_cutoff=11.0):
+def create_global_encoder(base_dir, topology_pattern="*.tpr", selection="not (resname W or name NA or name CL)", exclude_patterns=['*min*', '*eq*', '*nvt*', '*npt*']):
     """
-    Creates a Heterogeneous Graph from a Martini system.
-    
-    Nodes: 
-        - 'bead' (All lipid beads)
-    
-    Edges:
-        - ('bead', 'bonded', 'bead'): Topology connections from .tpr
-        - ('bead', 'spatial', 'bead'): Radius interactions (excluding bonds)
+    Scans a directory recursively for topology files to build a global vocabulary
+    of all possible bead types across multiple simulations.
     
     Args:
-        structure_file (str): Path to .gro
-        topology_file (str): Path to .tpr (preferred) or .top
-        spatial_cutoff (float): Cutoff in Angstroms (default 11.0 A = 1.1 nm)
-    """
-    
-    # 1. Load System
-    print(f"--- Loading Universe ---")
-    u = mda.Universe(topology_file, structure_file)
-    
-    # Select Lipids (customize string for your specific lipids)
-    lipids = u.select_atoms('not resname W PW ion')
-    n_nodes = len(lipids)
-    print(f"Selected {n_nodes} beads out of {u.atoms.n_atoms} total atoms.")
-
-    # 2. Global -> Local Index Mapping
-    # Create an array where index=GlobalAtomID, value=LocalGraphID
-    # Initialize with -1 (meaning "atom not in graph")
-    global_to_local = np.full(u.atoms.n_atoms, -1, dtype=int)
-    global_to_local[lipids.indices] = np.arange(n_nodes)
-
-    # 3. Process BONDED Edges (Topology)
-    print("--- Processing Topology Bonds ---")
-    # Get global indices of bonded pairs
-    global_bonds = lipids.bonds.to_indices()
-    
-    # Map to local indices
-    local_bonds = global_to_local[global_bonds]
-    
-    # Filter bonds where one atom might be outside selection (safety check)
-    mask = (local_bonds[:, 0] != -1) & (local_bonds[:, 1] != -1)
-    bond_index = torch.tensor(local_bonds[mask].T, dtype=torch.long)
-    
-    # Make bonds bidirectional for the GNN (A-B and B-A)
-    bond_index = torch.cat([bond_index, bond_index.flip(0)], dim=1)
-    
-    # 4. Process SPATIAL Edges (Radius Search with PBC)
-    print(f"--- Processing Spatial Neighbors (r={spatial_cutoff}A) ---")
-    # capped_distance handles PBC automatically using u.dimensions
-    # returns pairs (i, j) where i < j
-    pairs, dists = capped_distance(lipids.positions, lipids.positions, 
-                                   max_cutoff=spatial_cutoff, 
-                                   box=u.dimensions,
-                                   return_distances=True)
-    
-    # These indices are already local (0 to n_nodes) because we passed lipids.positions
-    # However, we must filter out Self-loops and Bonds
-    
-    # Convert arrays to sets of tuples for fast set subtraction
-    # Note: spatial pairs from MDAnalysis are generally i < j
-    spatial_set = set(map(tuple, pairs))
-    
-    # Remove Self-loops (i==i)
-    spatial_set = {p for p in spatial_set if p[0] != p[1]}
-    
-    # Create set of bonded pairs (we need to check both i-j and j-i directions
-    # because 'spatial_set' is sorted i<j, but bonds might not be)
-    bond_set = set(map(tuple, local_bonds[mask]))
-    reversed_bond_set = {(b, a) for a, b in bond_set}
-    all_bonded_pairs = bond_set.union(reversed_bond_set)
-    
-    # SUBTRACTION: Pure Spatial = All Spatial - Bonded
-    pure_spatial_set = spatial_set - all_bonded_pairs
-    
-    # Convert back to tensor
-    if len(pure_spatial_set) > 0:
-        spatial_edges = np.array(list(pure_spatial_set))
-        spatial_index = torch.tensor(spatial_edges.T, dtype=torch.long)
+        base_dir (str): Root directory containing simulation subdirectories.
+        topology_pattern (str): Glob pattern to find topology files (e.g., "*.tpr" or "topol.tpr").
+        selection (str): MDAnalysis selection string to isolate relevant beads.
+        exclude_patterns (list): Unix wildcard patterns to skip intermediate files. 
+                                 Defaults to ignoring common MD intermediate steps.
+                                 min, eq, nvt, npt
         
-        # Make bidirectional
-        spatial_index = torch.cat([spatial_index, spatial_index.flip(0)], dim=1)
-    else:
-        spatial_index = torch.empty((2, 0), dtype=torch.long)
+    Returns:
+        LabelEncoder: A fitted scikit-learn LabelEncoder containing the global vocabulary.
+    """
+    print(f"Scanning '{base_dir}' for topologies matching '{topology_pattern}'...")
+    all_bead_names = set()
+    topology_files = list(Path(base_dir).rglob(topology_pattern))
+    
+    if not topology_files:
+        raise ValueError(f"No files matching '{topology_pattern}' found in {base_dir}")
+        
+        
+    filtered_topologies = []
+    for top_file in topology_files:
+        path_str = str(top_file).lower()
+        # Only keep the file if it DOES NOT match any of the exclude patterns
+        if not any(fnmatch.fnmatch(path_str, pat.lower()) for pat in exclude_patterns):
+            filtered_topologies.append(top_file)
+            
+    # Safety fallback: If your prod runs also happen to be named 'eq' or similar,
+    # and everything gets filtered out, we revert to parsing all files.
+    if not filtered_topologies:
+        print("WARNING: Exclude patterns filtered out ALL files. Reverting to parsing all files.")
+        filtered_topologies = topology_files
+        
+    print(f"Filtered down to {len(filtered_topologies)} topology files to parse."  \
+          " Started with {len(topology_files)}.")
+        
+    for top_file in filtered_topologies:
+        try:
+            # We only need the topology file to read bead names, no trajectory needed
+            u = mda.Universe(str(top_file))
+            lipids = u.select_atoms(selection)
+            all_bead_names.update(lipids.names)
+        except Exception as e:
+            print(f"Skipping {top_file.name} due to read error: {e}")
+            
+    # Sorting ensures the encoding (0, 1, 2...) is perfectly deterministic
+    # across different machines or operating systems.
+    unique_beads = sorted(list(all_bead_names))
+    print(f"Found {len(unique_beads)} unique bead types: {unique_beads}")
+    
+    global_encoder = LabelEncoder()
+    global_encoder.fit(unique_beads)
+    
+    return global_encoder
 
-    print(f"  Bonded Edges: {bond_index.shape[1]}")
-    print(f"  Spatial Edges: {spatial_index.shape[1]}")
+class MartiniHeteroGraphBuilder:
+    """
+    An optimized, stateful builder for converting Martini MD trajectories 
+    into PyTorch Geometric HeteroData objects.
+    
+    Caches static topology (bonds, node types) to make processing 
+    multi-frame trajectories highly efficient.
+    """
+    def __init__(self, topology_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, encoder=None):
+        print("Initializing MartiniGraphBuilder...")
+        
+        # 1. Load Universe (handles both static .gro or dynamic .xtc/.trr)
+        self.u = mda.Universe(topology_file, trajectory_file)
+        self.selection_string = selection
+        self.spatial_cutoff = spatial_cutoff
+        
+        # 2. Isolate Selection
+        self.lipids = self.u.select_atoms(self.selection_string)
+        self.n_nodes = len(self.lipids)
+        print(f"Tracking {self.n_nodes} beads out of {self.u.atoms.n_atoms} total.")
+        
+        # 3. Cache Node Features (Static)
+        if encoder is None:
+            print("WARNING: No global encoder provided. Fitting locally. This may break multi-simulation inference.")
+            self.le = LabelEncoder()
+            bead_types = self.le.fit_transform(self.lipids.names)
+        else:
+            self.le = encoder
+            # Using transform() guarantees that bead ID '0' means the exact same 
+            # physical bead type across all simulation graphs.
+            try:
+                bead_types = self.le.transform(self.lipids.names)
+            except ValueError as e:
+                raise ValueError(f"Encountered a bead type not present in the global encoder! {e}")
+                
+        self.node_x = torch.tensor(bead_types, dtype=torch.long).unsqueeze(1)
+        
+        # 4. Cache Index Mapping & Bonded Topology (Static)
+        self._cache_topology()
 
-    # 5. Node Features
-    # Feature 1: Bead Type Encoding
-    le = LabelEncoder()
-    bead_types = le.fit_transform(lipids.names)
-    x = torch.tensor(bead_types, dtype=torch.long).unsqueeze(1)
-    
-    # Feature 2: Position
-    pos = torch.tensor(lipids.positions, dtype=torch.float)
+    def _cache_topology(self):
+        """Pre-computes and caches the bonded edge index."""
+        # Create global-to-local map
+        global_to_local = np.full(self.u.atoms.n_atoms, -1, dtype=int)
+        global_to_local[self.lipids.indices] = np.arange(self.n_nodes)
+        
+        # Get global bonds and map to local
+        global_bonds = self.lipids.bonds.to_indices()
+        local_bonds = global_to_local[global_bonds]
+        
+        # Filter valid bonds and create bidirectional tensor
+        mask = (local_bonds[:, 0] != -1) & (local_bonds[:, 1] != -1)
+        self.valid_local_bonds = local_bonds[mask] # Cache for subtraction later
+        
+        bond_index = torch.tensor(self.valid_local_bonds.T, dtype=torch.long)
+        self.bond_index = torch.cat([bond_index, bond_index.flip(0)], dim=1)
+        
+        # Cache the set of bonded pairs for fast subtraction during frame processing
+        bond_set = set(map(tuple, self.valid_local_bonds))
+        reversed_bond_set = {(b, a) for a, b in bond_set}
+        self.all_bonded_pairs_set = bond_set.union(reversed_bond_set)
+        
+        print(f"Cached {self.bond_index.shape[1]} directed bonded edges.")
 
-    # 6. Build HeteroData Object
-    data = HeteroData()
-    
-    # Add Nodes
-    data['bead'].x = x
-    data['bead'].pos = pos
-    data['bead'].num_nodes = n_nodes
-    
-    # Add Bonded Edges
-    data['bead', 'bonded', 'bead'].edge_index = bond_index
-    
-    # Add Spatial Edges
-    data['bead', 'spatial', 'bead'].edge_index = spatial_index
-    
-    # Optional: Add distances as edge attributes
-    # You would need to recalculate distances for specific indices if needed
-    
-    return data, le
-
+    def process_frame(self, frame_idx=0):
+        """
+        Generates a HeteroData graph for a specific frame in the trajectory.
+        Only calculates spatial edges and updates positions.
+        """
+        # Move universe to the requested frame
+        self.u.trajectory[frame_idx]
+        
+        # 1. Get current positions
+        current_pos = torch.tensor(self.lipids.positions, dtype=torch.float)
+        
+        # 2. Calculate Spatial Edges based on current coordinates
+        pairs, dists = capped_distance(
+            self.lipids.positions, 
+            self.lipids.positions, 
+            max_cutoff=self.spatial_cutoff, 
+            box=self.u.dimensions,
+            return_distances=True
+        )
+        
+        # 3. Filter Self-loops and Bonds
+        spatial_set = set(map(tuple, pairs))
+        spatial_set = {p for p in spatial_set if p[0] != p[1]} # Remove self loops
+        pure_spatial_set = spatial_set - self.all_bonded_pairs_set # Remove bonds
+        
+        # 4. Create Spatial Edge Tensor
+        if len(pure_spatial_set) > 0:
+            spatial_edges = np.array(list(pure_spatial_set))
+            spatial_index = torch.tensor(spatial_edges.T, dtype=torch.long)
+            spatial_index = torch.cat([spatial_index, spatial_index.flip(0)], dim=1)
+        else:
+            spatial_index = torch.empty((2, 0), dtype=torch.long)
+            
+        # 5. Construct HeteroData Object
+        data = HeteroData()
+        
+        # Assign Cached Static Data
+        data['bead'].x = self.node_x
+        data['bead'].num_nodes = self.n_nodes
+        data['bead', 'bonded', 'bead'].edge_index = self.bond_index
+        
+        # Assign Dynamic Data
+        data['bead'].pos = current_pos
+        data['bead', 'spatial', 'bead'].edge_index = spatial_index
+        
+        return data
 
 def main():
     pass
