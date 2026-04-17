@@ -80,7 +80,13 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 - Upload zip to Google Drive and run `train_colab_rev.ipynb` on Colab (chunks regenerated after bug fix)
 - Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
-- Disable squash/rebase merging in GitHub repo settings (Settings → General → Pull Requests)
+- Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
+- Plan and implement remote HPC cluster deployment: non-zipping preprocessing entry point, SLURM sbatch for GPU training, `git pull` for code + `scp`/`rsync` for raw sim data, ROCm-compatible install on AMD MI210
+
+Decisions recorded:
+
+- GitHub squash/rebase merging disabled in repo settings (enforcement now automatic, not just convention)
+- CLI-arg pattern will NOT be applied to `run_sweep.py` — the FIXED/SWEEP split + cartesian product grid doesn't translate cleanly to command-line flags
 
 ## Important Patterns and Preferences
 

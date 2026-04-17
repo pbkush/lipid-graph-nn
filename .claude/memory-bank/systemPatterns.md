@@ -64,8 +64,8 @@ MD Trajectory (.tpr + .xtc/.trr)
   - Use `nargs="+"` for list-valued params, `choices=` when the valid set is enumerable, `type=int`/`type=float` for numerics
   - Enumerate valid choices in the `--help` string (e.g., `Available: a, b, c`) so users don't have to read source
   - Parse in a `_parse_args()` helper and pass values as function kwargs — keep the core function callable from other modules without the CLI
-  - Applied in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) (PR #4); good candidate next: `FIXED` dict values in [scripts/training/run_sweep.py](scripts/training/run_sweep.py)
-  - NOT a candidate: sweep grids (`SWEEP` dict in `run_sweep.py`) — cartesian products are clumsy on the command line and belong in code
+  - Applied in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) (PR #4)
+  - NOT a candidate: [scripts/training/run_sweep.py](scripts/training/run_sweep.py) — mixes FIXED hyperparams with a SWEEP grid (cartesian product) that is clumsy on the command line and belongs in code. Decision recorded after considering CLI-ifying `FIXED` and rejecting it
 
 ## Component Relationships
 
