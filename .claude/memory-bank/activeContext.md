@@ -47,10 +47,16 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - Created `requirements.txt` with pinned minimum versions for all direct dependencies (`torch>=2.8.0`, `torch-geometric>=2.7.0`, `MDAnalysis>=2.10.0`, `numpy`, `h5py`, `pandas`, `scikit-learn`, `matplotlib`, `tqdm`, `pytest`, `wandb`)
 - Updated `.gitignore` to exclude large simulation files (`*.xtc`, `*.gro`, `*.tpr`, etc.), `colab_lipid_gnn_subset.zip`, `tmp/`, `.vscode/`, `build/`, `lipid_gnn.egg-info/`, and agent scratch files
 - Cleared outputs from `scripts/colab/train_colab.ipynb` (369 KB → 17 KB) using `jupyter nbconvert --clear-output`
-- Pushed all previously untracked files in 3 commits: packaging/config, core GNN modules + tests, training scripts + notebooks
 - Fixed SSH auth: university network blocks port 22; added `ssh.github.com:443` to `~/.ssh/known_hosts` and configured `~/.ssh/config` to route all `github.com` connections through port 443
+- Installed and authenticated `gh` CLI (HTTPS token in system keyring); Claude can now open/merge PRs directly from the terminal
 - Added `.claude/settings.json` with permission rules allowing `git push`, `git commit`, `git add`, `gh pr create`, `gh pr merge` without prompts; denies `git push --force`
-- Repo is now fully up to date on GitHub with 6 commits on `main`
+- Established workflow: short-lived feature branches (`feat/`, `fix/`, `exp/`, etc.) → PR → `gh pr merge --merge --delete-branch` (merge commits only, never squash/rebase)
+- First end-to-end PR cycle completed: `fix/preprocess-stale-chunks` → PR #1 merged into `main`
+
+**Bug fix — stale chunk files in preprocessing (PR #1, commit 5cbc094):**
+
+- `preprocess_and_save()` in `dataset.py` now deletes existing `chunk_*.pt` files in `processed_dir` before writing new ones
+- Previously, if a new run produced fewer chunks than the last, leftover chunks from the prior run silently mixed with the new ones in `MartiniDiskDataset`
 
 ## Next Steps
 

@@ -44,6 +44,7 @@ Pinned in `requirements.txt` (added 2026-04-17):
 - Remote: `git@github.com:pbkush/lipid-graph-nn.git` (SSH)
 - University network blocks port 22; `~/.ssh/config` routes `github.com` → `ssh.github.com:443`
 - Claude Code permissions in `.claude/settings.json`: allows `git push/commit/add`, `gh pr create/merge`; denies `git push --force`
+- `gh` CLI installed and authenticated (HTTPS token in system keyring); Claude opens and merges PRs with `gh pr create` / `gh pr merge <n> --merge --delete-branch`
 - Branch strategy: short-lived feature branches (`feat/`, `exp/`, `fix/`, `refactor/`, `test/`, `data/`, `docs/`), merge commits only (no squash/rebase)
 
 ## Tool Usage Patterns
