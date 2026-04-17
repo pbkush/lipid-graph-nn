@@ -1,72 +1,31 @@
 import fnmatch
 from pathlib import Path
 
+import json
 import MDAnalysis as mda
 import torch
 import numpy as np
 from torch_geometric.data import HeteroData
 from MDAnalysis.lib.distances import capped_distance
-from sklearn.preprocessing import LabelEncoder
+
+# Fixed-order lipid vocabulary for composition fraction vectors.
+# Must match the LIPID_TYPES list used in linear_baseline.py and run_sweep.py.
+LIPID_TYPES = ['POPC', 'DOPC', 'DIPC', 'DPPC', 'POPE', 'DOPE', 'DPPE', 'DOPS', 'POPS', 'CHOL']
+LIPID_COMP_DIM = len(LIPID_TYPES)  # 10
 
 
-def create_global_encoder(base_dir, topology_pattern="*.tpr", selection="not (resname W or name NA or name CL)", exclude_patterns=['*min*', '*eq*', '*nvt*', '*npt*']):
-    """
-    Scans a directory recursively for topology files to build a global vocabulary
-    of all possible bead types across multiple simulations.
-    
-    Args:
-        base_dir (str): Root directory containing simulation subdirectories.
-        topology_pattern (str): Glob pattern to find topology files (e.g., "*.tpr" or "topol.tpr").
-        selection (str): MDAnalysis selection string to isolate relevant beads.
-        exclude_patterns (list): Unix wildcard patterns to skip intermediate files. 
-                                 Defaults to ignoring common MD intermediate steps.
-                                 min, eq, nvt, npt
-        
-    Returns:
-        LabelEncoder: A fitted scikit-learn LabelEncoder containing the global vocabulary.
-    """
-    print(f"Scanning '{base_dir}' for topologies matching '{topology_pattern}'...")
-    all_bead_names = set()
-    topology_files = list(Path(base_dir).rglob(topology_pattern))
-    
-    if not topology_files:
-        raise ValueError(f"No files matching '{topology_pattern}' found in {base_dir}")
-        
-        
-    filtered_topologies = []
-    for top_file in topology_files:
-        path_str = str(top_file).lower()
-        # Only keep the file if it DOES NOT match any of the exclude patterns
-        if not any(fnmatch.fnmatch(path_str, pat.lower()) for pat in exclude_patterns):
-            filtered_topologies.append(top_file)
-            
-    # Safety fallback: If your prod runs also happen to be named 'eq' or similar,
-    # and everything gets filtered out, we revert to parsing all files.
-    if not filtered_topologies:
-        print("WARNING: Exclude patterns filtered out ALL files. Reverting to parsing all files.")
-        filtered_topologies = topology_files
-        
-    print(f"Filtered down to {len(filtered_topologies)} topology files to parse."  \
-          " Started with {len(topology_files)}.")
-        
-    for top_file in filtered_topologies:
-        try:
-            # We only need the topology file to read bead names, no trajectory needed
-            u = mda.Universe(str(top_file))
-            lipids = u.select_atoms(selection)
-            all_bead_names.update(lipids.names)
-        except Exception as e:
-            print(f"Skipping {top_file.name} due to read error: {e}")
-            
-    # Sorting ensures the encoding (0, 1, 2...) is perfectly deterministic
-    # across different machines or operating systems.
-    unique_beads = sorted(list(all_bead_names))
-    print(f"Found {len(unique_beads)} unique bead types: {unique_beads}")
-    
-    global_encoder = LabelEncoder()
-    global_encoder.fit(unique_beads)
-    
-    return global_encoder
+def create_global_encoder(*args, **kwargs):
+    raise DeprecationWarning("create_global_encoder is deprecated! The model now uses physical continuous force field parameters loaded via JSON maps instead of integer vocabulary encoders.")
+
+class GaussianExpansion(torch.nn.Module):
+    def __init__(self, start=0.0, stop=12.0, num_gaussians=16):
+        super().__init__()
+        offset = torch.linspace(start, stop, num_gaussians)
+        self.coeff = -0.5 / (offset[1] - offset[0]).item()**2
+        self.register_buffer('offset', offset)
+
+    def forward(self, dist):
+        return torch.exp(self.coeff * (dist.view(-1, 1) - self.offset.view(1, -1))**2)
 
 class MartiniHeteroGraphBuilder:
     """
@@ -76,7 +35,7 @@ class MartiniHeteroGraphBuilder:
     Caches static topology (bonds, node types) to make processing 
     multi-frame trajectories highly efficient.
     """
-    def __init__(self, topology_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, encoder=None):
+    def __init__(self, topology_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
         print("Initializing MartiniGraphBuilder...")
         
         # 1. Load Universe (handles both static .gro or dynamic .xtc/.trr)
@@ -89,24 +48,73 @@ class MartiniHeteroGraphBuilder:
         self.n_nodes = len(self.lipids)
         print(f"Tracking {self.n_nodes} beads out of {self.u.atoms.n_atoms} total.")
         
-        # 3. Cache Node Features (Static)
-        if encoder is None:
-            print("WARNING: No global encoder provided. Fitting locally. This may break multi-simulation inference.")
-            self.le = LabelEncoder()
-            bead_types = self.le.fit_transform(self.lipids.names)
-        else:
-            self.le = encoder
-            # Using transform() guarantees that bead ID '0' means the exact same 
-            # physical bead type across all simulation graphs.
-            try:
-                bead_types = self.le.transform(self.lipids.names)
-            except ValueError as e:
-                raise ValueError(f"Encountered a bead type not present in the global encoder! {e}")
+        # 2.5 RBF Encoder for spatial distances
+        self.rbf = GaussianExpansion(start=0.0, stop=self.spatial_cutoff, num_gaussians=16)
+        
+        # 3. Cache Node Features (Static continuous physics variables)
+        if ff_params_path is None or ff_node_mapping_path is None:
+            raise ValueError("ff_params_path and ff_node_mapping_path must be provided to map categorical beads to continuous physics vectors.")
+            
+        with open(ff_params_path, 'r') as f:
+            ff_dict = json.load(f)
+            
+        with open(ff_node_mapping_path, 'r') as f:
+            node_map = json.load(f)
+            
+        node_features = []
+        for mol_name, name in zip(self.lipids.resnames, self.lipids.names):
+            bead_type = None
+            if mol_name in node_map and name in node_map[mol_name]:
+                bead_type = node_map[mol_name][name]
                 
-        self.node_x = torch.tensor(bead_types, dtype=torch.long).unsqueeze(1)
+            if bead_type and bead_type in ff_dict:
+                params = ff_dict[bead_type]
+                node_features.append([
+                    params.get('mass', 0.0),
+                    params.get('charge', 0.0),
+                    params.get('sigma', 0.0),
+                    params.get('epsilon', 0.0)
+                ])
+            else:
+                print(f"WARNING: Molecule '{mol_name}' Atom '{name}' not mapped to force field params! Defaulting to baseline zeroes.")
+                node_features.append([0.0, 0.0, 0.0, 0.0])
+                
+        self.node_x = torch.tensor(node_features, dtype=torch.float32)
+        
+        # 3.5 Cache Edge Features Dictionary
+        if ff_edge_params_path is not None:
+            with open(ff_edge_params_path, 'r') as f:
+                self.ff_edge_params = json.load(f)
+        else:
+            self.ff_edge_params = None
+
+        # 3.6 Compute and cache composition fraction vector
+        self.composition_vec = self._compute_composition_vector()
         
         # 4. Cache Index Mapping & Bonded Topology (Static)
         self._cache_topology()
+
+    def _compute_composition_vector(self) -> torch.Tensor:
+        """
+        Computes the molar fraction of each lipid type present in the membrane.
+
+        Returns a fixed-length float32 tensor of shape (LIPID_COMP_DIM,) where
+        each element is the fraction of residues of that lipid type.
+        The lipid order matches LIPID_TYPES (e.g. POPC, DOPC, DIPC, ...).
+
+        Residue types not in LIPID_TYPES are silently ignored (e.g. water,
+        ions are already filtered out by the selection string).
+        """
+        resnames = self.lipids.resnames
+        unique_res, counts = np.unique(resnames, return_counts=True)
+        total_residues = counts.sum()
+
+        vec = np.zeros(LIPID_COMP_DIM, dtype=np.float32)
+        for resname, count in zip(unique_res, counts):
+            if resname in LIPID_TYPES:
+                vec[LIPID_TYPES.index(resname)] = count / total_residues
+
+        return torch.tensor(vec, dtype=torch.float32)
 
     def _cache_topology(self):
         """Pre-computes and caches the bonded edge index."""
@@ -121,9 +129,33 @@ class MartiniHeteroGraphBuilder:
         # Filter valid bonds and create bidirectional tensor
         mask = (local_bonds[:, 0] != -1) & (local_bonds[:, 1] != -1)
         self.valid_local_bonds = local_bonds[mask] # Cache for subtraction later
+        valid_global_bonds = global_bonds[mask]
         
         bond_index = torch.tensor(self.valid_local_bonds.T, dtype=torch.long)
         self.bond_index = torch.cat([bond_index, bond_index.flip(0)], dim=1)
+        
+        # Build Edge Features
+        if self.ff_edge_params is not None:
+            bond_features = []
+            for global_idx_pair in valid_global_bonds:
+                u_idx, v_idx = global_idx_pair
+                u_atom = self.u.atoms[u_idx]
+                v_atom = self.u.atoms[v_idx]
+                
+                mol_name = u_atom.resname
+                sorted_names = sorted([u_atom.name, v_atom.name])
+                bond_key = f"{sorted_names[0]}-{sorted_names[1]}"
+                
+                if mol_name in self.ff_edge_params and bond_key in self.ff_edge_params[mol_name]:
+                    props = self.ff_edge_params[mol_name][bond_key]
+                    bond_features.append([props['length'], props['force_constant']])
+                else:
+                    raise ValueError(f"Molecule {mol_name} or bond {bond_key} missing from ff_edge_params. Cannot proceed without physical edges.")
+                    
+            edge_features_tensor = torch.tensor(bond_features, dtype=torch.float32)
+            self.bond_edge_attr = torch.cat([edge_features_tensor, edge_features_tensor], dim=0)
+        else:
+            self.bond_edge_attr = None
         
         # Cache the set of bonded pairs for fast subtraction during frame processing
         bond_set = set(map(tuple, self.valid_local_bonds))
@@ -152,18 +184,47 @@ class MartiniHeteroGraphBuilder:
             return_distances=True
         )
         
-        # 3. Filter Self-loops and Bonds
-        spatial_set = set(map(tuple, pairs))
-        spatial_set = {p for p in spatial_set if p[0] != p[1]} # Remove self loops
-        pure_spatial_set = spatial_set - self.all_bonded_pairs_set # Remove bonds
+        # 3. Filter Self-loops and Bonds (Vectorized for Speed)
+        # Using NumPy arrays instead of Python loops reduces graph build time 
+        # from minutes to seconds, especially critical on CPU-only sessions.
+        if len(pairs) > 0:
+            # Mask self-loops
+            loop_mask = (pairs[:, 0] != pairs[:, 1])
+            pairs = pairs[loop_mask]
+            dists = dists[loop_mask]
+            
+            # Mask bonded pairs
+            if len(pairs) > 0:
+                # Efficiently find pairs that are already in the bonded topology
+                # Map (i, j) to a unique integer scalar for vectorized search
+                pair_scalars = pairs[:, 0].astype(np.int64) * self.n_nodes + pairs[:, 1]
+                
+                bonded_arr = np.array(list(self.all_bonded_pairs_set), dtype=np.int64)
+                if len(bonded_arr) > 0:
+                    bonded_scalars = bonded_arr[:, 0] * self.n_nodes + bonded_arr[:, 1]
+                    bonded_mask = np.isin(pair_scalars, bonded_scalars)
+                    
+                    # Apply inverse mask to keep only non-bonded spatial neighbors
+                    spatial_pairs = pairs[~bonded_mask]
+                    spatial_distances = dists[~bonded_mask]
+                else:
+                    spatial_pairs = pairs
+                    spatial_distances = dists
+            else:
+                spatial_pairs = np.empty((0, 2), dtype=np.int64)
+                spatial_distances = np.empty((0,), dtype=np.float32)
+        else:
+            spatial_pairs = np.empty((0, 2), dtype=np.int64)
+            spatial_distances = np.empty((0,), dtype=np.float32)
         
-        # 4. Create Spatial Edge Tensor
-        if len(pure_spatial_set) > 0:
-            spatial_edges = np.array(list(pure_spatial_set))
-            spatial_index = torch.tensor(spatial_edges.T, dtype=torch.long)
-            spatial_index = torch.cat([spatial_index, spatial_index.flip(0)], dim=1)
+        # 4. Create Spatial Edge Tensor and Attributes
+        if len(spatial_pairs) > 0:
+            spatial_index = torch.tensor(spatial_pairs.T, dtype=torch.long)
+            # Apply RBF encoding to the distances
+            spatial_attr = self.rbf(torch.tensor(spatial_distances, dtype=torch.float32))
         else:
             spatial_index = torch.empty((2, 0), dtype=torch.long)
+            spatial_attr = torch.empty((0, 16), dtype=torch.float32)
             
         # 5. Construct HeteroData Object
         data = HeteroData()
@@ -172,10 +233,16 @@ class MartiniHeteroGraphBuilder:
         data['bead'].x = self.node_x
         data['bead'].num_nodes = self.n_nodes
         data['bead', 'bonded', 'bead'].edge_index = self.bond_index
+        if self.bond_edge_attr is not None:
+            data['bead', 'bonded', 'bead'].edge_attr = self.bond_edge_attr
         
         # Assign Dynamic Data
         data['bead'].pos = current_pos
         data['bead', 'spatial', 'bead'].edge_index = spatial_index
+        data['bead', 'spatial', 'bead'].edge_attr = spatial_attr
+
+        # Composition descriptor (graph-level feature, same for all frames)
+        data.comp_vec = self.composition_vec  # shape: (LIPID_COMP_DIM,)
         
         return data
 
