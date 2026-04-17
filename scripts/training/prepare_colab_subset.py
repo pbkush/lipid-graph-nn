@@ -10,8 +10,8 @@ from lipid_gnn.dataset import preprocess_and_save
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
 AVAILABLE_PROPERTIES = [
-    'lipid_packing', 'thickness', 'thickness_std',
-    'compressibility', 'persistence', 'diffusivity',
+    'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
+    'bending_modulus', 'persistence', 'diffusivity', 'variation'
 ]
 
 
@@ -141,7 +141,11 @@ def _parse_args():
         default=["lipid_packing", "thickness"],
         choices=AVAILABLE_PROPERTIES,
         metavar="PROP",
-        help="Properties to embed as graph.y (default: lipid_packing thickness).",
+        help=(
+            "Properties to embed as graph.y "
+            f"(default: lipid_packing thickness). "
+            f"Available: {', '.join(AVAILABLE_PROPERTIES)}."
+        ),
     )
     parser.add_argument(
         "--num-frames", type=int, default=50,
