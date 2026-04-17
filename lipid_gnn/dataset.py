@@ -120,7 +120,7 @@ def preprocess_and_save(sim_tuples,
         tpr_path, xtc_path, props_path = Path(tpr_path), Path(xtc_path), Path(props_path)
 
         builder = MartiniHeteroGraphBuilder(
-            topology_file=str(tpr_path),
+            tpr_file=str(tpr_path),
             trajectory_file=str(xtc_path),
             spatial_cutoff=spatial_cutoff,
             ff_params_path=ff_params_path,

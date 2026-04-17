@@ -94,7 +94,7 @@ def load_real_data(system_name, data_dir="data/membrane_only", ff_dir="resources
     ff_node_mapping = os.path.join(ff_dir, "martini_ff_node_mapping.json")
 
     builder = MartiniHeteroGraphBuilder(
-        topology_file=tpr_path,
+        tpr_file=tpr_path,
         trajectory_file=xtc_path,
         spatial_cutoff=11.0,
         ff_params_path=ff_params,
@@ -138,7 +138,7 @@ def run_memory_scaling_test(args):
     
     # ff_parser files are in resources
     builder = MartiniHeteroGraphBuilder(
-        topology_file=tpr_path,
+        tpr_file=tpr_path,
         trajectory_file=xtc_path,
         spatial_cutoff=11.0,
         ff_params_path=os.path.join(args.ff_dir, "martini_ff_params.json"),

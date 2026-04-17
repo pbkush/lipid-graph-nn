@@ -50,8 +50,8 @@ def load_data(target_properties=['lipid_packing'], spatial_cutoff=11.0, test_siz
             continue
             
         builder = MartiniHeteroGraphBuilder(
-            topology_file=top_file, 
-            trajectory_file=traj_file, 
+            tpr_file=top_file,
+            trajectory_file=traj_file,
             spatial_cutoff=spatial_cutoff, 
             ff_params_path=FF_PARAMS_PATH,
             ff_edge_params_path=FF_EDGE_PARAMS_PATH,
