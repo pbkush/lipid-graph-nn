@@ -3,7 +3,7 @@
 ## Technologies Used
 
 | Component | Technology |
-|-----------|-----------|
+| --------- | --------- |
 | ML Framework | PyTorch + PyTorch Geometric |
 | MD Analysis | MDAnalysis |
 | Graph Type | PyG `HeteroData` |
@@ -17,7 +17,7 @@
 ## Development Setup
 
 - **Conda environment**: `lipid_gnn` (Python 3.13)
-- **Installation**: `pip install --use-pep517 .` (minimal `setup.py`, no pinned dependencies)
+- **Installation**: `pip install --use-pep517 .` then `pip install -r requirements.txt`
 - **Tests**: `pytest tests/` — no special config needed
 - **Training**: `python3 scripts/training/run_sweep.py`
 - **Smoke test**: `python3 scripts/training/smoke_test_sweep.py`
@@ -31,12 +31,20 @@
 
 ## Dependencies
 
-Core (inferred from imports, not pinned in setup.py):
+Pinned in `requirements.txt` (added 2026-04-17):
 
-- `torch`, `torch_geometric` (PyTorch Geometric including `GATv2Conv`, `HeteroConv`, `GraphNorm`)
-- `MDAnalysis` (trajectory loading, atom selection, distance calculations)
-- `numpy`, `matplotlib`, `tqdm`
-- `scikit-learn` (for linear baseline)
+- `torch>=2.8.0`, `torch-geometric>=2.7.0`
+- `MDAnalysis>=2.10.0`
+- `numpy>=2.4.0`, `h5py>=3.15.0`, `pandas>=2.0.0`, `scikit-learn>=1.8.0`
+- `matplotlib>=3.10.0`, `tqdm>=4.67.0`, `pytest>=8.0.0`
+- `wandb` (unpinned; Colab/remote runs only)
+
+## GitHub / SSH
+
+- Remote: `git@github.com:pbkush/lipid-graph-nn.git` (SSH)
+- University network blocks port 22; `~/.ssh/config` routes `github.com` → `ssh.github.com:443`
+- Claude Code permissions in `.claude/settings.json`: allows `git push/commit/add`, `gh pr create/merge`; denies `git push --force`
+- Branch strategy: short-lived feature branches (`feat/`, `exp/`, `fix/`, `refactor/`, `test/`, `data/`, `docs/`), merge commits only (no squash/rebase)
 
 ## Tool Usage Patterns
 

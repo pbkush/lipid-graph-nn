@@ -14,9 +14,7 @@
 - Generate zip with `prepare_colab_subset.py` and run the first sweep on Colab with `train_colab_rev.ipynb`
 - Explore transfer to protein+membrane systems (long-term research goal)
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
-- Pin dependencies in `setup.py` or add `requirements.txt`
-- Plan and implement a github workflow for better reproducibility
-
+- Disable squash/rebase merging in GitHub repo settings (Settings → General → Pull Requests)
 
 ## Current Status
 
@@ -27,8 +25,7 @@ Full pipeline is implemented end-to-end: `prepare_colab_subset.py` bakes 100 fra
 ## Known Issues
 
 1. **Memory pressure**: Training is constrained by both RAM and VRAM. Batch size and number of frames are limited.
-2. **No dependency pinning**: `setup.py` only does package discovery, no version constraints. Environment reproducibility depends on the conda env.
-3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
+2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
 ## Evolution of Project Decisions
 

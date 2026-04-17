@@ -4,7 +4,7 @@
 
 Training pipeline is complete. Next focus is running the sweep on Colab and evaluating results.
 
-## Recent Changes
+## Previous Changes
 
 **Data Pipeline:**
 
@@ -40,11 +40,24 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - `MembranePropertyGNN` upgraded to dual edge-type processing (bonded + spatial) via `GATv2Conv` with `GraphNorm`
 - Vectorized spatial cutoff masking in `MartiniHeteroGraphBuilder` using NumPy (replaced slow Python loops for bonded-pair and self-loop removal)
 
+## Recent Changes
+
+**GitHub workflow setup (2026-04-17):**
+
+- Created `requirements.txt` with pinned minimum versions for all direct dependencies (`torch>=2.8.0`, `torch-geometric>=2.7.0`, `MDAnalysis>=2.10.0`, `numpy`, `h5py`, `pandas`, `scikit-learn`, `matplotlib`, `tqdm`, `pytest`, `wandb`)
+- Updated `.gitignore` to exclude large simulation files (`*.xtc`, `*.gro`, `*.tpr`, etc.), `colab_lipid_gnn_subset.zip`, `tmp/`, `.vscode/`, `build/`, `lipid_gnn.egg-info/`, and agent scratch files
+- Cleared outputs from `scripts/colab/train_colab.ipynb` (369 KB → 17 KB) using `jupyter nbconvert --clear-output`
+- Pushed all previously untracked files in 3 commits: packaging/config, core GNN modules + tests, training scripts + notebooks
+- Fixed SSH auth: university network blocks port 22; added `ssh.github.com:443` to `~/.ssh/known_hosts` and configured `~/.ssh/config` to route all `github.com` connections through port 443
+- Added `.claude/settings.json` with permission rules allowing `git push`, `git commit`, `git add`, `gh pr create`, `gh pr merge` without prompts; denies `git push --force`
+- Repo is now fully up to date on GitHub with 6 commits on `main`
+
 ## Next Steps
 
 - Run `prepare_colab_subset.py` locally to generate the new zip (100 frames/system, spatial cutoff 10.0 Å)
 - Upload zip to Google Drive and run `train_colab_rev.ipynb` on Colab
 - Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
+- Disable squash/rebase merging in GitHub repo settings (Settings → General → Pull Requests)
 
 ## Important Patterns and Preferences
 
