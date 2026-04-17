@@ -1,283 +1,273 @@
-import os
+"""
+Local training sweep — mirrors scripts/colab/train_colab_rev.ipynb.
+
+Reads preprocessed .pt chunks produced by scripts/training/prepare_colab_subset.py,
+expands FIXED + SWEEP into a list of experiments, and runs each via train_one_run()
+with Weights & Biases logging. Run `wandb login` once before first use.
+"""
+import itertools
+import random
 import sys
-import datetime
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
 from pathlib import Path
-from torch_geometric.loader import DataLoader
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from tqdm.auto import tqdm
-import matplotlib
-matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import wandb
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import StandardScaler
+from torch_geometric.loader import DataLoader
 
-# Add root project to python path
 root_dir = Path(__file__).resolve().parents[2]
-sys.path.append(str(root_dir))
+sys.path.insert(0, str(root_dir))
 
-from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder, LIPID_COMP_DIM
+from lipid_gnn.dataset import MartiniDiskDataset
+from lipid_gnn.lipid_graph import LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.plotting import plot_property_accuracies
-from lipid_gnn.functions_emil.functions import pkl_load
 
-# Global Config Defaults
-DATA_DIR = root_dir / 'data/membrane_only'
-RESULTS_BASE_DIR = root_dir / 'results/properties'
-FF_PARAMS_PATH = root_dir / 'resources/martini_ff_params.json'
-FF_EDGE_PARAMS_PATH = root_dir / 'resources/martini_ff_edge_params.json'
-FF_NODE_MAPPING_PATH = root_dir / 'resources/martini_ff_node_mapping.json'
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def load_data(target_properties=['lipid_packing'], spatial_cutoff=11.0, test_size=0.2, num_frames_per_comp=1):
-    """
-    Loads and preprocesses graphs from the data directory.
-    Supports multi-frame sampling per composition for data augmentation.
-    """
-    graphs = []
-    compositions = sorted([d for d in os.listdir(DATA_DIR) if os.path.isdir(os.path.join(DATA_DIR, d))])
-    print(f"Found {len(compositions)} membrane compositions.", flush=True)
 
-    for comp in tqdm(compositions, desc="Building Graphs"):
-        top_file = os.path.join(DATA_DIR, comp, "run/prun.tpr")
-        traj_file = os.path.join(DATA_DIR, comp, "run/prun.xtc")
-        prop_file = os.path.join(RESULTS_BASE_DIR, f"{comp}.h5")
-        
-        if not (os.path.exists(top_file) and os.path.exists(traj_file) and os.path.exists(prop_file)):
-            continue
-            
-        builder = MartiniHeteroGraphBuilder(
-            topology_file=top_file, 
-            trajectory_file=traj_file, 
-            spatial_cutoff=spatial_cutoff, 
-            ff_params_path=FF_PARAMS_PATH,
-            ff_edge_params_path=FF_EDGE_PARAMS_PATH,
-            ff_node_mapping_path=FF_NODE_MAPPING_PATH
-        )
-        
-        n_frames = builder.u.trajectory.n_frames
-        # Select evenly spaced indices across the entire trajectory
-        if n_frames <= num_frames_per_comp:
-            sampled_indices = range(n_frames)
-        else:
-            sampled_indices = np.linspace(0, n_frames - 1, num_frames_per_comp, dtype=int)
-            
-        try:
-            mean_dict, _ = pkl_load(prop_file)
-            target_vec = [mean_dict[prop] for prop in target_properties]
-            
-            for f_idx in sampled_indices:
-                hetero_data = builder.process_frame(frame_idx=int(f_idx))
-                hetero_data.y = torch.tensor([target_vec], dtype=torch.float)
-                graphs.append(hetero_data)
-        except Exception as e:
-            print(f"Error loading properties for {comp}: {e}", flush=True)
+# ── Properties to predict ─────────────────────────────────────────────────────
+# Available: 'lipid_packing', 'thickness', 'thickness_std',
+#            'compressibility', 'persistence', 'diffusivity'
+PROPERTIES = ['lipid_packing', 'thickness']
 
-    print(f"Total graphs built: {len(graphs)}", flush=True)
-    if len(graphs) == 0:
-        raise ValueError("No graphs were successfully built. Check your data paths and property files.")
-    train_graphs, test_graphs = train_test_split(graphs, test_size=test_size, random_state=42)
+# ── Fixed hyperparameters (shared across all runs) ────────────────────────────
+FIXED = {
+    "epochs":      100,
+    "batch_size":  2,
+    "num_workers": 2,
+}
 
-    scaler = StandardScaler()
-    train_y = torch.cat([g.y for g in train_graphs], dim=0).numpy()
-    scaler.fit(train_y)
+# ── Sweep grid: every combination produces one run ────────────────────────────
+# comp_mode: "gnn_only"      — message passing only
+#            "gnn_plus_comp" — GNN output + lipid composition vector
+#            "comp_only"     — composition vector through MLP only (ablation)
+SWEEP = {
+    "comp_mode":     ["gnn_only"],
+    "hidden_dim":    [32, 64],
+    "num_layers":    [2, 3],
+    "learning_rate": [5e-4],
+    "weight_decay":  [5e-3],
+    "seed":          [0, 1, 2],
+}
 
-    for g in train_graphs:
-        g.y = torch.tensor(scaler.transform(g.y.numpy()), dtype=torch.float)
-    for g in test_graphs:
-        g.y = torch.tensor(scaler.transform(g.y.numpy()), dtype=torch.float)
+# ── Data ──────────────────────────────────────────────────────────────────────
+PROCESSED_DIR = root_dir / 'colab_lipid_gnn_subset' / 'processed'
+VAL_SPLIT     = 0.2
+SPLIT_SEED    = 42
 
-    print(f"Train: {len(train_graphs)} | Test: {len(test_graphs)} | Scaler fitted on train only.")
-    return train_graphs, test_graphs
 
-def train_experiment(config, train_graphs, test_graphs):
-    """
-    Runs a single training experiment with the given configuration.
+def train_one_run(cfg, scaler, train_dataset, val_dataset):
+    """Train a single run defined by cfg and log all results to W&B."""
+    seed       = cfg["seed"]
+    properties = cfg["properties"]
+    comp_mode  = cfg["comp_mode"]
 
-    Supports three modes via config['comp_mode']:
-      'gnn_only'   : standard GNN, comp_vec not used  (comp_dim=0)
-      'gnn_plus_comp' : GNN + composition vector injected before MLP  (comp_dim=LIPID_COMP_DIM)
-      'comp_only'  : trivial MLP applied directly to comp_vec, no message passing
-    """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"\n>>> Starting Experiment: {config['run_name']} ({config.get('comp_mode','gnn_only')}) on {device}")
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
-    comp_mode = config.get('comp_mode', 'gnn_only')
-    use_comp = comp_mode in ('gnn_plus_comp', 'comp_only')
+    run_name = (
+        f"{comp_mode}"
+        f"_h{cfg['hidden_dim']}"
+        f"_l{cfg['num_layers']}"
+        f"_lr{cfg['learning_rate']:.0e}"
+        f"_s{seed}"
+    )
+    wandb.init(
+        project="lipid_gnn_" + "_".join(properties),
+        name=run_name,
+        config=cfg,
+    )
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"]
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"]
+    )
+
+    use_comp = comp_mode in ("gnn_plus_comp", "comp_only")
     comp_dim = LIPID_COMP_DIM if use_comp else 0
 
-    # DataLoaders
-    train_loader = DataLoader(train_graphs, batch_size=config['batch_size'], shuffle=True)
-    test_loader = DataLoader(test_graphs, batch_size=config['batch_size'], shuffle=False)
-
-    # Model Initialization
     model = MembranePropertyGNN(
-        in_channels=config['in_channels'], 
-        hidden_dim=config['hidden_dim'], 
-        num_layers=config['num_layers'], 
-        out_dim=config['out_dim'],
+        in_channels=4,
+        hidden_dim=cfg["hidden_dim"],
+        num_layers=cfg["num_layers"],
+        out_dim=len(properties),
         comp_dim=comp_dim,
     ).to(device)
 
-    optimizer = optim.AdamW(model.parameters(), lr=config['learning_rate'],
-                            weight_decay=config.get('weight_decay', 1e-4))
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=cfg["learning_rate"],
+        weight_decay=cfg["weight_decay"],
+    )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=10
+    )
+    criterion = torch.nn.MSELoss()
 
-    # Setup Logging
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_id = f"{timestamp}_{config['run_name']}"
-    train_res_dir = root_dir / "results/training" / config['property_label'] / run_id
-    train_res_dir.mkdir(parents=True, exist_ok=True)
-    log_file = train_res_dir / "training_log.txt"
+    s_mean  = torch.tensor(scaler.mean_,  dtype=torch.float, device=device)
+    s_scale = torch.tensor(scaler.scale_, dtype=torch.float, device=device)
 
-    with open(log_file, "w") as f:
-        f.write(f"Training Run: {run_id}\nConfig: {config}\nModel:\n{model}\n" + "="*40 + "\n")
+    def normalize(y):
+        return (y - s_mean) / s_scale
 
-    def _get_comp_vec(batch):
-        """Extract and stack per-graph composition vectors from a batch."""
-        if not use_comp:
-            return None
-        # batch.comp_vec is shape [batch_size, LIPID_COMP_DIM] after PyG batching
-        return batch.comp_vec.to(device)
-
-    def _forward(batch):
-        """Unified forward pass supporting all three comp_modes."""
-        comp_vec = _get_comp_vec(batch)
-        if comp_mode == 'comp_only':
-            # Skip message passing; feed comp_vec directly through an identity GNN
-            # by passing a zero x_dict — the comp_vec in the MLP carries all signal.
-            # We still run the GNN, but its pooled output is dominated by comp_vec.
-            pass  # comp_vec will be appended; GNN output acts as learned noise
+    def forward(batch):
+        comp_vec       = batch.comp_vec.to(device) if use_comp else None
         edge_attr_dict = batch.edge_attr_dict if hasattr(batch, 'edge_attr_dict') else None
-        return model(batch.x_dict, batch.edge_index_dict, batch.batch_dict,
-                     edge_attr_dict, comp_vec=comp_vec)
+        return model(
+            batch.x_dict, batch.edge_index_dict, batch.batch_dict,
+            edge_attr_dict, comp_vec=comp_vec,
+        )
 
-    # Training Loop
-    train_losses, test_losses = [], []
-    for epoch in range(1, config['epochs'] + 1):
+    for epoch in range(1, cfg["epochs"] + 1):
         model.train()
-        total_loss = 0
-        for batch in train_loader:
-            batch = batch.to(device)
+        total_train_loss = 0.0
+        prop_train_loss  = torch.zeros(len(properties), device=device)
+        n_train          = 0
+
+        for batch_idx, batch in enumerate(train_loader):
+            batch  = batch.to(device)
+            target = normalize(batch.y)
+
             optimizer.zero_grad()
-            predictions = _forward(batch)
-            loss = criterion(predictions, batch.y)
+            out  = forward(batch)
+            loss = criterion(out, target)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item() * batch.num_graphs
-        
-        avg_train_loss = total_loss / len(train_graphs)
-        train_losses.append(avg_train_loss)
-        
+
+            n                = batch.num_graphs
+            total_train_loss += loss.item() * n
+            prop_train_loss  += torch.mean((out - target) ** 2, dim=0) * n
+            n_train          += n
+
+            if batch_idx % 10 == 0:
+                wandb.log({"batch/loss": loss.item()})
+
+        avg_train_loss = total_train_loss / n_train
+        avg_prop_train = (prop_train_loss / n_train).cpu().numpy()
+
         model.eval()
-        total_test_loss = 0
+        total_val_loss = 0.0
+        prop_val_loss  = torch.zeros(len(properties), device=device)
+        all_preds      = []
+        all_targets    = []
+        n_val          = 0
+
         with torch.no_grad():
-            for batch in test_loader:
-                batch = batch.to(device)
-                predictions = _forward(batch)
-                loss = criterion(predictions, batch.y)
-                total_test_loss += loss.item() * batch.num_graphs
-        
-        avg_test_loss = total_test_loss / len(test_graphs)
-        test_losses.append(avg_test_loss)
-        scheduler.step(avg_test_loss)
+            for batch in val_loader:
+                batch  = batch.to(device)
+                target = normalize(batch.y)
+                out    = forward(batch)
+                loss   = criterion(out, target)
 
-        if epoch % 5 == 0 or epoch == 1:
-            log_msg = f"Epoch {epoch:03d} | Train MSE: {avg_train_loss:.4f} | Test MSE: {avg_test_loss:.4f}"
-            print(log_msg)
-            with open(log_file, 'a') as f:
-                f.write(log_msg + "\n")
+                n               = batch.num_graphs
+                total_val_loss += loss.item() * n
+                prop_val_loss  += torch.mean((out - target) ** 2, dim=0) * n
+                n_val          += n
 
-    # Loss curve
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, config['epochs'] + 1), train_losses, label='Train MSE')
-    plt.plot(range(1, config['epochs'] + 1), test_losses, label='Test MSE')
-    plt.xlabel('Epochs')
-    plt.ylabel('MSE Loss')
-    plt.title(f'Training Curve — {config["run_name"]}\n({comp_mode})')
-    plt.legend()
-    plt.savefig(train_res_dir / 'loss_curve.png')
-    plt.close()
+                all_preds.append(out.cpu().numpy())
+                all_targets.append(target.detach().cpu().numpy())
 
-    # Dynamic Scatter plot (Actual vs Predicted)
-    model.eval()
-    actuals, preds = [], []
-    with torch.no_grad():
-        for batch in test_loader:
-            batch = batch.to(device)
-            pred = _forward(batch)
-            preds.append(pred.detach().cpu().numpy())
-            actuals.append(batch.y.detach().cpu().numpy())
+        avg_val_loss = total_val_loss / n_val
+        avg_prop_val = (prop_val_loss / n_val).cpu().numpy()
+        scheduler.step(avg_val_loss)
 
-    actuals = np.concatenate(actuals, axis=0)
-    preds = np.concatenate(preds, axis=0)
-    
-    # Calculate overall MSE (on normalized data)
-    final_test_mse = np.mean((actuals - preds)**2)
+        all_preds   = np.concatenate(all_preds,   axis=0)
+        all_targets = np.concatenate(all_targets, axis=0)
+        r2_scores   = r2_score(all_targets, all_preds, multioutput="raw_values")
 
-    # Use the new plotting module for dynamic subplots
-    plot_property_accuracies(
-        actuals=actuals,
-        predictions=preds,
-        property_names=target_properties,
-        overall_mse=final_test_mse,
-        save_path=train_res_dir / 'accuracy_scatter.png'
-    )
+        if epoch % 10 == 0 or epoch == 1:
+            print(f"Epoch {epoch:03d} | Train MSE: {avg_train_loss:.4f} | Val MSE: {avg_val_loss:.4f}")
 
-    print(f"Done. Results in {train_res_dir}")
-    return final_test_mse
+        metrics = {
+            "epoch":            epoch,
+            "train/loss_total": avg_train_loss,
+            "val/loss_total":   avg_val_loss,
+            "learning_rate":    optimizer.param_groups[0]["lr"],
+        }
+        for i, prop in enumerate(properties):
+            metrics[f"train/loss_{prop}"] = avg_prop_train[i]
+            metrics[f"val/loss_{prop}"]   = avg_prop_val[i]
+            metrics[f"val/r2_{prop}"]     = float(r2_scores[i])
+        wandb.log(metrics)
+
+    final_mse = float(np.mean((all_preds - all_targets) ** 2))
+    fig = plot_property_accuracies(all_targets, all_preds, properties, final_mse)
+    wandb.log({"val/accuracy_plot": wandb.Image(fig)})
+    plt.close(fig)
+
+    wandb.finish()
+
+
+def _expand_sweep():
+    keys = list(SWEEP.keys())
+    return [
+        {**FIXED, "properties": PROPERTIES, **dict(zip(keys, vals))}
+        for vals in itertools.product(*SWEEP.values())
+    ]
+
+
+def _load_chunks_and_scaler():
+    all_chunks = sorted(PROCESSED_DIR.glob('chunk_*.pt'))
+    if not all_chunks:
+        raise FileNotFoundError(
+            f"No chunk_*.pt files found in {PROCESSED_DIR}. "
+            f"Run scripts/training/prepare_colab_subset.py first."
+        )
+
+    random.seed(SPLIT_SEED)
+    shuffled = list(all_chunks)
+    random.shuffle(shuffled)
+
+    n_val        = max(1, int(len(shuffled) * VAL_SPLIT))
+    val_chunks   = shuffled[:n_val]
+    train_chunks = shuffled[n_val:]
+
+    print(f"Total chunks : {len(all_chunks)}")
+    print(f"Train chunks : {len(train_chunks)}")
+    print(f"Val chunks   : {len(val_chunks)}")
+
+    all_train_y = []
+    for chunk_file in train_chunks:
+        graphs = torch.load(chunk_file, weights_only=False)
+        all_train_y.extend(g.y for g in graphs)
+
+    y_matrix = torch.cat(all_train_y, dim=0).numpy()
+    scaler   = StandardScaler().fit(y_matrix)
+
+    print(f"\nScaler fit on {len(all_train_y)} training graphs.")
+    print(f"  means : {dict(zip(PROPERTIES, scaler.mean_.round(4)))}")
+    print(f"  stds  : {dict(zip(PROPERTIES, scaler.scale_.round(4)))}")
+
+    train_dataset = MartiniDiskDataset(train_chunks, shuffle=True)
+    val_dataset   = MartiniDiskDataset(val_chunks,   shuffle=False)
+    return train_dataset, val_dataset, scaler
+
 
 if __name__ == "__main__":
-    # 1. Load Data Once (scaler fitted on train only — data leakage fixed)
-    target_properties = ['lipid_packing', 'thickness']
-    train_graphs, test_graphs = load_data(target_properties=target_properties, num_frames_per_comp=1)
+    print(f"Device : {device}")
+    print(f"Chunks : {PROCESSED_DIR}\n")
 
-    # 2. Phase 1 Comparison Sweep
-    # Three modes × best config from sweep 2 (nl=2, wd=0.005, bs=1, lr=5e-4, h=32)
-    # Each mode run 3 times to account for random seed variance.
-    base_config = {
-        'property_label': 'multi_task',
-        'target_properties': target_properties,
-        'in_channels': 4,
-        'hidden_dim': 32,
-        'num_layers': 2,
-        'out_dim': len(target_properties),
-        'epochs': 50,
-        'batch_size': 2,
-        'learning_rate': 5e-4,
-        'weight_decay': 5e-3,
-    }
+    experiments = _expand_sweep()
+    keys = list(SWEEP.keys())
+    print(f"Generated {len(experiments)} experiments:\n")
+    for i, cfg in enumerate(experiments):
+        vals_str = '  '.join(f"{k}={cfg[k]}" for k in keys)
+        print(f"  [{i:>2}]  {vals_str}")
 
-    experiments = []
-    for mode in ['gnn_only', 'gnn_plus_comp']:
-        for seed in [0]:  # 1 seed for rapid multi-task test
-            cfg = base_config.copy()
-            cfg.update({
-                'comp_mode': mode,
-                'run_name': f"1frame_alp_thick_bs2_{mode}_seed{seed}",
-            })
-            experiments.append(cfg)
+    train_dataset, val_dataset, scaler = _load_chunks_and_scaler()
 
-    print(f"Total experiments to run: {len(experiments)}")
+    wandb.login()
 
-    results = {}
-    for exp_cfg in experiments:
-        # Seed for reproducibility
-        seed = int(exp_cfg['run_name'].split('seed')[-1])
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        test_mse = train_experiment(exp_cfg, train_graphs, test_graphs)
-        mode = exp_cfg['comp_mode']
-        results.setdefault(mode, []).append(test_mse)
+    for i, cfg in enumerate(experiments):
+        print(f"\n{'─' * 60}")
+        print(f"Experiment {i + 1} / {len(experiments)}")
+        print(f"{'─' * 60}")
+        train_one_run(cfg, scaler, train_dataset, val_dataset)
 
-    # Summary
-    print("\n" + "=" * 50)
-    print("  Phase 3 Summary — Multi-property (Packing, Thickness)")
-    print("=" * 50)
-    for mode, mses in sorted(results.items()):
-        arr = np.array(mses)
-        print(f"  {mode:20s}: mean={arr.mean():.4f}  std={arr.std():.4f}  runs={mses}")
-    print("=" * 50)
-    print("Linear baseline (LOO-CV Ridge): MSE=0.3989  R²=0.601")
+    print("\nAll experiments complete.")
