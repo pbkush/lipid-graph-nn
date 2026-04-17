@@ -59,6 +59,13 @@ MD Trajectory (.tpr + .xtc/.trr)
 - **Test-before-integrate**: Discrete components are validated locally with dedicated tests (e.g., `test_dataset.py`) before integration into the heavy `train_colab.ipynb` loop
 - **Preprocessing separation**: Graph construction and chunk saving happen in preprocessing scripts; training only loads pre-built `.pt` files
 - **Docstrings**: Write docstrings for all functions and classes. Write small descriptions for parameters if deemed necessary.
+- **CLI for tunable runnable scripts**: Any script that is executed directly (`python3 scripts/...`) and has parameters that change per experiment/environment should expose them as `argparse` flags rather than module-level constants. Rule of thumb: if editing the value would produce a non-substantive git diff (just a number or list change), it belongs in the CLI.
+  - Keep the current hardcoded values as argparse `default=` so existing invocations with no flags preserve behavior
+  - Use `nargs="+"` for list-valued params, `choices=` when the valid set is enumerable, `type=int`/`type=float` for numerics
+  - Enumerate valid choices in the `--help` string (e.g., `Available: a, b, c`) so users don't have to read source
+  - Parse in a `_parse_args()` helper and pass values as function kwargs — keep the core function callable from other modules without the CLI
+  - Applied in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) (PR #4); good candidate next: `FIXED` dict values in [scripts/training/run_sweep.py](scripts/training/run_sweep.py)
+  - NOT a candidate: sweep grids (`SWEEP` dict in `run_sweep.py`) — cartesian products are clumsy on the command line and belong in code
 
 ## Component Relationships
 

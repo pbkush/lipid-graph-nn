@@ -63,6 +63,13 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - Replaced the one-line stub `README.md` with a single-page overview: goal, architecture, install, training (smoke test / local sweep / Colab), expected data layout, evaluation story, repository layout
 - `reinstall.sh` deleted — not referenced from the README; install path is `pip install --use-pep517 .` + `pip install -r requirements.txt`
 
+**CLI args for prepare_colab_subset.py (PR #4, commit 95b9e61):**
+
+- Replaced the module-level constants (`TARGET_PROPERTIES`, `NUM_FRAMES`, `CHUNK_SIZE`, `SPATIAL_CUTOFF`) with `argparse` flags so per-experiment tweaks no longer churn git history
+- Flags: `--properties` (nargs='+' with `choices=AVAILABLE_PROPERTIES`), `--num-frames`, `--chunk-size`, `--spatial-cutoff`, `--subset-name`; `--help` lists all valid property names
+- `AVAILABLE_PROPERTIES` expanded to 8 targets (added `bending_modulus`, `variation`)
+- Established the "CLI for tunable runnable scripts" design pattern, recorded in `systemPatterns.md` — next candidate is the `FIXED` dict in `run_sweep.py`
+
 **run_sweep.py aligned with notebook (PR #3, commit 5db84d2):**
 
 - Rewrote `scripts/training/run_sweep.py` to mirror `scripts/colab/train_colab_rev.ipynb` exactly: reads `.pt` chunks from `colab_lipid_gnn_subset/processed/` via `MartiniDiskDataset`, uses `FIXED` + `SWEEP` dicts expanded with `itertools.product`, and calls the notebook's `train_one_run()` verbatim
