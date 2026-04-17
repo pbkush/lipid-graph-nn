@@ -6,12 +6,14 @@
 - **Chunked dataset loading**: `MartiniDiskDataset` streams data from disk without OOM
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
-- **Training infrastructure**: Hyperparameter sweep (`run_sweep.py`), linear baseline, smoke tests, result summarization all functional
+- **Training infrastructure**: Local `run_sweep.py` (now chunk-based + W&B, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
 - **Test suite**: 7 test files covering graph construction, dataset loading, model modes, FF parsing, and benchmarks
+- **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
+- **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
 
 ## What's Left to Build
 
-- Generate zip with `prepare_colab_subset.py` and run the first sweep on Colab with `train_colab_rev.ipynb`
+- Run the first full-scale sweep on Colab with `train_colab_rev.ipynb` (chunks regenerated with NUM_FRAMES=50)
 - Explore transfer to protein+membrane systems (long-term research goal)
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
 - Disable squash/rebase merging in GitHub repo settings (Settings → General → Pull Requests)
@@ -20,7 +22,7 @@
 
 ### Phase: Ready for first full-scale Colab run
 
-Full pipeline is implemented end-to-end: `prepare_colab_subset.py` bakes 100 frames/system into `.pt` chunks; `train_colab_rev.ipynb` streams them via `MartiniDiskDataset` and runs configurable sweeps logged to W&B. The zip contains only `processed/` and `lipid_gnn/` — no raw trajectory files. Current best results (from earlier smaller runs) — Overall Test MSE: **0.1378** (lipid_packing: 0.0566, thickness: 0.2190).
+Full pipeline is implemented end-to-end and consistent between local and Colab: `prepare_colab_subset.py` bakes `NUM_FRAMES`/system into `.pt` chunks; both `scripts/training/run_sweep.py` (local) and `scripts/colab/train_colab_rev.ipynb` stream them via `MartiniDiskDataset` and run configurable sweeps logged to W&B. The zip contains only `processed/` and `lipid_gnn/` — no raw trajectory files. Current best results (from earlier smaller runs) — Overall Test MSE: **0.1378** (lipid_packing: 0.0566, thickness: 0.2190).
 
 ## Known Issues
 

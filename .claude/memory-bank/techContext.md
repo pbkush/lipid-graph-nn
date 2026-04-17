@@ -17,7 +17,8 @@
 ## Development Setup
 
 - **Conda environment**: `lipid_gnn` (Python 3.13)
-- **Installation**: `pip install --use-pep517 .` then `pip install -r requirements.txt`
+- **Installation**: `pip install --use-pep517 .` then `pip install -r requirements.txt` (no `reinstall.sh` — removed as unused)
+- **W&B**: `wandb login` once before running any sweep (local or Colab); all metrics now go to W&B only
 - **Tests**: `pytest tests/` — no special config needed
 - **Training**: `python3 scripts/training/run_sweep.py`
 - **Smoke test**: `python3 scripts/training/smoke_test_sweep.py`
