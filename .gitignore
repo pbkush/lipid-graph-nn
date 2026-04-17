@@ -212,7 +212,32 @@ data/
 emil_extra/
 results/
 logs/
+visualization/
+mock_data/
 
 # Gromacs
 *.mdp
 
+# Large simulation / trajectory files (never commit these)
+colab_lipid_gnn_subset.zip
+colab_lipid_gnn_subset/
+*.xtc
+*.trr
+*.gro
+*.tpr
+*.edr
+
+# Scratch / temporary
+tmp/
+
+# Agent prompt scratch files
+agent_handover_prompt.md
+mem_issue_prompt.md
+*_prompt.md
+
+# Editor settings
+.vscode/
+
+# Build artifacts
+build/
+lipid_gnn.egg-info/
