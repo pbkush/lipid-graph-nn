@@ -1,3 +1,4 @@
+import argparse
 import gc
 import os
 import shutil
@@ -8,17 +9,19 @@ from pathlib import Path
 from lipid_gnn.dataset import preprocess_and_save
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
-# Properties to embed as graph.y in every preprocessed graph.
-# Available: 'lipid_packing', 'thickness', 'thickness_std',
-#            'compressibility', 'persistence', 'diffusivity'
-TARGET_PROPERTIES = ['lipid_packing', 'thickness']
-
-NUM_FRAMES   = 100
-CHUNK_SIZE   = 50
-SPATIAL_CUTOFF = 10.0
+AVAILABLE_PROPERTIES = [
+    'lipid_packing', 'thickness', 'thickness_std',
+    'compressibility', 'persistence', 'diffusivity',
+]
 
 
-def prepare_colab_subset(subset_name="colab_lipid_gnn_subset"):
+def prepare_colab_subset(
+    target_properties,
+    num_frames,
+    chunk_size,
+    spatial_cutoff,
+    subset_name="colab_lipid_gnn_subset",
+):
     """
     Preprocesses Martini trajectories into chunked .pt graph files and bundles
     them with the lipid_gnn library into a zip for upload to Google Colab.
@@ -63,10 +66,10 @@ def prepare_colab_subset(subset_name="colab_lipid_gnn_subset"):
         raise RuntimeError(f"No complete systems found in {data_dir}")
 
     print(f"\nFound {len(sim_tuples)} complete systems.")
-    print(f"Target properties : {TARGET_PROPERTIES}")
-    print(f"Frames per system : {NUM_FRAMES}")
-    print(f"Chunk size        : {CHUNK_SIZE} graphs/chunk")
-    print(f"Spatial cutoff    : {SPATIAL_CUTOFF} Å")
+    print(f"Target properties : {target_properties}")
+    print(f"Frames per system : {num_frames}")
+    print(f"Chunk size        : {chunk_size} graphs/chunk")
+    print(f"Spatial cutoff    : {spatial_cutoff} Å")
 
     # --- Time probe: one frame from the first system ----------------------
     print("\nProbing first frame to estimate total runtime...")
@@ -74,7 +77,7 @@ def prepare_colab_subset(subset_name="colab_lipid_gnn_subset"):
     builder_probe = MartiniHeteroGraphBuilder(
         topology_file=str(tpr0),
         trajectory_file=str(xtc0),
-        spatial_cutoff=SPATIAL_CUTOFF,
+        spatial_cutoff=spatial_cutoff,
         ff_params_path=ff_params_path,
         ff_edge_params_path=ff_edge_params_path,
         ff_node_mapping_path=ff_node_mapping_path,
@@ -85,21 +88,21 @@ def prepare_colab_subset(subset_name="colab_lipid_gnn_subset"):
     del builder_probe
     gc.collect()
 
-    total_frames = len(sim_tuples) * NUM_FRAMES
+    total_frames = len(sim_tuples) * num_frames
     est_minutes  = (t_per_frame * total_frames) / 60
     print(f"Probe result      : {t_per_frame:.2f} sec/frame")
     print(f"Total graphs      : {total_frames}  "
-          f"({len(sim_tuples)} systems × {NUM_FRAMES} frames)")
+          f"({len(sim_tuples)} systems × {num_frames} frames)")
     print(f"Estimated runtime : ~{est_minutes:.0f} min\n")
 
     # --- Preprocess -------------------------------------------------------
     preprocess_and_save(
         sim_tuples=sim_tuples,
         processed_dir=proc_dest,
-        target_properties=TARGET_PROPERTIES,
-        num_frames=NUM_FRAMES,
-        chunk_size=CHUNK_SIZE,
-        spatial_cutoff=SPATIAL_CUTOFF,
+        target_properties=target_properties,
+        num_frames=num_frames,
+        chunk_size=chunk_size,
+        spatial_cutoff=spatial_cutoff,
         ff_params_path=ff_params_path,
         ff_edge_params_path=ff_edge_params_path,
         ff_node_mapping_path=ff_node_mapping_path,
@@ -125,5 +128,46 @@ def prepare_colab_subset(subset_name="colab_lipid_gnn_subset"):
     print(f"Done! Upload {zip_path.name} to Google Colab.")
 
 
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Preprocess Martini trajectories into chunked .pt graph files and "
+            "bundle them with the lipid_gnn library into a zip for Colab."
+        )
+    )
+    parser.add_argument(
+        "--properties",
+        nargs="+",
+        default=["lipid_packing", "thickness"],
+        choices=AVAILABLE_PROPERTIES,
+        metavar="PROP",
+        help="Properties to embed as graph.y (default: lipid_packing thickness).",
+    )
+    parser.add_argument(
+        "--num-frames", type=int, default=50,
+        help="Evenly-spaced frames sampled per system (default: 50).",
+    )
+    parser.add_argument(
+        "--chunk-size", type=int, default=50,
+        help="Graphs per .pt chunk file (default: 50).",
+    )
+    parser.add_argument(
+        "--spatial-cutoff", type=float, default=10.0,
+        help="Spatial edge cutoff in angstrom (default: 10.0).",
+    )
+    parser.add_argument(
+        "--subset-name", default="colab_lipid_gnn_subset",
+        help="Output directory and zip name (default: colab_lipid_gnn_subset).",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    prepare_colab_subset()
+    args = _parse_args()
+    prepare_colab_subset(
+        target_properties=args.properties,
+        num_frames=args.num_frames,
+        chunk_size=args.chunk_size,
+        spatial_cutoff=args.spatial_cutoff,
+        subset_name=args.subset_name,
+    )
