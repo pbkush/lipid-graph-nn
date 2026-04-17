@@ -28,7 +28,7 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 - `preprocess_and_save` signature changed: now takes `sim_tuples` (list of `(tpr, xtc, h5)` paths) instead of flat `sims_dir`/`props_dir`; `target_properties` is now a required arg with no default
 - Property validation added: checks all requested properties exist in the first `.h5` file before the expensive loop starts, raises `ValueError` listing available properties if any are missing
-- Available properties: `lipid_packing`, `thickness`, `thickness_std`, `compressibility`, `persistence`, `diffusivity`
+- Available properties (8 total): see [properties.md](properties.md) for the full list, physical meaning, units, and computation details
 - `prepare_colab_subset.py` fully rewritten: iterates `data/membrane_only/{comp}/run/` directly, times one probe frame and prints a runtime estimate, then calls `preprocess_and_save`
 - Zip now contains only `processed/` (`.pt` chunks, 100 frames/system, chunk_size=50) and `lipid_gnn/` — no raw `.tpr`/`.xtc`, no property `.h5` files, no `resources/` (all baked into graph features)
 - Spatial cutoff raised from 9.0 Å to 10.0 Å

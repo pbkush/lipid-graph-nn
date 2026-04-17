@@ -4,6 +4,8 @@
 
 The core goal is to find a meaningful **embedding of membrane systems** using a physics-informed GNN. Property prediction (e.g., Area Per Lipid) serves as a training signal and validation, but is not the end goal itself — simpler models could predict properties. The real aim is to learn the underlying physical rules governing membrane behavior. A successful embedding would generalize to any kind of membrane system, including protein+membrane complexes.
 
+The 8 available training targets (lipid packing, thickness, thickness_std, compressibility, bending_modulus, persistence, diffusivity, variation) are documented in [properties.md](properties.md).
+
 ## Problems It Solves
 
 1. **Lack of general membrane representations**: No existing embedding captures the physics of arbitrary membrane compositions in a transferable way
