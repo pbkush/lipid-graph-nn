@@ -1,4 +1,5 @@
 import os
+import glob
 import math
 import gc
 import random
@@ -92,6 +93,12 @@ def preprocess_and_save(sim_tuples,
         return []
 
     os.makedirs(processed_dir, exist_ok=True)
+
+    stale_chunks = sorted(glob.glob(os.path.join(processed_dir, "chunk_*.pt")))
+    if stale_chunks:
+        print(f"Removing {len(stale_chunks)} stale chunk file(s) from {processed_dir}")
+        for path in stale_chunks:
+            os.remove(path)
 
     # Validate target_properties against the first available props file
     first_props = sim_tuples[0][2]
