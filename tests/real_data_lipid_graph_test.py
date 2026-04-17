@@ -37,7 +37,7 @@ def test_file_paths(data_dir_path):
 def hetero_graph(test_file_paths, ff_params_file, ff_edge_params_file, ff_node_mapping_file):
     cutoff_angstroms = 11.0
     builder = MartiniHeteroGraphBuilder(
-        topology_file=test_file_paths[0],
+        tpr_file=test_file_paths[0],
         trajectory_file=test_file_paths[1],
         spatial_cutoff=cutoff_angstroms,
         ff_params_path=str(ff_params_file),

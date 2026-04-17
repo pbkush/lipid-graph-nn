@@ -75,7 +75,7 @@ def prepare_colab_subset(
     print("\nProbing first frame to estimate total runtime...")
     tpr0, xtc0, _ = sim_tuples[0]
     builder_probe = MartiniHeteroGraphBuilder(
-        topology_file=str(tpr0),
+        tpr_file=str(tpr0),
         trajectory_file=str(xtc0),
         spatial_cutoff=spatial_cutoff,
         ff_params_path=ff_params_path,

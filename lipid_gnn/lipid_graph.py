@@ -35,11 +35,19 @@ class MartiniHeteroGraphBuilder:
     Caches static topology (bonds, node types) to make processing 
     multi-frame trajectories highly efficient.
     """
-    def __init__(self, topology_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
+    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
         print("Initializing MartiniGraphBuilder...")
-        
-        # 1. Load Universe (handles both static .gro or dynamic .xtc/.trr)
-        self.u = mda.Universe(topology_file, trajectory_file)
+
+        # 1. Validate topology format — .tpr is required for full bonded topology + atom types
+        if not str(tpr_file).lower().endswith(".tpr"):
+            raise ValueError(
+                f"tpr_file must be a .tpr GROMACS run-input file (got: {tpr_file}). "
+                "Other topology formats (e.g. .gro, .pdb) lack the bonded topology "
+                "and atom-type information required by MartiniHeteroGraphBuilder."
+            )
+
+        # 2. Load Universe (.tpr for topology, .xtc/.trr/.gro for trajectory frames)
+        self.u = mda.Universe(tpr_file, trajectory_file)
         self.selection_string = selection
         self.spatial_cutoff = spatial_cutoff
         
@@ -252,8 +260,8 @@ def main():
 
 if __name__ == "__main__":
     # Example Usage
-    # Ensure you have your .tpr and .gro files
-    # data, encoder = create_hetero_lipid_graph("box.gro", "topol.tpr", spatial_cutoff=11.0)
+    # Ensure you have your .tpr and .xtc files
+    # builder = MartiniHeteroGraphBuilder(tpr_file="topol.tpr", trajectory_file="traj.xtc", spatial_cutoff=11.0)
     
     # Mocking data structure for demonstration
     main()
