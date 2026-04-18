@@ -153,13 +153,18 @@ def print_graph_stats(data, label=""):
         degree = torch.bincount(spatial_ei[1], minlength=n_nodes)
         min_deg = int(degree.min().item())
         max_deg = int(degree.max().item())
+        n_isolated = int((degree == 0).sum().item())
         deg_suffix = f"  (min {min_deg}, max {max_deg})"
+        isolated_line = f"  Isolated beads  : {n_isolated:>8,}   (zero spatial neighbors)"
     else:
         deg_suffix = ""
+        n_isolated = n_nodes
+        isolated_line = f"  Isolated beads  : {n_isolated:>8,}   (no spatial edges at all)"
 
     print(f"  Nodes (beads)   : {n_nodes:>8,}")
     print(f"  Bonded edges    : {n_bonded:>8,}   avg {avg_bonded:5.2f} / node")
     print(f"  Spatial edges   : {n_spatial:>8,}   avg {avg_spatial:5.2f} / node{deg_suffix}")
+    print(isolated_line)
     print()
 
 def describe_graph_memory(data, label=""):
@@ -348,16 +353,26 @@ def compare_built_vs_pt(args):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def _count_isolated(g):
+    """Return the number of beads with zero incoming spatial edges."""
+    ei = g['bead', 'spatial', 'bead'].edge_index
+    n = g['bead'].x.shape[0]
+    if ei.shape[1] == 0:
+        return n
+    degree = torch.bincount(ei[1], minlength=n)
+    return int((degree == 0).sum().item())
+
+
 def compare_graph_memory(args):
     """
-    Compare graph memory at spatial_cutoff=11.0 (old default) vs 7.5 (new default),
+    Compare graph memory and topology at spatial cutoffs 7.5, 9.0, and 11.0 Å,
     and optionally against a graph loaded from an existing preprocessed .pt chunk.
 
     Args:
         args: Parsed argparse namespace (uses real_system, data_dir, ff_dir, processed_dir).
     """
     print("=" * 60)
-    print("MEMORY COMPARISON: CUTOFF 11.0 Å vs 7.5 Å")
+    print("MEMORY COMPARISON: CUTOFF 7.5 Å vs 9.0 Å vs 11.0 Å")
     print("=" * 60)
 
     system_path = os.path.join(args.data_dir, args.real_system)
@@ -383,8 +398,11 @@ def compare_graph_memory(args):
         ff_node_mapping_path=os.path.join(args.ff_dir, "martini_ff_node_mapping.json"),
     )
 
-    cutoffs = [("A  cutoff=11.0 Å  (old default)", 11.0),
-               ("B  cutoff= 7.5 Å  (new default)", 7.5)]
+    cutoffs = [
+        ("A  cutoff= 7.5 Å", 7.5),
+        ("B  cutoff= 9.0 Å  (new default)", 9.0),
+        ("C  cutoff=11.0 Å  (Martini range)", 11.0),
+    ]
     graphs = []
     for label, cutoff in cutoffs:
         builder = MartiniHeteroGraphBuilder(tpr_file=tpr_path, trajectory_file=xtc_path,
@@ -392,25 +410,39 @@ def compare_graph_memory(args):
         g = builder.process_frame(frame_idx=0)
         describe_graph_memory(g, label=label)
         print_graph_stats(g, label=label)
-        graphs.append((label, g))
+        graphs.append((label, cutoff, g))
 
     if args.processed_dir and os.path.isdir(args.processed_dir):
         chunks = sorted(glob.glob(os.path.join(args.processed_dir, "chunk_*.pt")))
         if chunks:
             chunk_graph = torch.load(chunks[0], weights_only=False)[0]
-            label_c = "C  existing .pt chunk"
+            label_c = "D  existing .pt chunk"
             describe_graph_memory(chunk_graph, label=label_c)
             print_graph_stats(chunk_graph, label=label_c)
-            graphs.append((label_c, chunk_graph))
+            graphs.append((label_c, None, chunk_graph))
 
-    baseline_mb = calculate_graph_memory([graphs[0][1]]) / (1024 ** 2)
-    print("=== Summary ===")
-    for label, g in graphs:
+    # Use 11.0 Å as the baseline for delta comparisons (physics reference)
+    # graphs[2] is always the 11.0 Å entry; graphs[-1] may be an optional chunk (cutoff=None)
+    _, _, baseline_g = graphs[-2] if graphs[-1][1] is None else graphs[2]
+    baseline_mb = calculate_graph_memory([baseline_g]) / (1024 ** 2)
+
+    print("=== Summary (baseline: 11.0 Å) ===")
+    header = f"  {'Label':<38}  {'MB':>8}  {'ΔMB':>9}  {'Δ%':>7}  {'Spatial edges':>14}  {'Isolated beads':>14}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for label, cutoff, g in graphs:
         mb = calculate_graph_memory([g]) / (1024 ** 2)
-        delta = mb - baseline_mb
-        pct = (delta / baseline_mb * 100) if baseline_mb > 0 else 0.0
-        baseline_tag = "  [baseline]" if delta == 0.0 else f"  {delta:>+8.4f} MB  ({pct:+.1f}%)"
-        print(f"  {label:<40} : {mb:>8.4f} MB{baseline_tag}")
+        n_spatial = g['bead', 'spatial', 'bead'].edge_index.shape[1]
+        n_iso = _count_isolated(g)
+        delta_mb = mb - baseline_mb
+        pct = (delta_mb / baseline_mb * 100) if baseline_mb > 0 else 0.0
+        is_baseline = (cutoff == 11.0)
+        delta_str = "[baseline]" if is_baseline else f"{delta_mb:>+8.4f}"
+        pct_str = "          " if is_baseline else f"{pct:>+6.1f}%"
+        iso_flag = " !" if n_iso > 0 else "  "
+        print(f"  {label:<38}  {mb:>8.3f}  {delta_str:>9}  {pct_str:>7}  {n_spatial:>14,}  {n_iso:>13,}{iso_flag}")
+    print()
+    print("  ! = isolated beads detected (zero spatial neighbors — packing signal lost)")
     print("=" * 60)
     print()
 
@@ -692,7 +724,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip-stress", action="store_true", help="Skip the stress test phase")
     parser.add_argument("--mem-test", action="store_true", help="Perform the memory scaling analysis on real data")
     parser.add_argument("--graph-stats", action="store_true", help="Print graph topology statistics (node/edge counts, avg degrees)")
-    parser.add_argument("--compare-mem", action="store_true", help="Compare memory at cutoff=11.0 vs 7.5 Å; requires --use-real")
+    parser.add_argument("--compare-mem", action="store_true", help="Compare memory and topology at cutoffs 7.5, 9.0, and 11.0 Å; requires --use-real")
     parser.add_argument("--compare-pt", action="store_true", help="Run raw-build vs .pt round-trip overhead check; requires --use-real")
 
     args = parser.parse_args()

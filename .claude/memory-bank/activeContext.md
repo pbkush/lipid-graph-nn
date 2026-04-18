@@ -2,7 +2,7 @@
 
 ## Current Work Focus
 
-Training pipeline is complete. Next focus is running the sweep on Colab and evaluating results.
+Training pipeline is complete with AMP and prefetch optimisations. Next focus is running the sweep on Colab with batch_size=4 and evaluating results.
 
 ## Previous Changes
 
@@ -42,6 +42,13 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 ## Recent Changes
 
+**AMP + DataLoader throughput (2026-04-18):**
+
+- Enabled `torch.amp.autocast` (forward + val inference) and `torch.amp.GradScaler` (backward/step) in both `run_sweep.py` and `train_colab_rev.ipynb`. Auto-disabled on CPU (`use_amp = device.type == 'cuda'`). Halves activation memory on GPU, enabling larger batch sizes.
+- `DataLoader` now uses `pin_memory=True`, `persistent_workers=True`, `prefetch_factor=2` (guarded against `num_workers=0`). Workers stay alive across epochs; graphs pre-staged in pinned RAM for faster GPU transfer.
+- `FIXED["batch_size"]` raised from 2 → 4 in both files. If the largest sweep cells (`hidden_dim=64, num_layers=3`) still OOM, lower `spatial_cutoff` during chunk regeneration (8.0 Å) as the next lever.
+- Added `.detach()` to per-property loss accumulator in `run_sweep.py` to avoid keeping `out` tensors live across batches.
+
 **Graph memory optimizations (2026-04-18):**
 
 - Removed `data['bead'].pos = current_pos` from `MartiniHeteroGraphBuilder.process_frame()` — positions are needed to compute spatial edges during preprocessing but serve no purpose in the saved graph (the GNN uses `node_x` features and pre-encoded RBF edge attributes, never raw coordinates). Eliminated N×3×float32 bytes per graph.
@@ -57,6 +64,16 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - New CLI flags: `--graph-stats`, `--compare-mem`, `--compare-pt`, `--processed-dir`, `--spatial-cutoff`.
 - **Run benchmarks via `scripts/bash/run_benchmark.sh`**, not directly with python — it saves timestamped logs to `logs/benchmarks/benchmark_YYYYMMDD_HHMMSS.log`. All python args pass through via `"$@"`.
 - Example full run (everything except stress test): `bash scripts/bash/run_benchmark.sh --use-real --real-system POPC100 --graph-stats --compare-mem --compare-pt --processed-dir data/processed --mem-test --skip-stress`
+
+**Spatial cutoff corrected to 9.0 Å + benchmark three-way comparison (2026-04-18):**
+
+- Benchmark at 7.5 Å revealed nodes with **zero spatial edges**. Root cause: after removing bonded pairs (~4.7 Å), the non-bonded search window is only 2.8 Å wide. Terminal tail beads (C4A, C4B) with one bonded neighbor can have no other bead within that window in disordered bilayer frames.
+- This is physically significant: Martini's own non-bonded cutoff is 11–12 Å; beads with no spatial edges lose local packing density signal, which is critical for predicting thickness, compressibility, and diffusivity.
+- **Default `spatial_cutoff` raised from 7.5 → 9.0 Å** across all three sites (`MartiniHeteroGraphBuilder.__init__`, `dataset.preprocess_and_save`, `prepare_colab_subset.py --spatial-cutoff`). 9.0 Å (~1.9σ) reliably covers the first non-bonded shell for all Martini bead types.
+- Added runtime `warnings.warn` in `process_frame()` if any bead has zero spatial edges after building the graph — fires at any cutoff, useful diagnostically.
+- `compare_graph_memory` (`--compare-mem`) now tests all three cutoffs **7.5 / 9.0 / 11.0 Å** in one run. 11.0 Å is the physics reference baseline. Summary table shows MB, ΔMB, Δ%, spatial edge count, and isolated bead count with a `!` flag on any row with isolated beads.
+- `print_graph_stats` now reports isolated bead count (degree-0 in the spatial stream) alongside min/max degree.
+- **Requires regenerating `.pt` chunks** after the cutoff change.
 
 **Test suite fix (2026-04-18):**
 
@@ -99,7 +116,8 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 ## Next Steps
 
-- Upload zip to Google Drive and run `train_colab_rev.ipynb` on Colab (chunks regenerated after bug fix)
+- Regenerate `.pt` chunks at 9.0 Å cutoff, upload zip to Google Drive, and run `train_colab_rev.ipynb` with `batch_size=4`
+- If `batch_size=4` still OOMs on `hidden_dim=64, num_layers=3` cells, try regenerating chunks at `spatial_cutoff=8.0`
 - Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
 - Plan and implement remote HPC cluster deployment: non-zipping preprocessing entry point, SLURM sbatch for GPU training, `git pull` for code + `scp`/`rsync` for raw sim data, ROCm-compatible install on AMD MI210

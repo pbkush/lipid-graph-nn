@@ -1,4 +1,5 @@
 import fnmatch
+import warnings
 from pathlib import Path
 
 import json
@@ -35,7 +36,7 @@ class MartiniHeteroGraphBuilder:
     Caches static topology (bonds, node types) to make processing 
     multi-frame trajectories highly efficient.
     """
-    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=7.5, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
+    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=9.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
         print("Initializing MartiniGraphBuilder...")
 
         # 1. Validate topology format — .tpr is required for full bonded topology + atom types
@@ -234,6 +235,18 @@ class MartiniHeteroGraphBuilder:
             spatial_index = torch.empty((2, 0), dtype=torch.long)
             spatial_attr = torch.empty((0, 16), dtype=torch.float32)
             
+        # Warn if any bead has no spatial neighbors (loses non-bonded packing signal)
+        if len(spatial_pairs) > 0:
+            degrees = np.zeros(self.n_nodes, dtype=np.int64)
+            np.add.at(degrees, spatial_pairs[:, 0], 1)
+            n_isolated = int((degrees == 0).sum())
+            if n_isolated > 0:
+                warnings.warn(
+                    f"Frame {frame_idx}: {n_isolated}/{self.n_nodes} beads have no spatial edges "
+                    f"(cutoff={self.spatial_cutoff} Å). Consider raising spatial_cutoff.",
+                    stacklevel=2,
+                )
+
         # 5. Construct HeteroData Object
         data = HeteroData()
         

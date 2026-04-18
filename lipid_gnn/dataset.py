@@ -65,7 +65,7 @@ def preprocess_and_save(sim_tuples,
                         target_properties,
                         num_frames=10,
                         chunk_size=50,
-                        spatial_cutoff=7.5,
+                        spatial_cutoff=9.0,
                         ff_params_path=None,
                         ff_edge_params_path=None,
                         ff_node_mapping_path=None):
