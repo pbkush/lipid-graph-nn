@@ -42,6 +42,27 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 ## Recent Changes
 
+**Graph memory optimizations (2026-04-18):**
+
+- Removed `data['bead'].pos = current_pos` from `MartiniHeteroGraphBuilder.process_frame()` — positions are needed to compute spatial edges during preprocessing but serve no purpose in the saved graph (the GNN uses `node_x` features and pre-encoded RBF edge attributes, never raw coordinates). Eliminated N×3×float32 bytes per graph.
+- Reduced default `spatial_cutoff` from 10–11 Å → **7.5 Å** across all three sites: `MartiniHeteroGraphBuilder.__init__`, `dataset.preprocess_and_save`, and `prepare_colab_subset.py`. Martini first-shell neighbors are at ~4.7 Å; the old default captured a dense second shell unnecessarily. **Requires regenerating `.pt` chunks** to take effect.
+
+**Benchmark script enhancements (2026-04-18):**
+
+- `load_real_data()` and `run_memory_scaling_test()` now accept `spatial_cutoff` as a parameter (was hardcoded to 11.0).
+- New `print_graph_stats(data, label)`: prints node count, bonded/spatial edge counts, avg degree, min/max spatial degree per node.
+- New `describe_graph_memory(data, label)`: per-tensor breakdown (name, shape, dtype, MB) + total.
+- New `compare_built_vs_pt(args)` (`--compare-pt`): builds a live graph, saves/reloads via `.pt`, compares tensor keys and memory delta — detects stale tensors (e.g. old `.pos`) in existing chunks. Optionally shows a three-way comparison if `--processed-dir` points to existing chunks.
+- New `compare_graph_memory(args)` (`--compare-mem`): builds at cutoff 11.0 vs 7.5, optionally adds a chunk graph, prints a delta summary table.
+- New CLI flags: `--graph-stats`, `--compare-mem`, `--compare-pt`, `--processed-dir`, `--spatial-cutoff`.
+- **Run benchmarks via `scripts/bash/run_benchmark.sh`**, not directly with python — it saves timestamped logs to `logs/benchmarks/benchmark_YYYYMMDD_HHMMSS.log`. All python args pass through via `"$@"`.
+- Example full run (everything except stress test): `bash scripts/bash/run_benchmark.sh --use-real --real-system POPC100 --graph-stats --compare-mem --compare-pt --processed-dir data/processed --mem-test --skip-stress`
+
+**Test suite fix (2026-04-18):**
+
+- `tests/test_multi_frame_loading.py` was importing `load_data` from `run_sweep.py`, which was removed in PR #3 when the codebase moved to chunked preprocessing. Rewritten to test `preprocess_and_save()` in `dataset.py` instead — same multi-frame linspace sampling logic, now in its correct location.
+- 3 new tests in `tests/benchmark_heterognn_test.py` for `print_graph_stats`, `describe_graph_memory`, and `_compare_graphs_roundtrip`. All 23 tests pass.
+
 **GitHub workflow setup (2026-04-17):**
 
 - Created `requirements.txt` with pinned minimum versions for all direct dependencies (`torch>=2.8.0`, `torch-geometric>=2.7.0`, `MDAnalysis>=2.10.0`, `numpy`, `h5py`, `pandas`, `scikit-learn`, `matplotlib`, `tqdm`, `pytest`, `wandb`)

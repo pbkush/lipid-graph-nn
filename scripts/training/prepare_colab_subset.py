@@ -156,8 +156,8 @@ def _parse_args():
         help="Graphs per .pt chunk file (default: 50).",
     )
     parser.add_argument(
-        "--spatial-cutoff", type=float, default=10.0,
-        help="Spatial edge cutoff in angstrom (default: 10.0).",
+        "--spatial-cutoff", type=float, default=7.5,
+        help="Spatial edge cutoff in angstrom (default: 7.5).",
     )
     parser.add_argument(
         "--subset-name", default="colab_lipid_gnn_subset",

@@ -7,7 +7,7 @@
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (now chunk-based + W&B, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
-- **Test suite**: 7 test files covering graph construction, dataset loading, model modes, FF parsing, and benchmarks
+- **Test suite**: 8 test files, 23 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, and multi-frame preprocessing
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
 - **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
 
@@ -31,7 +31,7 @@ Full pipeline is implemented end-to-end and consistent between local and Colab: 
 
 ## Known Issues
 
-1. **Memory pressure**: Training is constrained by both RAM and VRAM. Batch size and number of frames are limited.
+1. **Memory pressure**: Partially mitigated — removed `.pos` from graphs and reduced spatial cutoff default to 7.5 Å. Batch size still limited by VRAM; chunks must be regenerated to benefit from the cutoff reduction.
 2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
 ## Evolution of Project Decisions

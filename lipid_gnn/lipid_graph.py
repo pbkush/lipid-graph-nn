@@ -35,7 +35,7 @@ class MartiniHeteroGraphBuilder:
     Caches static topology (bonds, node types) to make processing 
     multi-frame trajectories highly efficient.
     """
-    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=11.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
+    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=7.5, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
         print("Initializing MartiniGraphBuilder...")
 
         # 1. Validate topology format — .tpr is required for full bonded topology + atom types
@@ -245,7 +245,6 @@ class MartiniHeteroGraphBuilder:
             data['bead', 'bonded', 'bead'].edge_attr = self.bond_edge_attr
         
         # Assign Dynamic Data
-        data['bead'].pos = current_pos
         data['bead', 'spatial', 'bead'].edge_index = spatial_index
         data['bead', 'spatial', 'bead'].edge_attr = spatial_attr
 

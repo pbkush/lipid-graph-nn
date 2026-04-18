@@ -1,66 +1,65 @@
 import os
-import torch
 import numpy as np
+import torch
 from unittest.mock import MagicMock, patch
-from scripts.training.run_sweep import load_data
 
-@patch('scripts.training.run_sweep.os.listdir')
-@patch('scripts.training.run_sweep.os.path.isdir')
-@patch('scripts.training.run_sweep.os.path.exists')
-@patch('scripts.training.run_sweep.MartiniHeteroGraphBuilder')
-@patch('scripts.training.run_sweep.pkl_load')
-def test_load_data_multiplicity(mock_pkl_load, mock_builder_class, mock_exists, mock_isdir, mock_listdir):
-    """Verifies that load_data returns the correct number of graphs when using multi-frame augmentation."""
-    
-    # Setup mocks
-    mock_listdir.return_value = ['comp1', 'comp2']
-    mock_isdir.return_value = True
-    mock_exists.return_value = True
-    
-    # Mock property loading
+from lipid_gnn.dataset import preprocess_and_save
+
+
+@patch('lipid_gnn.dataset.MartiniHeteroGraphBuilder')
+@patch('lipid_gnn.dataset.pkl_load')
+def test_preprocess_and_save_frame_sampling(mock_pkl_load, mock_builder_class, tmp_path):
+    """
+    Verifies that preprocess_and_save samples the correct frame indices from each
+    system using linspace and calls process_frame accordingly.
+    """
     mock_pkl_load.return_value = ({'lipid_packing': 0.5}, None)
-    
-    # Mock Builder and Trajectory
+
     mock_builder = MagicMock()
     mock_builder.u.trajectory.n_frames = 100
     mock_builder_class.return_value = mock_builder
-    
-    # Mock process_frame to return a simple HeteroData object
+
     from torch_geometric.data import HeteroData
     mock_data = HeteroData()
     mock_data['bead'].x = torch.randn(1, 4)
     mock_builder.process_frame.return_value = mock_data
-    
-    # Run load_data with 10 frames per comp
+
     num_frames = 10
-    train_graphs, test_graphs = load_data(
+    sim_tuples = [
+        ("sys1/topol.tpr", "sys1/traj.xtc", "sys1/props.pkl"),
+        ("sys2/topol.tpr", "sys2/traj.xtc", "sys2/props.pkl"),
+    ]
+
+    saved = preprocess_and_save(
+        sim_tuples=sim_tuples,
+        processed_dir=str(tmp_path),
         target_properties=['lipid_packing'],
-        num_frames_per_comp=num_frames,
-        test_size=0.5 # 1 comp in train, 1 in test
+        num_frames=num_frames,
+        chunk_size=100,
     )
-    
-    # total graphs should be 2 * 10 = 20
-    assert len(train_graphs) + len(test_graphs) == 20
-    assert len(train_graphs) == 10
-    assert len(test_graphs) == 10
-    
-    # Verify that process_frame was called with correct indices
-    # linspace(0, 99, 10) -> [0, 11, 22, 33, 44, 55, 66, 77, 88, 99]
+
+    # 2 systems × 10 frames = 20 graphs total, all in one chunk
+    assert len(saved) == 1
+    graphs = torch.load(saved[0], weights_only=False)
+    assert len(graphs) == 20
+
+    # Verify process_frame was called with the correct linspace indices for each system
     expected_indices = np.linspace(0, 99, num_frames, dtype=int)
-    
+    called_indices = [call.kwargs['frame_idx'] for call in mock_builder.process_frame.call_args_list]
+
     for idx in expected_indices:
-        # Check if process_frame was called with this frame_idx
-        found = False
-        for call in mock_builder.process_frame.call_args_list:
-            if call.kwargs.get('frame_idx') == int(idx):
-                found = True
-                break
-        assert found, f"Frame {idx} was not sampled"
+        assert called_indices.count(int(idx)) == 2, (
+            f"Frame {idx} should be sampled once per system (2 times total)"
+        )
+
 
 if __name__ == "__main__":
-    # If run as script, use simple assertions
     try:
-        test_load_data_multiplicity()
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            test_preprocess_and_save_frame_sampling(
+                MagicMock(), MagicMock(), pathlib.Path(tmp)
+            )
         print("Test Passed!")
     except Exception as e:
         print(f"Test Failed: {e}")
