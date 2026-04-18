@@ -15,11 +15,7 @@
 
 - Run the first full-scale sweep on Colab with `train_colab_rev.ipynb` (chunks regenerated with NUM_FRAMES=50)
 - Train on more properties than the current `lipid_packing`+`thickness` pair — all 8 available targets are documented in [properties.md](properties.md)
-- Set up remote HPC cluster deployment for full-scale training on AMD Instinct MI210 GPUs. PyTorch's ROCm build exposes the same `torch.cuda` API so model/training code stays unchanged; the work is mostly environment + deployment plumbing:
-  - A non-zipping preprocessing entry point that writes `.pt` chunks directly on the cluster filesystem (preprocessing runs remotely to avoid shipping processed chunks back and forth)
-  - A SLURM `sbatch` script for a GPU training job
-  - Deployment channel: `git pull` for code, `scp`/`rsync` over SSH for the raw `.tpr`/`.xtc` sim data
-  - Install path on the cluster must match the AMD ROCm PyTorch wheel and compatible PyG extensions
+- Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
 - Explore transfer to protein+membrane systems (long-term research goal)
 

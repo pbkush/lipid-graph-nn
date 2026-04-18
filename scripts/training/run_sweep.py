@@ -6,6 +6,7 @@ expands FIXED + SWEEP into a list of experiments, and runs each via train_one_ru
 with Weights & Biases logging. Run `wandb login` once before first use.
 """
 import itertools
+import os
 import random
 import sys
 from pathlib import Path
@@ -56,7 +57,12 @@ SWEEP = {
 }
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-PROCESSED_DIR = root_dir / 'colab_lipid_gnn_subset' / 'processed'
+# Override via CHUNKS_DIR env var (HPC: point at /work/<grp>/<user>/... or
+# node-local /local/$SLURM_JOB_ID/... for fast I/O).
+PROCESSED_DIR = Path(os.environ.get(
+    "CHUNKS_DIR",
+    root_dir / 'colab_lipid_gnn_subset' / 'processed',
+))
 VAL_SPLIT     = 0.2
 SPLIT_SEED    = 42
 
