@@ -58,6 +58,16 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - **Run benchmarks via `scripts/bash/run_benchmark.sh`**, not directly with python — it saves timestamped logs to `logs/benchmarks/benchmark_YYYYMMDD_HHMMSS.log`. All python args pass through via `"$@"`.
 - Example full run (everything except stress test): `bash scripts/bash/run_benchmark.sh --use-real --real-system POPC100 --graph-stats --compare-mem --compare-pt --processed-dir data/processed --mem-test --skip-stress`
 
+**Spatial cutoff corrected to 9.0 Å + benchmark three-way comparison (2026-04-18):**
+
+- Benchmark at 7.5 Å revealed nodes with **zero spatial edges**. Root cause: after removing bonded pairs (~4.7 Å), the non-bonded search window is only 2.8 Å wide. Terminal tail beads (C4A, C4B) with one bonded neighbor can have no other bead within that window in disordered bilayer frames.
+- This is physically significant: Martini's own non-bonded cutoff is 11–12 Å; beads with no spatial edges lose local packing density signal, which is critical for predicting thickness, compressibility, and diffusivity.
+- **Default `spatial_cutoff` raised from 7.5 → 9.0 Å** across all three sites (`MartiniHeteroGraphBuilder.__init__`, `dataset.preprocess_and_save`, `prepare_colab_subset.py --spatial-cutoff`). 9.0 Å (~1.9σ) reliably covers the first non-bonded shell for all Martini bead types.
+- Added runtime `warnings.warn` in `process_frame()` if any bead has zero spatial edges after building the graph — fires at any cutoff, useful diagnostically.
+- `compare_graph_memory` (`--compare-mem`) now tests all three cutoffs **7.5 / 9.0 / 11.0 Å** in one run. 11.0 Å is the physics reference baseline. Summary table shows MB, ΔMB, Δ%, spatial edge count, and isolated bead count with a `!` flag on any row with isolated beads.
+- `print_graph_stats` now reports isolated bead count (degree-0 in the spatial stream) alongside min/max degree.
+- **Requires regenerating `.pt` chunks** after the cutoff change.
+
 **Test suite fix (2026-04-18):**
 
 - `tests/test_multi_frame_loading.py` was importing `load_data` from `run_sweep.py`, which was removed in PR #3 when the codebase moved to chunked preprocessing. Rewritten to test `preprocess_and_save()` in `dataset.py` instead — same multi-frame linspace sampling logic, now in its correct location.
