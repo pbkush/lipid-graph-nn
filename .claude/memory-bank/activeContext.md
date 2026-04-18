@@ -2,7 +2,24 @@
 
 ## Current Work Focus
 
-Training pipeline is complete with AMP and prefetch optimisations. Next focus is running the sweep on Colab with batch_size=4 and evaluating results.
+HPC deployment scaffolding for Goethe-HLR (AMD MI210 / ROCm) is in place. Next step is executing the one-time bootstrap on the cluster: connectivity probe, raw data rsync, miniforge + ROCm PyTorch install inside a `gpu_test` allocation, then `sbatch scripts/bash/sbatch_preprocess.sh`.
+
+## Latest Changes
+
+**HPC deployment scaffolding (2026-04-18):**
+
+- [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) gained `--sims-dir`, `--props-dir`, `--out-dir`, `--no-zip` flags. `--no-zip` skips the `lipid_gnn/` bundling + zip step and writes chunks directly to `--out-dir` — the HPC entry point. Colab behavior unchanged when flags are omitted.
+- [scripts/training/run_sweep.py](scripts/training/run_sweep.py) now resolves its chunks directory from the `CHUNKS_DIR` env var (defaults to the previous `colab_lipid_gnn_subset/processed` path). Lets the sbatch script stage chunks to `/local/$SLURM_JOB_ID` without code churn.
+- New [scripts/bash/sbatch_preprocess.sh](scripts/bash/sbatch_preprocess.sh) and [scripts/bash/sbatch_sweep.sh](scripts/bash/sbatch_sweep.sh): SLURM submit scripts for `gpu_test`. Both require `export GROUP=<goethe-group>`; sweep script stages chunks from `/work` to `/local/$SLURM_JOB_ID` for fast I/O and passes `CHUNKS_DIR` to the trainer. W&B defaults to `online` with `WANDB_MODE=offline` fallback.
+- New [docs/hpc_goethe.md](docs/hpc_goethe.md): runbook covering filesystem layout, connectivity probe, rsync commands, miniforge + ROCm 6.2 PyTorch install, recurring git-pull → preprocess → train flow.
+
+**Plan decisions recorded (not yet executed on cluster):**
+
+- Install strategy: user-local miniforge in `$HOME`; PyTorch from `https://download.pytorch.org/whl/rocm6.2`; install from inside a `gpu_test` allocation so native extensions see the MI210.
+- Storage layout: code in `$HOME` (30 GB), raw `.tpr`/`.xtc` + chunks + W&B offline runs in `/work/<grp>/<user>/lipid-data/` (5 TB group quota, 30-day TTL), per-job staging on `/local/$SLURM_JOB_ID` (1.4 TB).
+- Preprocessing runs remotely (CPU-only sbatch) — avoids shipping ~74 GB of chunks over the network.
+- Compute-node internet reachability unknown; A1 probe step determines online vs offline W&B path.
+- ROCm-on-PyTorch keeps `torch.cuda.*` API intact, so model/training code is untouched.
 
 ## Previous Changes
 
@@ -120,7 +137,7 @@ Training pipeline is complete with AMP and prefetch optimisations. Next focus is
 - If `batch_size=4` still OOMs on `hidden_dim=64, num_layers=3` cells, try regenerating chunks at `spatial_cutoff=8.0`
 - Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
-- Plan and implement remote HPC cluster deployment: non-zipping preprocessing entry point, SLURM sbatch for GPU training, `git pull` for code + `scp`/`rsync` for raw sim data, ROCm-compatible install on AMD MI210
+- Execute the Goethe-HLR bootstrap: connectivity probe, rsync `data/membrane_only/` + `results/properties/` to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then run `sbatch scripts/bash/sbatch_preprocess.sh` and a 1-seed `sbatch_sweep.sh` smoke run
 
 Decisions recorded:
 

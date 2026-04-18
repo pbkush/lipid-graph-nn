@@ -21,29 +21,43 @@ def prepare_colab_subset(
     chunk_size,
     spatial_cutoff,
     subset_name="colab_lipid_gnn_subset",
+    sims_dir=None,
+    props_dir=None,
+    out_dir=None,
+    no_zip=False,
 ):
     """
-    Preprocesses Martini trajectories into chunked .pt graph files and bundles
-    them with the lipid_gnn library into a zip for upload to Google Colab.
+    Preprocesses Martini trajectories into chunked .pt graph files and (by
+    default) bundles them with the lipid_gnn library into a zip for upload
+    to Google Colab.
 
     Raw .tpr/.xtc files are NOT included in the output — all graph features and
     target properties are baked in at preprocessing time.
+
+    When `no_zip=True`, only the processed chunks are written (to `out_dir` if
+    given, else `<root>/<subset_name>/processed`). No library bundling, no zip.
+    This is the HPC / remote-training entry point where code is deployed via
+    git and chunks live on a separate filesystem from `$HOME`.
     """
     root_dir     = Path(__file__).resolve().parent.parent.parent
-    data_dir     = root_dir / 'data/membrane_only'
-    props_dir    = root_dir / 'results/properties'
+    data_dir     = Path(sims_dir)  if sims_dir  else root_dir / 'data/membrane_only'
+    props_dir    = Path(props_dir) if props_dir else root_dir / 'results/properties'
     resources_dir = root_dir / 'resources'
 
     ff_params_path       = resources_dir / 'martini_ff_params.json'
     ff_edge_params_path  = resources_dir / 'martini_ff_edge_params.json'
     ff_node_mapping_path = resources_dir / 'martini_ff_node_mapping.json'
 
-    dest_dir  = root_dir / subset_name
-    proc_dest = dest_dir / 'processed'
-    lib_dest  = dest_dir / 'lipid_gnn'
-
-    for d in [proc_dest, lib_dest]:
-        d.mkdir(parents=True, exist_ok=True)
+    if no_zip:
+        proc_dest = Path(out_dir) if out_dir else root_dir / subset_name / 'processed'
+        lib_dest  = None
+        proc_dest.mkdir(parents=True, exist_ok=True)
+    else:
+        dest_dir  = root_dir / subset_name
+        proc_dest = dest_dir / 'processed'
+        lib_dest  = dest_dir / 'lipid_gnn'
+        for d in [proc_dest, lib_dest]:
+            d.mkdir(parents=True, exist_ok=True)
 
     # --- Collect sim tuples -----------------------------------------------
     compositions = sorted(
@@ -108,7 +122,12 @@ def prepare_colab_subset(
         ff_node_mapping_path=ff_node_mapping_path,
     )
 
+    if no_zip:
+        print(f"Done! Chunks written to {proc_dest}.")
+        return
+
     # --- Bundle library ---------------------------------------------------
+    assert lib_dest is not None
     print("Bundling lipid_gnn library...")
     if lib_dest.exists():
         shutil.rmtree(lib_dest)
@@ -163,6 +182,22 @@ def _parse_args():
         "--subset-name", default="colab_lipid_gnn_subset",
         help="Output directory and zip name (default: colab_lipid_gnn_subset).",
     )
+    parser.add_argument(
+        "--sims-dir", default=None,
+        help="Override directory holding <COMP>/run/prun.{tpr,xtc} (default: <repo>/data/membrane_only).",
+    )
+    parser.add_argument(
+        "--props-dir", default=None,
+        help="Override directory holding <COMP>.h5 property files (default: <repo>/results/properties).",
+    )
+    parser.add_argument(
+        "--out-dir", default=None,
+        help="Output directory for chunks when --no-zip (default: <repo>/<subset-name>/processed).",
+    )
+    parser.add_argument(
+        "--no-zip", action="store_true",
+        help="Write chunks only; skip lipid_gnn bundling and zip creation. Use for HPC/remote training.",
+    )
     return parser.parse_args()
 
 
@@ -174,4 +209,8 @@ if __name__ == "__main__":
         chunk_size=args.chunk_size,
         spatial_cutoff=args.spatial_cutoff,
         subset_name=args.subset_name,
+        sims_dir=args.sims_dir,
+        props_dir=args.props_dir,
+        out_dir=args.out_dir,
+        no_zip=args.no_zip,
     )
