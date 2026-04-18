@@ -2,7 +2,7 @@
 
 ## Current Work Focus
 
-Training pipeline is complete. Next focus is running the sweep on Colab and evaluating results.
+Training pipeline is complete with AMP and prefetch optimisations. Next focus is running the sweep on Colab with batch_size=4 and evaluating results.
 
 ## Previous Changes
 
@@ -41,6 +41,13 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 - Vectorized spatial cutoff masking in `MartiniHeteroGraphBuilder` using NumPy (replaced slow Python loops for bonded-pair and self-loop removal)
 
 ## Recent Changes
+
+**AMP + DataLoader throughput (2026-04-18):**
+
+- Enabled `torch.amp.autocast` (forward + val inference) and `torch.amp.GradScaler` (backward/step) in both `run_sweep.py` and `train_colab_rev.ipynb`. Auto-disabled on CPU (`use_amp = device.type == 'cuda'`). Halves activation memory on GPU, enabling larger batch sizes.
+- `DataLoader` now uses `pin_memory=True`, `persistent_workers=True`, `prefetch_factor=2` (guarded against `num_workers=0`). Workers stay alive across epochs; graphs pre-staged in pinned RAM for faster GPU transfer.
+- `FIXED["batch_size"]` raised from 2 → 4 in both files. If the largest sweep cells (`hidden_dim=64, num_layers=3`) still OOM, lower `spatial_cutoff` during chunk regeneration (8.0 Å) as the next lever.
+- Added `.detach()` to per-property loss accumulator in `run_sweep.py` to avoid keeping `out` tensors live across batches.
 
 **Graph memory optimizations (2026-04-18):**
 
@@ -109,7 +116,8 @@ Training pipeline is complete. Next focus is running the sweep on Colab and eval
 
 ## Next Steps
 
-- Upload zip to Google Drive and run `train_colab_rev.ipynb` on Colab (chunks regenerated after bug fix)
+- Regenerate `.pt` chunks at 9.0 Å cutoff, upload zip to Google Drive, and run `train_colab_rev.ipynb` with `batch_size=4`
+- If `batch_size=4` still OOMs on `hidden_dim=64, num_layers=3` cells, try regenerating chunks at `spatial_cutoff=8.0`
 - Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
 - Plan and implement remote HPC cluster deployment: non-zipping preprocessing entry point, SLURM sbatch for GPU training, `git pull` for code + `scp`/`rsync` for raw sim data, ROCm-compatible install on AMD MI210

@@ -26,7 +26,8 @@ from lipid_gnn.lipid_graph import LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.plotting import plot_property_accuracies
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device  = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+use_amp = device.type == 'cuda'
 
 
 # ── Properties to predict ─────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ PROPERTIES = ['lipid_packing', 'thickness']
 # ── Fixed hyperparameters (shared across all runs) ────────────────────────────
 FIXED = {
     "epochs":      100,
-    "batch_size":  2,
+    "batch_size":  4,
     "num_workers": 2,
 }
 
@@ -82,12 +83,15 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
         config=cfg,
     )
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"]
+    _loader_kw = dict(
+        batch_size=cfg["batch_size"],
+        num_workers=cfg["num_workers"],
+        pin_memory=(device.type == 'cuda'),
+        persistent_workers=(cfg["num_workers"] > 0),
+        prefetch_factor=(2 if cfg["num_workers"] > 0 else None),
     )
-    val_loader = DataLoader(
-        val_dataset, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"]
-    )
+    train_loader = DataLoader(train_dataset, **_loader_kw)
+    val_loader   = DataLoader(val_dataset,   **_loader_kw)
 
     use_comp = comp_mode in ("gnn_plus_comp", "comp_only")
     comp_dim = LIPID_COMP_DIM if use_comp else 0
@@ -108,7 +112,8 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=10
     )
-    criterion = torch.nn.MSELoss()
+    criterion  = torch.nn.MSELoss()
+    amp_scaler = torch.amp.GradScaler(device=device.type, enabled=use_amp)
 
     s_mean  = torch.tensor(scaler.mean_,  dtype=torch.float, device=device)
     s_scale = torch.tensor(scaler.scale_, dtype=torch.float, device=device)
@@ -135,14 +140,16 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
             target = normalize(batch.y)
 
             optimizer.zero_grad()
-            out  = forward(batch)
-            loss = criterion(out, target)
-            loss.backward()
-            optimizer.step()
+            with torch.amp.autocast(device_type=device.type, enabled=use_amp):
+                out  = forward(batch)
+                loss = criterion(out, target)
+            amp_scaler.scale(loss).backward()
+            amp_scaler.step(optimizer)
+            amp_scaler.update()
 
             n                = batch.num_graphs
             total_train_loss += loss.item() * n
-            prop_train_loss  += torch.mean((out - target) ** 2, dim=0) * n
+            prop_train_loss  += (torch.mean((out - target) ** 2, dim=0) * n).detach()
             n_train          += n
 
             if batch_idx % 10 == 0:

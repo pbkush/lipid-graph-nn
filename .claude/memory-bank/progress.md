@@ -6,7 +6,7 @@
 - **Chunked dataset loading**: `MartiniDiskDataset` streams data from disk without OOM
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
-- **Training infrastructure**: Local `run_sweep.py` (now chunk-based + W&B, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
+- **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
 - **Test suite**: 8 test files, 23 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, and multi-frame preprocessing
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
 - **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
