@@ -2,9 +2,18 @@
 
 ## Current Work Focus
 
-HPC deployment scaffolding for Goethe-HLR (AMD MI210 / ROCm) is in place. Next step is executing the one-time bootstrap on the cluster: connectivity probe, raw data rsync, miniforge + ROCm PyTorch install inside a `gpu_test` allocation, then `sbatch scripts/bash/sbatch_preprocess.sh`.
+Fixed a critical training regression: chunks were system-homogeneous (all 50 frames of one system per chunk, identical `y`), causing per-batch target variance to collapse and the model to predict the dataset mean. **Chunks must be regenerated** before the next Colab run.
 
 ## Latest Changes
+
+**Training regression fix — interleaved preprocessing (2026-04-20):**
+
+- Root cause: with `num_frames=50, chunk_size=50`, every `.pt` chunk held all 50 frames of a single system. All graphs in a chunk share the same `y` (per-system mean). PyTorch `DataLoader` with `IterableDataset` and `num_workers=2` builds each batch from one worker's stream = one chunk at a time → every batch of 8 had **identical targets**. MSE collapsed to dataset mean — same symptom as the old scaler-leakage bug.
+- Fixed in [lipid_gnn/dataset.py](lipid_gnn/dataset.py) `preprocess_and_save`: new two-phase approach — (1) open all builders up front, pre-compute `(system_idx, frame_idx)` schedule, (2) shuffle schedule once with `shuffle_seed` (when `interleave=True`, default), stream in shuffled order. Each chunk now mixes many systems.
+- New kwargs: `interleave: bool = True`, `shuffle_seed: int = 42` (deterministic). `interleave=False` restores old per-system sequential ordering for tests/debugging.
+- [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py): new `--shuffle-seed` CLI flag (default 42) wired through.
+- [tests/test_multi_frame_loading.py](tests/test_multi_frame_loading.py): new `test_preprocess_and_save_interleaves_systems` asserts first chunk contains more than one distinct `y` value when systems have distinguishable targets. All 24 tests pass.
+- **Chunks must be regenerated** for the fix to take effect. Run `python scripts/training/prepare_colab_subset.py` (or `--no-zip` for HPC).
 
 **HPC deployment scaffolding (2026-04-18):**
 
@@ -133,9 +142,10 @@ HPC deployment scaffolding for Goethe-HLR (AMD MI210 / ROCm) is in place. Next s
 
 ## Next Steps
 
-- Regenerate `.pt` chunks at 9.0 Å cutoff, upload zip to Google Drive, and run `train_colab_rev.ipynb` with `batch_size=4`
-- If `batch_size=4` still OOMs on `hidden_dim=64, num_layers=3` cells, try regenerating chunks at `spatial_cutoff=8.0`
-- Evaluate sweep results in W&B; tune `SWEEP` grid based on findings
+- **Regenerate chunks**: `python scripts/training/prepare_colab_subset.py` (defaults: `--num-frames 50 --chunk-size 50 --spatial-cutoff 9.0 --shuffle-seed 42`). Upload new zip to Google Drive.
+- **Batch-heterogeneity probe before training**: pull one batch from `train_loader`, confirm `batch.y.std(dim=0)` is non-zero for all properties.
+- **Smoke run**: 5 epochs with current `FIXED` config — loss should drop visibly below ~0.6 within 5 epochs (previously plateau at ~0.8).
+- **Full A/B**: one cell at current config, one at `epochs=100, batch_size=2` to compare against pre-regression baseline (MSE 0.14). If gap remains after data fix, address in this order: grad clip → AMP bf16 → batch size.
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
 - Execute the Goethe-HLR bootstrap: connectivity probe, rsync `data/membrane_only/` + `results/properties/` to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then run `sbatch scripts/bash/sbatch_preprocess.sh` and a 1-seed `sbatch_sweep.sh` smoke run
 

@@ -7,13 +7,13 @@
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
-- **Test suite**: 8 test files, 23 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, and multi-frame preprocessing
+- **Test suite**: 8 test files, 24 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, and multi-frame preprocessing (including interleaving invariant)
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
 - **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
 
 ## What's Left to Build
 
-- Run the first full-scale sweep on Colab with `train_colab_rev.ipynb` (chunks regenerated with NUM_FRAMES=50)
+- Regenerate chunks with interleaved layout, upload zip, and run first full-scale sweep on Colab with `train_colab_rev.ipynb`
 - Train on more properties than the current `lipid_packing`+`thickness` pair — all 8 available targets are documented in [properties.md](properties.md)
 - Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
@@ -27,8 +27,9 @@ Full pipeline is implemented end-to-end and consistent between local and Colab: 
 
 ## Known Issues
 
-1. **Memory pressure**: Partially mitigated — removed `.pos` from graphs and reduced spatial cutoff default to 7.5 Å. Batch size still limited by VRAM; chunks must be regenerated to benefit from the cutoff reduction.
-2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
+1. **Chunks must be regenerated**: interleaving fix requires a fresh preprocessing run before training. Old chunks produce system-homogeneous batches → model collapses to mean.
+2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs, spatial cutoff at 9.0 Å. Batch size still limited by VRAM.
+3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
 ## Evolution of Project Decisions
 

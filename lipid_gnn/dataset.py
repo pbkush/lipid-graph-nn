@@ -66,11 +66,19 @@ def preprocess_and_save(sim_tuples,
                         num_frames=10,
                         chunk_size=50,
                         spatial_cutoff=9.0,
+                        interleave=True,
+                        shuffle_seed=42,
                         ff_params_path=None,
                         ff_edge_params_path=None,
                         ff_node_mapping_path=None):
     """
     Builds HeteroData graphs from Martini trajectories and saves them as chunked .pt files.
+
+    When `interleave=True` (default), frames from all systems are shuffled together before
+    writing so each chunk contains graphs from many systems in random order. This gives
+    heterogeneous per-batch targets at training time, which is required for the model to
+    learn per-sample signal (otherwise MSE collapses to the dataset mean). When False,
+    the old per-system-sequential ordering is used — retained for tests and debugging.
 
     Args:
         sim_tuples: List of (tpr_path, xtc_path, props_h5_path) for each system.
@@ -81,6 +89,8 @@ def preprocess_and_save(sim_tuples,
         num_frames: Number of evenly-spaced frames to sample per system.
         chunk_size: Number of graphs per .pt chunk file.
         spatial_cutoff: Distance cutoff (Angstrom) for spatial edges.
+        interleave: If True, shuffle (system, frame) pairs globally so chunks mix systems.
+        shuffle_seed: RNG seed used by the interleaving shuffle (deterministic output).
         ff_params_path: Path to martini_ff_params.json.
         ff_edge_params_path: Path to martini_ff_edge_params.json.
         ff_node_mapping_path: Path to martini_ff_node_mapping.json.
@@ -111,56 +121,78 @@ def preprocess_and_save(sim_tuples,
             f"Available: {available}"
         )
 
+    # Phase 1 — open all builders, pre-compute per-system frame indices and target vectors.
+    builders = {}
+    target_vecs = {}
+    schedule = []  # flat list of (system_idx, frame_idx)
+
+    for s_idx, (tpr_path, xtc_path, props_path) in enumerate(
+        tqdm(sim_tuples, desc="Opening builders")
+    ):
+        tpr_path, xtc_path, props_path = Path(tpr_path), Path(xtc_path), Path(props_path)
+        try:
+            builder = MartiniHeteroGraphBuilder(
+                tpr_file=str(tpr_path),
+                trajectory_file=str(xtc_path),
+                spatial_cutoff=spatial_cutoff,
+                ff_params_path=ff_params_path,
+                ff_edge_params_path=ff_edge_params_path,
+                ff_node_mapping_path=ff_node_mapping_path,
+            )
+            n_frames = builder.u.trajectory.n_frames
+            if n_frames <= num_frames:
+                sampled_indices = list(range(n_frames))
+            else:
+                sampled_indices = [int(i) for i in np.linspace(0, n_frames - 1, num_frames, dtype=int)]
+
+            mean_dict, _ = pkl_load(props_path, verbose=False)
+            target_vec = [mean_dict[prop] for prop in target_properties]
+        except Exception as e:
+            print(f"Error opening {tpr_path.name}: {e}")
+            continue
+
+        builders[s_idx] = builder
+        target_vecs[s_idx] = target_vec
+        schedule.extend((s_idx, f) for f in sampled_indices)
+
+    # Phase 2 — optionally shuffle the schedule so chunks mix systems.
+    if interleave:
+        rng = random.Random(shuffle_seed)
+        rng.shuffle(schedule)
+
+    # Phase 3 — stream-process schedule, writing chunk_*.pt as we go.
     current_chunk = []
     chunk_index = 0
     total_graphs = 0
     saved_chunks = []
 
-    for tpr_path, xtc_path, props_path in tqdm(sim_tuples, desc="Preprocessing to disk"):
-        tpr_path, xtc_path, props_path = Path(tpr_path), Path(xtc_path), Path(props_path)
-
-        builder = MartiniHeteroGraphBuilder(
-            tpr_file=str(tpr_path),
-            trajectory_file=str(xtc_path),
-            spatial_cutoff=spatial_cutoff,
-            ff_params_path=ff_params_path,
-            ff_edge_params_path=ff_edge_params_path,
-            ff_node_mapping_path=ff_node_mapping_path
-        )
-
-        n_frames = builder.u.trajectory.n_frames
-        if n_frames <= num_frames:
-            sampled_indices = range(n_frames)
-        else:
-            sampled_indices = np.linspace(0, n_frames - 1, num_frames, dtype=int)
-
+    for s_idx, f_idx in tqdm(schedule, desc="Preprocessing to disk"):
         try:
-            mean_dict, _ = pkl_load(props_path, verbose=False)
-            target_vec = [mean_dict[prop] for prop in target_properties]
-
-            for f_idx in sampled_indices:
-                hetero_data = builder.process_frame(frame_idx=int(f_idx))
-                hetero_data.y = torch.tensor([target_vec], dtype=torch.float)
-                current_chunk.append(hetero_data)
-                total_graphs += 1
-
-                if len(current_chunk) >= chunk_size:
-                    out_path = os.path.join(processed_dir, f"chunk_{chunk_index}.pt")
-                    torch.save(current_chunk, out_path)
-                    saved_chunks.append(out_path)
-                    current_chunk = []
-                    chunk_index += 1
-
-            del builder
-            gc.collect()
+            hetero_data = builders[s_idx].process_frame(frame_idx=f_idx)
         except Exception as e:
-            print(f"Error processing {tpr_path.name}: {e}")
+            print(f"Error processing system {s_idx} frame {f_idx}: {e}")
+            continue
+
+        hetero_data.y = torch.tensor([target_vecs[s_idx]], dtype=torch.float)
+        current_chunk.append(hetero_data)
+        total_graphs += 1
+
+        if len(current_chunk) >= chunk_size:
+            out_path = os.path.join(processed_dir, f"chunk_{chunk_index}.pt")
+            torch.save(current_chunk, out_path)
+            saved_chunks.append(out_path)
+            current_chunk = []
+            chunk_index += 1
 
     if len(current_chunk) > 0:
         out_path = os.path.join(processed_dir, f"chunk_{chunk_index}.pt")
         torch.save(current_chunk, out_path)
         saved_chunks.append(out_path)
         chunk_index += 1
+
+    # Release builders (and the underlying MDAnalysis Universes).
+    builders.clear()
+    gc.collect()
 
     print(f"Saved {total_graphs} graphs across {chunk_index} chunk files in {processed_dir}")
     return saved_chunks

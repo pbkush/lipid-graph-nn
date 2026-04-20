@@ -20,6 +20,7 @@ def prepare_colab_subset(
     num_frames,
     chunk_size,
     spatial_cutoff,
+    shuffle_seed=42,
     subset_name="colab_lipid_gnn_subset",
     sims_dir=None,
     props_dir=None,
@@ -84,6 +85,7 @@ def prepare_colab_subset(
     print(f"Frames per system : {num_frames}")
     print(f"Chunk size        : {chunk_size} graphs/chunk")
     print(f"Spatial cutoff    : {spatial_cutoff} Å")
+    print(f"Shuffle seed      : {shuffle_seed} (cross-system interleave)")
 
     # --- Time probe: one frame from the first system ----------------------
     print("\nProbing first frame to estimate total runtime...")
@@ -117,6 +119,7 @@ def prepare_colab_subset(
         num_frames=num_frames,
         chunk_size=chunk_size,
         spatial_cutoff=spatial_cutoff,
+        shuffle_seed=shuffle_seed,
         ff_params_path=ff_params_path,
         ff_edge_params_path=ff_edge_params_path,
         ff_node_mapping_path=ff_node_mapping_path,
@@ -179,6 +182,10 @@ def _parse_args():
         help="Spatial edge cutoff in angstrom (default: 9.0).",
     )
     parser.add_argument(
+        "--shuffle-seed", type=int, default=42,
+        help="RNG seed for cross-system frame interleaving (default: 42).",
+    )
+    parser.add_argument(
         "--subset-name", default="colab_lipid_gnn_subset",
         help="Output directory and zip name (default: colab_lipid_gnn_subset).",
     )
@@ -208,6 +215,7 @@ if __name__ == "__main__":
         num_frames=args.num_frames,
         chunk_size=args.chunk_size,
         spatial_cutoff=args.spatial_cutoff,
+        shuffle_seed=args.shuffle_seed,
         subset_name=args.subset_name,
         sims_dir=args.sims_dir,
         props_dir=args.props_dir,

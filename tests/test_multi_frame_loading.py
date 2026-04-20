@@ -53,6 +53,56 @@ def test_preprocess_and_save_frame_sampling(mock_pkl_load, mock_builder_class, t
         )
 
 
+@patch('lipid_gnn.dataset.MartiniHeteroGraphBuilder')
+@patch('lipid_gnn.dataset.pkl_load')
+def test_preprocess_and_save_interleaves_systems(mock_pkl_load, mock_builder_class, tmp_path):
+    """
+    With interleave=True, early chunks must contain graphs from more than one system.
+    Guards against the regression where each chunk held only one system's (identical-y)
+    frames, which caused per-batch target variance to collapse and training MSE to
+    plateau at the dataset mean.
+    """
+    def _pkl_side_effect(path, verbose=False):
+        return (({'lipid_packing': 0.1}, None)
+                if 'sys1' in str(path)
+                else ({'lipid_packing': 0.9}, None))
+    mock_pkl_load.side_effect = _pkl_side_effect
+
+    mock_builder = MagicMock()
+    mock_builder.u.trajectory.n_frames = 100
+    mock_builder_class.return_value = mock_builder
+
+    from torch_geometric.data import HeteroData
+    def _fresh_graph(frame_idx):
+        d = HeteroData()
+        d['bead'].x = torch.randn(1, 4)
+        return d
+    mock_builder.process_frame.side_effect = _fresh_graph
+
+    sim_tuples = [
+        ("sys1/topol.tpr", "sys1/traj.xtc", "sys1/props.pkl"),
+        ("sys2/topol.tpr", "sys2/traj.xtc", "sys2/props.pkl"),
+    ]
+
+    saved = preprocess_and_save(
+        sim_tuples=sim_tuples,
+        processed_dir=str(tmp_path),
+        target_properties=['lipid_packing'],
+        num_frames=10,
+        chunk_size=5,         # small chunk → forces the interleaving to show up per chunk
+        interleave=True,
+        shuffle_seed=0,
+    )
+
+    assert len(saved) >= 1
+    first = torch.load(saved[0], weights_only=False)
+    y_values = {float(g.y.item()) for g in first}
+    assert len(y_values) > 1, (
+        f"Expected mixed systems in first chunk (targets 0.1 and 0.9), got {y_values}. "
+        "Chunks appear system-homogeneous; interleaving did not take effect."
+    )
+
+
 if __name__ == "__main__":
     try:
         import tempfile, pathlib
