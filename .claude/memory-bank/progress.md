@@ -14,6 +14,7 @@
 ## What's Left to Build
 
 - Regenerate chunks with interleaved layout, upload zip, and run first full-scale sweep on Colab with `train_colab_rev.ipynb`
+- Change from 80/20 train/val to a proper train/val/test split (e.g. 70/15/15 at chunk/system level) — dataset is large enough now that a held-out test set is warranted for unbiased final evaluation
 - Train on more properties than the current `lipid_packing`+`thickness` pair — all 8 available targets are documented in [properties.md](properties.md)
 - Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
@@ -28,7 +29,7 @@ Full pipeline is implemented end-to-end and consistent between local and Colab: 
 ## Known Issues
 
 1. **Chunks must be regenerated**: interleaving fix requires a fresh preprocessing run before training. Old chunks produce system-homogeneous batches → model collapses to mean.
-2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs, spatial cutoff at 9.0 Å. Batch size still limited by VRAM.
+2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
 ## Evolution of Project Decisions

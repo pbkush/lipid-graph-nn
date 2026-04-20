@@ -400,8 +400,8 @@ def compare_graph_memory(args):
 
     cutoffs = [
         ("A  cutoff= 7.5 Å", 7.5),
-        ("B  cutoff= 9.0 Å  (new default)", 9.0),
-        ("C  cutoff=11.0 Å  (Martini range)", 11.0),
+        ("B  cutoff= 9.0 Å", 9.0),
+        ("C  cutoff=11.0 Å  (default, Martini range)", 11.0),
     ]
     graphs = []
     for label, cutoff in cutoffs:

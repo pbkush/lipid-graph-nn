@@ -91,15 +91,19 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 - **Run benchmarks via `scripts/bash/run_benchmark.sh`**, not directly with python — it saves timestamped logs to `logs/benchmarks/benchmark_YYYYMMDD_HHMMSS.log`. All python args pass through via `"$@"`.
 - Example full run (everything except stress test): `bash scripts/bash/run_benchmark.sh --use-real --real-system POPC100 --graph-stats --compare-mem --compare-pt --processed-dir data/processed --mem-test --skip-stress`
 
+**Default cutoff raised to 11.0 Å + num_frames halved to 25 (2026-04-20):**
+
+- Even at 9.0 Å some trajectory frames produced beads with zero spatial edges. 11.0 Å matches Martini's own non-bonded cutoff and eliminates isolated beads entirely.
+- `--spatial-cutoff` default raised **9.0 → 11.0 Å** in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py). Graph memory at 11.0 Å is roughly double that at 9.0 Å (benchmark reference).
+- To compensate for the ~2× memory increase, `--num-frames` default lowered **50 → 25** frames per system. Net chunk count roughly unchanged; total dataset = 70 systems × 25 frames = 1,750 graphs.
+- [lipid_gnn/benchmark_heterognn.py](lipid_gnn/benchmark_heterognn.py) `compare_graph_memory` label updated: row C now reads `(default, Martini range)` instead of the stale `(new default)` on row B.
+- **Requires regenerating `.pt` chunks** with the new defaults.
+
 **Spatial cutoff corrected to 9.0 Å + benchmark three-way comparison (2026-04-18):**
 
 - Benchmark at 7.5 Å revealed nodes with **zero spatial edges**. Root cause: after removing bonded pairs (~4.7 Å), the non-bonded search window is only 2.8 Å wide. Terminal tail beads (C4A, C4B) with one bonded neighbor can have no other bead within that window in disordered bilayer frames.
-- This is physically significant: Martini's own non-bonded cutoff is 11–12 Å; beads with no spatial edges lose local packing density signal, which is critical for predicting thickness, compressibility, and diffusivity.
-- **Default `spatial_cutoff` raised from 7.5 → 9.0 Å** across all three sites (`MartiniHeteroGraphBuilder.__init__`, `dataset.preprocess_and_save`, `prepare_colab_subset.py --spatial-cutoff`). 9.0 Å (~1.9σ) reliably covers the first non-bonded shell for all Martini bead types.
-- Added runtime `warnings.warn` in `process_frame()` if any bead has zero spatial edges after building the graph — fires at any cutoff, useful diagnostically.
-- `compare_graph_memory` (`--compare-mem`) now tests all three cutoffs **7.5 / 9.0 / 11.0 Å** in one run. 11.0 Å is the physics reference baseline. Summary table shows MB, ΔMB, Δ%, spatial edge count, and isolated bead count with a `!` flag on any row with isolated beads.
-- `print_graph_stats` now reports isolated bead count (degree-0 in the spatial stream) alongside min/max degree.
-- **Requires regenerating `.pt` chunks** after the cutoff change.
+- Added runtime `warnings.warn` in `process_frame()` if any bead has zero spatial edges after building the graph.
+- `compare_graph_memory` (`--compare-mem`) tests all three cutoffs **7.5 / 9.0 / 11.0 Å** in one run. Summary table shows MB, ΔMB, Δ%, spatial edge count, and isolated bead count with a `!` flag.
 
 **Test suite fix (2026-04-18):**
 
@@ -144,6 +148,7 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 
 - **Regenerate chunks**: `python scripts/training/prepare_colab_subset.py` (defaults: `--num-frames 50 --chunk-size 50 --spatial-cutoff 9.0 --shuffle-seed 42`). Upload new zip to Google Drive.
 - **Batch-heterogeneity probe before training**: pull one batch from `train_loader`, confirm `batch.y.std(dim=0)` is non-zero for all properties.
+- **Add held-out test split**: current notebook uses a single 80/20 train/val chunk split with no separate test set. With 50 frames per system the dataset is large enough to warrant a proper train/val/test split (e.g. 70/15/15 at the system/chunk level). Val is used for scheduler + early stopping; test is touched only for the final accuracy plot. This mirrors standard ML practice and gives an unbiased held-out estimate.
 - **Smoke run**: 5 epochs with current `FIXED` config — loss should drop visibly below ~0.6 within 5 epochs (previously plateau at ~0.8).
 - **Full A/B**: one cell at current config, one at `epochs=100, batch_size=2` to compare against pre-regression baseline (MSE 0.14). If gap remains after data fix, address in this order: grad clip → AMP bf16 → batch size.
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
