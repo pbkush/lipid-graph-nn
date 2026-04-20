@@ -6,6 +6,14 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 
 ## Latest Changes
 
+**Train/val/test system-level split (2026-04-20):**
+
+- `prepare_colab_subset.py` now splits `sim_tuples` (70/15/15 default) by system before any preprocessing. New CLI flags: `--val-frac` (0.15), `--test-frac` (0.15), `--split-seed` (0, separate from `--shuffle-seed`). Calls `preprocess_and_save` three times into `processed/train/`, `processed/val/`, `processed/test/`. Zip packs all three.
+- `train_colab_rev.ipynb` and `run_sweep.py`: load from the three subdirectories directly (no runtime chunk-level shuffle-split). `train_one_run` gains a `test_dataset` parameter; a held-out eval pass runs once after training, logging `test/accuracy_plot` and `test/mse_total` to W&B.
+- `sbatch_sweep.sh`: staging changed from `cp chunk_*.pt` to `rsync -a` so the full subdirectory tree is staged.
+- New test `test_train_val_test_splits_are_disjoint`: asserts pairwise disjoint y-value sets across train/val/test output directories. All 25 tests pass.
+- **Chunks must be regenerated** to get the new three-directory layout.
+
 **Training regression fix — interleaved preprocessing (2026-04-20):**
 
 - Root cause: with `num_frames=50, chunk_size=50`, every `.pt` chunk held all 50 frames of a single system. All graphs in a chunk share the same `y` (per-system mean). PyTorch `DataLoader` with `IterableDataset` and `num_workers=2` builds each batch from one worker's stream = one chunk at a time → every batch of 8 had **identical targets**. MSE collapsed to dataset mean — same symptom as the old scaler-leakage bug.
@@ -146,9 +154,8 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 
 ## Next Steps
 
-- **Regenerate chunks**: `python scripts/training/prepare_colab_subset.py` (defaults: `--num-frames 50 --chunk-size 50 --spatial-cutoff 9.0 --shuffle-seed 42`). Upload new zip to Google Drive.
+- **Regenerate chunks**: `python scripts/training/prepare_colab_subset.py` (defaults: `--num-frames 25 --chunk-size 50 --spatial-cutoff 11.0 --shuffle-seed 42 --val-frac 0.15 --test-frac 0.15 --split-seed 0`). Upload new zip to Google Drive.
 - **Batch-heterogeneity probe before training**: pull one batch from `train_loader`, confirm `batch.y.std(dim=0)` is non-zero for all properties.
-- **Add held-out test split**: current notebook uses a single 80/20 train/val chunk split with no separate test set. With 50 frames per system the dataset is large enough to warrant a proper train/val/test split (e.g. 70/15/15 at the system/chunk level). Val is used for scheduler + early stopping; test is touched only for the final accuracy plot. This mirrors standard ML practice and gives an unbiased held-out estimate.
 - **Smoke run**: 5 epochs with current `FIXED` config — loss should drop visibly below ~0.6 within 5 epochs (previously plateau at ~0.8).
 - **Full A/B**: one cell at current config, one at `epochs=100, batch_size=2` to compare against pre-regression baseline (MSE 0.14). If gap remains after data fix, address in this order: grad clip → AMP bf16 → batch size.
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
