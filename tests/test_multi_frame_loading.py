@@ -1,4 +1,5 @@
 import os
+import random as _random
 import numpy as np
 import torch
 from unittest.mock import MagicMock, patch
@@ -101,6 +102,82 @@ def test_preprocess_and_save_interleaves_systems(mock_pkl_load, mock_builder_cla
         f"Expected mixed systems in first chunk (targets 0.1 and 0.9), got {y_values}. "
         "Chunks appear system-homogeneous; interleaving did not take effect."
     )
+
+
+@patch('lipid_gnn.dataset.MartiniHeteroGraphBuilder')
+@patch('lipid_gnn.dataset.pkl_load')
+def test_train_val_test_splits_are_disjoint(mock_pkl_load, mock_builder_class, tmp_path):
+    """
+    After a system-level train/val/test split, no membrane composition (identified
+    by its unique y value) should appear in more than one split directory.
+    Mirrors the split logic used by prepare_colab_subset.prepare_colab_subset().
+    """
+    n_systems = 6
+    # Each system has a unique target so any overlap is detectable.
+    targets = {f'sys{i}': round(i * 0.1, 1) for i in range(n_systems)}
+
+    def _pkl_side_effect(path, verbose=False):
+        for key, val in targets.items():
+            if key in str(path):
+                return ({'lipid_packing': val}, None)
+        return ({'lipid_packing': 0.0}, None)
+    mock_pkl_load.side_effect = _pkl_side_effect
+
+    mock_builder = MagicMock()
+    mock_builder.u.trajectory.n_frames = 10
+    mock_builder_class.return_value = mock_builder
+
+    from torch_geometric.data import HeteroData
+    def _fresh_graph(frame_idx):
+        d = HeteroData()
+        d['bead'].x = torch.randn(1, 4)
+        return d
+    mock_builder.process_frame.side_effect = _fresh_graph
+
+    all_sims = [
+        (f"sys{i}/topol.tpr", f"sys{i}/traj.xtc", f"sys{i}/props.pkl")
+        for i in range(n_systems)
+    ]
+
+    # Replicate the split logic from prepare_colab_subset (val_frac=0.15, test_frac=0.15)
+    val_frac = test_frac = 0.15
+    rng = _random.Random(0)
+    shuffled = list(all_sims)
+    rng.shuffle(shuffled)
+    n_test = max(1, round(len(shuffled) * test_frac))
+    n_val  = max(1, round(len(shuffled) * val_frac))
+    test_sims  = shuffled[:n_test]
+    val_sims   = shuffled[n_test:n_test + n_val]
+    train_sims = shuffled[n_test + n_val:]
+
+    assert len(train_sims) + len(val_sims) + len(test_sims) == n_systems
+
+    for split_name, sims in [("train", train_sims), ("val", val_sims), ("test", test_sims)]:
+        split_dir = tmp_path / split_name
+        split_dir.mkdir()
+        preprocess_and_save(
+            sim_tuples=sims,
+            processed_dir=str(split_dir),
+            target_properties=['lipid_packing'],
+            num_frames=5,
+            chunk_size=50,
+        )
+
+    def _y_set(split_name):
+        chunks = sorted((tmp_path / split_name).glob('chunk_*.pt'))
+        ys = set()
+        for c in chunks:
+            for g in torch.load(c, weights_only=False):
+                ys.add(round(float(g.y.item()), 2))
+        return ys
+
+    train_y = _y_set('train')
+    val_y   = _y_set('val')
+    test_y  = _y_set('test')
+
+    assert train_y & val_y  == set(), f"Train/val overlap in y values: {train_y & val_y}"
+    assert train_y & test_y == set(), f"Train/test overlap in y values: {train_y & test_y}"
+    assert val_y   & test_y == set(), f"Val/test overlap in y values: {val_y & test_y}"
 
 
 if __name__ == "__main__":

@@ -59,15 +59,14 @@ SWEEP = {
 # ── Data ──────────────────────────────────────────────────────────────────────
 # Override via CHUNKS_DIR env var (HPC: point at /work/<grp>/<user>/... or
 # node-local /local/$SLURM_JOB_ID/... for fast I/O).
+# Expects subdirectories: train/, val/, test/
 PROCESSED_DIR = Path(os.environ.get(
     "CHUNKS_DIR",
     root_dir / 'colab_lipid_gnn_subset' / 'processed',
 ))
-VAL_SPLIT     = 0.2
-SPLIT_SEED    = 42
 
 
-def train_one_run(cfg, scaler, train_dataset, val_dataset):
+def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     """Train a single run defined by cfg and log all results to W&B."""
     seed       = cfg["seed"]
     properties = cfg["properties"]
@@ -98,6 +97,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
     )
     train_loader = DataLoader(train_dataset, **_loader_kw)
     val_loader   = DataLoader(val_dataset,   **_loader_kw)
+    test_loader  = DataLoader(test_dataset,  **_loader_kw)
 
     use_comp = comp_mode in ("gnn_plus_comp", "comp_only")
     comp_dim = LIPID_COMP_DIM if use_comp else 0
@@ -167,8 +167,8 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
         model.eval()
         total_val_loss = 0.0
         prop_val_loss  = torch.zeros(len(properties), device=device)
-        all_preds      = []
-        all_targets    = []
+        val_preds      = []
+        val_targets    = []
         n_val          = 0
 
         with torch.no_grad():
@@ -183,16 +183,16 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
                 prop_val_loss  += torch.mean((out - target) ** 2, dim=0) * n
                 n_val          += n
 
-                all_preds.append(out.cpu().numpy())
-                all_targets.append(target.detach().cpu().numpy())
+                val_preds.append(out.cpu().numpy())
+                val_targets.append(target.detach().cpu().numpy())
 
         avg_val_loss = total_val_loss / n_val
         avg_prop_val = (prop_val_loss / n_val).cpu().numpy()
         scheduler.step(avg_val_loss)
 
-        all_preds   = np.concatenate(all_preds,   axis=0)
-        all_targets = np.concatenate(all_targets, axis=0)
-        r2_scores   = r2_score(all_targets, all_preds, multioutput="raw_values")
+        val_preds   = np.concatenate(val_preds,   axis=0)
+        val_targets = np.concatenate(val_targets, axis=0)
+        r2_scores   = r2_score(val_targets, val_preds, multioutput="raw_values")
 
         if epoch % 10 == 0 or epoch == 1:
             print(f"Epoch {epoch:03d} | Train MSE: {avg_train_loss:.4f} | Val MSE: {avg_val_loss:.4f}")
@@ -209,9 +209,25 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset):
             metrics[f"val/r2_{prop}"]     = float(r2_scores[i])
         wandb.log(metrics)
 
-    final_mse = float(np.mean((all_preds - all_targets) ** 2))
-    fig = plot_property_accuracies(all_targets, all_preds, properties, final_mse)
-    wandb.log({"val/accuracy_plot": wandb.Image(fig)})
+    # ── Final held-out test evaluation ────────────────────────────────────────
+    model.eval()
+    test_preds   = []
+    test_targets = []
+
+    with torch.no_grad():
+        for batch in test_loader:
+            batch  = batch.to(device)
+            target = normalize(batch.y)
+            out    = forward(batch)
+            test_preds.append(out.cpu().numpy())
+            test_targets.append(target.detach().cpu().numpy())
+
+    test_preds   = np.concatenate(test_preds,   axis=0)
+    test_targets = np.concatenate(test_targets, axis=0)
+    final_mse    = float(np.mean((test_preds - test_targets) ** 2))
+
+    fig = plot_property_accuracies(test_targets, test_preds, properties, final_mse)
+    wandb.log({"test/accuracy_plot": wandb.Image(fig), "test/mse_total": final_mse})
     plt.close(fig)
 
     wandb.finish()
@@ -225,25 +241,20 @@ def _expand_sweep():
     ]
 
 
-def _load_chunks_and_scaler():
-    all_chunks = sorted(PROCESSED_DIR.glob('chunk_*.pt'))
-    if not all_chunks:
+def _load_datasets_and_scaler():
+    train_chunks = sorted((PROCESSED_DIR / 'train').glob('chunk_*.pt'))
+    val_chunks   = sorted((PROCESSED_DIR / 'val').glob('chunk_*.pt'))
+    test_chunks  = sorted((PROCESSED_DIR / 'test').glob('chunk_*.pt'))
+
+    if not train_chunks:
         raise FileNotFoundError(
-            f"No chunk_*.pt files found in {PROCESSED_DIR}. "
+            f"No chunk_*.pt files found in {PROCESSED_DIR / 'train'}. "
             f"Run scripts/training/prepare_colab_subset.py first."
         )
 
-    random.seed(SPLIT_SEED)
-    shuffled = list(all_chunks)
-    random.shuffle(shuffled)
-
-    n_val        = max(1, int(len(shuffled) * VAL_SPLIT))
-    val_chunks   = shuffled[:n_val]
-    train_chunks = shuffled[n_val:]
-
-    print(f"Total chunks : {len(all_chunks)}")
     print(f"Train chunks : {len(train_chunks)}")
     print(f"Val chunks   : {len(val_chunks)}")
+    print(f"Test chunks  : {len(test_chunks)}")
 
     all_train_y = []
     for chunk_file in train_chunks:
@@ -259,7 +270,8 @@ def _load_chunks_and_scaler():
 
     train_dataset = MartiniDiskDataset(train_chunks, shuffle=True)
     val_dataset   = MartiniDiskDataset(val_chunks,   shuffle=False)
-    return train_dataset, val_dataset, scaler
+    test_dataset  = MartiniDiskDataset(test_chunks,  shuffle=False)
+    return train_dataset, val_dataset, test_dataset, scaler
 
 
 if __name__ == "__main__":
@@ -273,7 +285,7 @@ if __name__ == "__main__":
         vals_str = '  '.join(f"{k}={cfg[k]}" for k in keys)
         print(f"  [{i:>2}]  {vals_str}")
 
-    train_dataset, val_dataset, scaler = _load_chunks_and_scaler()
+    train_dataset, val_dataset, test_dataset, scaler = _load_datasets_and_scaler()
 
     wandb.login()
 
@@ -281,6 +293,6 @@ if __name__ == "__main__":
         print(f"\n{'─' * 60}")
         print(f"Experiment {i + 1} / {len(experiments)}")
         print(f"{'─' * 60}")
-        train_one_run(cfg, scaler, train_dataset, val_dataset)
+        train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset)
 
     print("\nAll experiments complete.")

@@ -25,10 +25,11 @@ conda activate lipid_gnn
 module load rocm/6.2.4
 
 # Stage chunks to fast node-local storage once per job.
+# Copies the full processed/ tree (train/, val/, test/ subdirs).
 STAGE="/local/${SLURM_JOB_ID}/chunks"
 echo "Staging chunks to $STAGE ..."
 mkdir -p "$STAGE"
-cp "$WORK"/chunks/chunk_*.pt "$STAGE/"
+rsync -a "$WORK/chunks/" "$STAGE/"
 export CHUNKS_DIR="$STAGE"
 
 # W&B: set WANDB_MODE=offline in your environment if compute nodes are air-gapped;
