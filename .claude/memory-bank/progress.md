@@ -31,6 +31,10 @@ Full pipeline is implemented end-to-end and consistent between local and Colab: 
 2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
+## Deferred Ideas (Not Active Tasks)
+
+- **Euclidean Fast Attention (EFA) block on the spatial channel.** Linear-cost, SE(3)-equivariant, globally-connected attention from Frank et al. (Nat. Mach. Intell. 2026, arXiv:2412.08541). Theoretical fit for the *spatial* edge type only — replaces the hard distance cutoff with a soft `sinc(ω·r)` kernel and reaches long-wavelength targets (`bending_modulus`, `compressibility`) that a cutoff-limited local MP cannot. Bonded channel should stay as `GATv2Conv` (chemistry needs explicit topology with force-constant edge features; EFA has no edge list). Requires the **PBC variant** of ERoPE, not the paper's default SO(3) integration, because Martini boxes are periodic and break the unit-cell SO(3) symmetry. Would reverse the 2026-04-18 `.pos` removal. Reconsider **only after** all 8 targets are implemented and simpler levers (deeper MP, HP sweeps, richer features) are exhausted. Suggested order when picked up: deeper-MP null hypothesis → readout-only EFA → per-layer parallel EFA. Full plan at [docs/efa_spatial_layer_future.md](../../docs/efa_spatial_layer_future.md).
+
 ## Evolution of Project Decisions
 
 1. **Integer vocab → continuous physics features**: Originally used integer bead-type encodings with a learned embedding layer. Switched to continuous `[mass, charge, sigma, epsilon]` from Martini 3 FF for physics-informed input. `create_global_encoder` was deprecated.
