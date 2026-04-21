@@ -161,6 +161,19 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 - Train on more of the 8 available properties (currently only `lipid_packing` + `thickness`)
 - Execute the Goethe-HLR bootstrap: connectivity probe, rsync `data/membrane_only/` + `results/properties/` to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then run `sbatch scripts/bash/sbatch_preprocess.sh` and a 1-seed `sbatch_sweep.sh` smoke run
 
+## Long-term parallel track: representation learning (2026-04-21)
+
+Full plan: [docs/representation_learning_plan.md](../../docs/representation_learning_plan.md). Summary:
+
+- **Motivation**: the thesis north-star is a transferable CG-membrane embedding that eventually extends to protein+membrane. Supervised regression on two scalars is not a sufficient training signal. Build a second, parallel track — SSL pretraining with a linear-probe evaluation on the same held-out splits as the property-regression track.
+- **Primary objective**: force regression with per-bead local-frame projection. Per-bead forces are regenerated via `gmx mdrun -rerun` on existing `.xtc` frames (production runs had `nstfout=0`). Forces are projected onto a bonded-neighbor local frame, giving 3 invariant scalars per bead — predictable by the current GATv2 backbone, no equivariance required.
+- **Auxiliary objective**: per-lipid order-parameter regression (S_CD, tilt) at small weight; free from existing trajectories via MDAnalysis.
+- **Deprecated alternatives**: frame-pair contrastive (composition-identity shortcut even without `comp_vec`, encodes "which membrane" not "what the membrane is doing"), masked bead-type prediction (trivially solvable from bonded neighbors), RBF reconstruction (angle-blind).
+- **Parallel track, not joint loss**: new files `representation_gnn.py`, `run_representation.py`, `sbatch_rerun.sh`; separate W&B project (`lipid-gnn-repr`). `MembranePropertyGNN`, `run_sweep.py`, `train_colab_rev.ipynb`, and the 25-test suite must keep passing unchanged. All shared-code extensions (`lipid_graph.py`, `dataset.py`) are additive opt-in flags with defaults preserved; SSL chunks live in a separate `processed_ssl/` directory.
+- **Hard requirement**: `gnn_only` / `comp_dim=0` for every repr-learning run. The encoder must be composition-blind — required for transfer to unseen lipid types and to protein+membrane.
+- **Headline evaluation**: leave-one-lipid-out linear probe on thickness / lipid_packing, compared head-to-head against the property-regression track on the identical split.
+- **Fallback** if `mdrun -rerun` is blocked: promote per-lipid order-parameter regression to primary + add time-lagged predictive (JEPA-style) auxiliary; both work from existing `.xtc`s only.
+
 Decisions recorded:
 
 - GitHub squash/rebase merging disabled in repo settings (enforcement now automatic, not just convention)
