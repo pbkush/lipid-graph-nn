@@ -1,6 +1,7 @@
 import os
 import random as _random
 import numpy as np
+import pytest
 import torch
 from unittest.mock import MagicMock, patch
 
@@ -178,6 +179,53 @@ def test_train_val_test_splits_are_disjoint(mock_pkl_load, mock_builder_class, t
     assert train_y & val_y  == set(), f"Train/val overlap in y values: {train_y & val_y}"
     assert train_y & test_y == set(), f"Train/test overlap in y values: {train_y & test_y}"
     assert val_y   & test_y == set(), f"Val/test overlap in y values: {val_y & test_y}"
+
+
+@patch('lipid_gnn.dataset.MartiniHeteroGraphBuilder')
+@patch('lipid_gnn.dataset.pkl_load')
+def test_preprocess_and_save_all_8_properties(mock_pkl_load, mock_builder_class, tmp_path):
+    """
+    Chunks preprocessed with all 8 target properties must store y with shape [1, 8] per graph.
+    Verifies that the full property vector is baked into .pt files so training can subset
+    at runtime by column-slicing y without regenerating chunks.
+    """
+    all_props = [
+        'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
+        'bending_modulus', 'persistence', 'diffusivity', 'variation',
+    ]
+    prop_values = {p: float(i) for i, p in enumerate(all_props)}
+
+    mock_pkl_load.return_value = (prop_values, None)
+
+    mock_builder = MagicMock()
+    mock_builder.u.trajectory.n_frames = 10
+    mock_builder_class.return_value = mock_builder
+
+    from torch_geometric.data import HeteroData
+    def _fresh_graph(frame_idx):
+        d = HeteroData()
+        d['bead'].x = torch.randn(1, 4)
+        return d
+    mock_builder.process_frame.side_effect = _fresh_graph
+
+    saved = preprocess_and_save(
+        sim_tuples=[("sys1/topol.tpr", "sys1/traj.xtc", "sys1/props.pkl")],
+        processed_dir=str(tmp_path),
+        target_properties=all_props,
+        num_frames=5,
+        chunk_size=50,
+    )
+
+    assert len(saved) == 1
+    graphs = torch.load(saved[0], weights_only=False)
+    assert len(graphs) == 5
+
+    for g in graphs:
+        assert g.y.shape == (1, 8), f"Expected y shape (1, 8), got {g.y.shape}"
+        for i, prop in enumerate(all_props):
+            assert g.y[0, i].item() == pytest.approx(float(i)), (
+                f"Property {prop} at index {i}: expected {float(i)}, got {g.y[0, i].item()}"
+            )
 
 
 if __name__ == "__main__":

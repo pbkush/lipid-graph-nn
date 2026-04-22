@@ -181,7 +181,8 @@ def _parse_args():
     parser.add_argument(
         "--properties",
         nargs="+",
-        default=["lipid_packing", "thickness"],
+        default=['lipid_packing', 'thickness', 'thickness_std', 'compressibility',
+                 'bending_modulus', 'persistence', 'diffusivity', 'variation'],
         choices=AVAILABLE_PROPERTIES,
         metavar="PROP",
         help=(
