@@ -32,8 +32,12 @@ use_amp = device.type == 'cuda'
 
 
 # ── Properties to predict ─────────────────────────────────────────────────────
-# Available: 'lipid_packing', 'thickness', 'thickness_std',
-#            'compressibility', 'persistence', 'diffusivity'
+# Column order in y is fixed at preprocessing time (ALL_PROPERTIES below).
+# Slice any subset — no chunk rebuild needed.
+ALL_PROPERTIES = [
+    'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
+    'bending_modulus', 'persistence', 'diffusivity', 'variation',
+]
 PROPERTIES = ['lipid_packing', 'thickness']
 
 # ── Fixed hyperparameters (shared across all runs) ────────────────────────────
@@ -70,6 +74,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     """Train a single run defined by cfg and log all results to W&B."""
     seed       = cfg["seed"]
     properties = cfg["properties"]
+    prop_cols  = [ALL_PROPERTIES.index(p) for p in properties]
     comp_mode  = cfg["comp_mode"]
 
     torch.manual_seed(seed)
@@ -121,8 +126,8 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     criterion  = torch.nn.MSELoss()
     amp_scaler = torch.amp.GradScaler(device=device.type, enabled=use_amp)
 
-    s_mean  = torch.tensor(scaler.mean_,  dtype=torch.float, device=device)
-    s_scale = torch.tensor(scaler.scale_, dtype=torch.float, device=device)
+    s_mean  = torch.tensor(scaler.mean_[prop_cols],  dtype=torch.float, device=device)
+    s_scale = torch.tensor(scaler.scale_[prop_cols], dtype=torch.float, device=device)
 
     def normalize(y):
         return (y - s_mean) / s_scale
@@ -143,7 +148,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
 
         for batch_idx, batch in enumerate(train_loader):
             batch  = batch.to(device)
-            target = normalize(batch.y)
+            target = normalize(batch.y[:, prop_cols])
 
             optimizer.zero_grad()
             with torch.amp.autocast(device_type=device.type, enabled=use_amp):
@@ -174,7 +179,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         with torch.no_grad():
             for batch in val_loader:
                 batch  = batch.to(device)
-                target = normalize(batch.y)
+                target = normalize(batch.y[:, prop_cols])
                 out    = forward(batch)
                 loss   = criterion(out, target)
 
@@ -217,7 +222,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     with torch.no_grad():
         for batch in test_loader:
             batch  = batch.to(device)
-            target = normalize(batch.y)
+            target = normalize(batch.y[:, prop_cols])
             out    = forward(batch)
             test_preds.append(out.cpu().numpy())
             test_targets.append(target.detach().cpu().numpy())

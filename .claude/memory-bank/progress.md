@@ -14,7 +14,7 @@
 ## What's Left to Build
 
 - Chunks regenerated with all 8 properties (2026-04-22, uploading to Google Drive). Next: run first full-scale Colab sweep and confirm 0.138 MSE baseline reproduces on the new chunks.
-- **Multi-property training (tiered)**: chunks already store all 8 targets — adopt properties at training time by column-slicing `y`, no preprocessing needed. Tier A (4 geometric props) → Tier B (+dynamical) → Tier C (+long-wavelength, report-only). Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
+- **Multi-property training (tiered)**: y-slicing is implemented — `ALL_PROPERTIES` + `prop_cols` in both `train_colab_rev.ipynb` and `run_sweep.py`. Change `PROPERTIES` in the config section to select a tier. Tier A (4 geometric props) → Tier B (+dynamical) → Tier C (+long-wavelength, report-only). Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
 - Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
 - Explore transfer to protein+membrane systems (long-term research goal)
@@ -27,7 +27,7 @@ Full pipeline is implemented end-to-end and consistent between local and Colab: 
 
 ## Known Issues
 
-1. **New chunks uploading**: Chunks rebuilt with all 8 properties, interleaved, 3-directory layout — upload in progress. Old chunks from before 2026-04-22 are incompatible (missing `val/`/`test/` dirs and stale `y` dimensions).
+1. **Chunks on Drive**: Chunks (all 8 properties, `y.shape [1, 8]`, interleaved, 3-directory layout) uploaded 2026-04-22. Old chunks from before this date are incompatible. Baseline smoke run pending to confirm MSE ≈ 0.138 reproduces.
 2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 

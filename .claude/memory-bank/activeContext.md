@@ -2,9 +2,16 @@
 
 ## Current Work Focus
 
-Fixed a critical training regression: chunks were system-homogeneous (all 50 frames of one system per chunk, identical `y`), causing per-batch target variance to collapse and the model to predict the dataset mean. **Chunks must be regenerated** before the next Colab run.
+Chunks are ready on Google Drive (all 8 properties, `y.shape == [1, 8]`). Both training entry points now correctly slice `y` to the configured property subset at runtime — no chunk rebuild needed to change the property set. Next step: run the 2-property baseline smoke run in Colab and confirm MSE ≈ 0.138 reproduces.
 
 ## Latest Changes
+
+**Multi-property y-slicing fix (2026-04-23):**
+
+- Chunks now store all 8 properties in `y` (`shape [1, 8]`). Training was broken because `normalize(batch.y)` produced an `[N, 8]` target while the model output was `[N, len(properties)]`.
+- Fix: added `ALL_PROPERTIES` list (fixed column order matching `AVAILABLE_PROPERTIES` in `prepare_colab_subset.py`) and `prop_cols = [ALL_PROPERTIES.index(p) for p in properties]` in `train_one_run`. `s_mean`/`s_scale` are now sliced with `prop_cols`; all three `normalize(batch.y)` calls replaced with `normalize(batch.y[:, prop_cols])`.
+- Applied identically to both `scripts/colab/train_colab_rev.ipynb` and `scripts/training/run_sweep.py`.
+- To change the active property set, edit `PROPERTIES` in the config section — no chunk rebuild needed.
 
 **Train/val/test system-level split (2026-04-20):**
 
@@ -154,15 +161,13 @@ Fixed a critical training regression: chunks were system-homogeneous (all 50 fra
 
 ## Next Steps
 
-- **Chunks uploaded (2026-04-22)**: New chunks (all 8 properties, `--num-frames 25 --spatial-cutoff 11.0 --val-frac 0.15 --test-frac 0.15`) are built and uploading to Google Drive. `y.shape == [1, 8]` per graph — verified by `test_preprocess_and_save_all_8_properties`.
-- **Batch-heterogeneity probe before training**: pull one batch from `train_loader`, confirm `batch.y.std(dim=0)` is non-zero for all properties.
-- **Smoke run / baseline check**: 5 epochs with `y[:, :2]` (lipid_packing + thickness) on the new chunks — overall MSE should reproduce ≈ 0.138. Guards against regressions from chunk regeneration.
-- **Full A/B**: one cell at current config, one at `epochs=100, batch_size=2` to compare against pre-regression baseline (MSE 0.14). Address in this order if gap remains: grad clip → AMP bf16 → batch size.
-- **Multi-property training (tiered)**: Detailed plan at [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md). No re-preprocessing needed — chunks already store all 8 properties. Add properties by column-slicing `y` at training time:
-  - **Tier A** (HP-tune here): `lipid_packing`, `thickness`, `variation`, `thickness_std`
-  - **Tier B** (check for negative transfer): add `persistence`, `diffusivity`
-  - **Tier C** (report-only, architecture-constrained): add `compressibility`, `bending_modulus`
-- Execute the Goethe-HLR bootstrap: connectivity probe, rsync `data/membrane_only/` + `results/properties/` to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then run `sbatch scripts/bash/sbatch_preprocess.sh` and a 1-seed `sbatch_sweep.sh` smoke run
+- **Smoke run / baseline check (immediate)**: 10 epochs, batch size 2, `PROPERTIES = ['lipid_packing', 'thickness']` on the new Drive chunks — overall MSE should reproduce ≈ 0.138. This confirms the y-slicing fix and chunk interleaving both work end-to-end.
+- **Batch-heterogeneity probe**: pull one batch, confirm `batch.y.std(dim=0)` is non-zero for all 8 properties.
+- **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
+  - **Tier A** (HP-tune here): `['lipid_packing', 'thickness', 'variation', 'thickness_std']`
+  - **Tier B** (check negative transfer): add `'persistence'`, `'diffusivity'`
+  - **Tier C** (report-only): add `'compressibility'`, `'bending_modulus'`
+- Execute the Goethe-HLR bootstrap: rsync raw data to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then submit `sbatch_preprocess.sh` + 1-seed `sbatch_sweep.sh` smoke run
 
 ## Long-term parallel track: representation learning (2026-04-21)
 

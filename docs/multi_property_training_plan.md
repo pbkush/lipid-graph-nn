@@ -44,6 +44,7 @@ Property column order in `y` (fixed at preprocessing time):
 All reachable with the 11 Å spatial cutoff. Clean signal makes sweeps diagnostic. HP changes have visible, attributable effects.
 
 Steps:
+
 1. Confirm 2-property baseline (0.138 MSE) reproduces on the new all-8 chunks with `y[:, :2]`.
 2. Add `variation` and `thickness_std` to reach 4 targets. Check per-property R² in W&B.
 3. Run HP sweep (`hidden_dim`, `num_layers`, `lr`) with the 4-target config. This is the primary tuning phase.
