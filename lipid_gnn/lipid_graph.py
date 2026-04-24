@@ -9,18 +9,26 @@ import numpy as np
 from torch_geometric.data import HeteroData
 from MDAnalysis.lib.distances import capped_distance
 
-# Fixed-order lipid vocabulary for composition fraction vectors.
-# Must match the LIPID_TYPES list used in linear_baseline.py and run_sweep.py.
-LIPID_TYPES = ['POPC', 'DOPC', 'DIPC', 'DPPC', 'POPE', 'DOPE', 'DPPE', 'DOPS', 'POPS', 'CHOL']
-LIPID_COMP_DIM = len(LIPID_TYPES)  # 10
+from lipid_gnn.config import CONFIG
+
+# Re-exported from config for backwards compatibility with callers that did
+# `from lipid_gnn.lipid_graph import LIPID_TYPES`.
+LIPID_TYPES = CONFIG.vocab.lipid_types
+LIPID_COMP_DIM = CONFIG.vocab.lipid_comp_dim
 
 
 def create_global_encoder(*args, **kwargs):
     raise DeprecationWarning("create_global_encoder is deprecated! The model now uses physical continuous force field parameters loaded via JSON maps instead of integer vocabulary encoders.")
 
 class GaussianExpansion(torch.nn.Module):
-    def __init__(self, start=0.0, stop=12.0, num_gaussians=16):
+    def __init__(self, start=None, stop=None, num_gaussians=None):
         super().__init__()
+        if start is None:
+            start = CONFIG.dataset.rbf_start
+        if stop is None:
+            stop = CONFIG.dataset.rbf_stop
+        if num_gaussians is None:
+            num_gaussians = CONFIG.dataset.rbf_num_gaussians
         offset = torch.linspace(start, stop, num_gaussians)
         self.coeff = -0.5 / (offset[1] - offset[0]).item()**2
         self.register_buffer('offset', offset)
@@ -36,7 +44,7 @@ class MartiniHeteroGraphBuilder:
     Caches static topology (bonds, node types) to make processing 
     multi-frame trajectories highly efficient.
     """
-    def __init__(self, tpr_file, trajectory_file, selection="not (resname W or name NA or name CL)", spatial_cutoff=9.0, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
+    def __init__(self, tpr_file, trajectory_file, selection=None, spatial_cutoff=None, ff_params_path=None, ff_edge_params_path=None, ff_node_mapping_path=None):
         print("Initializing MartiniGraphBuilder...")
 
         # 1. Validate topology format — .tpr is required for full bonded topology + atom types
@@ -49,16 +57,20 @@ class MartiniHeteroGraphBuilder:
 
         # 2. Load Universe (.tpr for topology, .xtc/.trr/.gro for trajectory frames)
         self.u = mda.Universe(tpr_file, trajectory_file)
-        self.selection_string = selection
-        self.spatial_cutoff = spatial_cutoff
-        
+        self.selection_string = selection if selection is not None else CONFIG.dataset.atom_selection
+        self.spatial_cutoff = spatial_cutoff if spatial_cutoff is not None else CONFIG.dataset.spatial_cutoff
+
         # 2. Isolate Selection
         self.lipids = self.u.select_atoms(self.selection_string)
         self.n_nodes = len(self.lipids)
         print(f"Tracking {self.n_nodes} beads out of {self.u.atoms.n_atoms} total.")
-        
+
         # 2.5 RBF Encoder for spatial distances
-        self.rbf = GaussianExpansion(start=0.0, stop=self.spatial_cutoff, num_gaussians=16)
+        self.rbf = GaussianExpansion(
+            start=CONFIG.dataset.rbf_start,
+            stop=self.spatial_cutoff,
+            num_gaussians=CONFIG.dataset.rbf_num_gaussians,
+        )
         
         # 3. Cache Node Features (Static continuous physics variables)
         if ff_params_path is None or ff_node_mapping_path is None:
@@ -233,7 +245,7 @@ class MartiniHeteroGraphBuilder:
             spatial_attr = self.rbf(torch.tensor(spatial_distances, dtype=torch.float32))
         else:
             spatial_index = torch.empty((2, 0), dtype=torch.long)
-            spatial_attr = torch.empty((0, 16), dtype=torch.float32)
+            spatial_attr = torch.empty((0, CONFIG.dataset.rbf_num_gaussians), dtype=torch.float32)
             
         # Warn if any bead has no spatial neighbors (loses non-bonded packing signal)
         if len(spatial_pairs) > 0:

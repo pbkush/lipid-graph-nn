@@ -24,6 +24,7 @@ from torch_geometric.loader import DataLoader
 root_dir = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root_dir))
 
+from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import MartiniDiskDataset
 from lipid_gnn.lipid_graph import LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
@@ -37,17 +38,14 @@ warnings.filterwarnings("ignore", message=".*torch-scatter.*")
 # ── Properties to predict ─────────────────────────────────────────────────────
 # Column order in y is fixed at preprocessing time (ALL_PROPERTIES below).
 # Slice any subset — no chunk rebuild needed.
-ALL_PROPERTIES = [
-    'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
-    'bending_modulus', 'persistence', 'diffusivity', 'variation',
-]
-PROPERTIES = ['lipid_packing', 'thickness']
+ALL_PROPERTIES = CONFIG.vocab.all_properties
+PROPERTIES     = list(CONFIG.vocab.active_properties)
 
 # ── Fixed hyperparameters (shared across all runs) ────────────────────────────
 FIXED = {
-    "epochs":      100,
-    "batch_size":  2,
-    "num_workers": 6,
+    "epochs":      CONFIG.training.epochs,
+    "batch_size":  CONFIG.training.batch_size,
+    "num_workers": CONFIG.training.num_workers,
 }
 
 # ── Sweep grid: every combination produces one run ────────────────────────────
@@ -56,21 +54,19 @@ FIXED = {
 #            "comp_only"     — composition vector through MLP only (ablation)
 SWEEP = {
     "comp_mode":     ["gnn_only"],
-    "hidden_dim":    [64],
-    "num_layers":    [2],
-    "learning_rate": [1e-4],
+    "hidden_dim":    [CONFIG.model.hidden_dim],
+    "num_layers":    [CONFIG.model.num_layers],
+    "learning_rate": [CONFIG.training.learning_rate],
     "weight_decay":  [0, 1e-4, 1e-3, 5e-3, 1e-2],
     "seed":          [0, 1],
 }
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-# Override via CHUNKS_DIR env var (HPC: point at /work/<grp>/<user>/... or
-# node-local /local/$SLURM_JOB_ID/... for fast I/O).
+# CHUNKS_DIR env override is handled inside lipid_gnn.config.load_config and
+# already reflected in CONFIG.paths.chunks_dir (HPC: /work/<grp>/<user>/...
+# or node-local /local/$SLURM_JOB_ID/...).
 # Expects subdirectories: train/, val/, test/
-PROCESSED_DIR = Path(os.environ.get(
-    "CHUNKS_DIR",
-    root_dir / 'colab_lipid_gnn_subset' / 'processed',
-))
+PROCESSED_DIR = CONFIG.paths.chunks_dir
 
 
 def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
@@ -91,10 +87,10 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         f"_s{seed}"
     )
     wandb.init(
-        project="lipid_gnn_" + "_".join(properties),
+        project=f"{CONFIG.wandb.project_prefix}_" + "_".join(properties),
         name=run_name,
         config=cfg,
-        group=os.environ.get("WANDB_GROUP")
+        group=CONFIG.wandb.group,
     )
 
     _loader_kw = dict(
@@ -112,7 +108,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     comp_dim = LIPID_COMP_DIM if use_comp else 0
 
     model = MembranePropertyGNN(
-        in_channels=4,
+        in_channels=CONFIG.model.in_channels,
         hidden_dim=cfg["hidden_dim"],
         num_layers=cfg["num_layers"],
         out_dim=len(properties),
@@ -125,7 +121,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         weight_decay=cfg["weight_decay"],
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=10
+        optimizer, mode='min', factor=CONFIG.training.lr_factor, patience=CONFIG.training.patience
     )
     criterion  = torch.nn.MSELoss()
     amp_scaler = torch.amp.GradScaler(device=device.type, enabled=use_amp)
@@ -167,7 +163,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
             prop_train_loss  += (torch.mean((out - target) ** 2, dim=0) * n).detach()
             n_train          += n
 
-            if batch_idx % 10 == 0:
+            if batch_idx % CONFIG.training.log_every_n_batches == 0:
                 wandb.log({"batch/loss": loss.item()})
 
         avg_train_loss = total_train_loss / n_train
@@ -206,7 +202,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
 
         r2_scores   = r2_score(val_targets, val_preds, multioutput="raw_values")
 
-        if epoch % 10 == 0 or epoch == 1:
+        if epoch % CONFIG.training.print_every_n_epochs == 0 or epoch == 1:
             print(f"Epoch {epoch:03d} | Train MSE: {avg_train_loss:.4f} | Val MSE: {avg_val_loss:.4f}")
 
         metrics = {

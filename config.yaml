@@ -1,0 +1,86 @@
+# Central configuration for the lipid-graph-nn project.
+# Loaded by lipid_gnn/config.py. All relative paths are resolved against REPO_ROOT.
+# Environment overrides: CHUNKS_DIR > paths.chunks_dir; WANDB_MODE > wandb.mode; WANDB_GROUP > wandb.group.
+
+paths:
+  data_dir: data/membrane_only
+  props_dir: results/properties
+  resources_dir: resources
+  ff_params_file: resources/martini_ff_params.json
+  ff_edge_params_file: resources/martini_ff_edge_params.json
+  ff_node_mapping_file: resources/martini_ff_node_mapping.json
+  chunks_dir: colab_lipid_gnn_subset/processed
+  subset_bundle_dir: colab_lipid_gnn_subset
+  results_dir: results
+  training_results_dir: results/training
+  logs_dir: logs
+  wandb_dir: results/wandb
+  topology_filename: prun.tpr
+  trajectory_filename: prun.xtc
+  trajectory_subdir: run
+
+dataset:
+  spatial_cutoff: 11.0
+  num_frames: 25
+  chunk_size: 50
+  interleave: true
+  shuffle_seed: 42
+  val_frac: 0.15
+  test_frac: 0.15
+  split_seed: 0
+  atom_selection: "not (resname W or name NA or name CL)"
+  rbf_start: 0.0
+  rbf_num_gaussians: 16
+  reference_system: POPC100
+
+vocab:
+  lipid_types: [POPC, DOPC, DIPC, DPPC, POPE, DOPE, DPPE, DOPS, POPS, CHOL]
+  all_properties:
+    - lipid_packing
+    - thickness
+    - thickness_std
+    - compressibility
+    - bending_modulus
+    - persistence
+    - diffusivity
+    - variation
+  active_properties: [lipid_packing, thickness]
+
+model:
+  in_channels: 4
+  hidden_dim: 64
+  num_layers: 2
+  heads: 4
+  dropout: 0.3
+  comp_dim: 0
+  bonded_edge_attr_dim: 2
+  spatial_edge_attr_dim: 16
+
+training:
+  epochs: 100
+  batch_size: 2
+  num_workers: 6
+  learning_rate: 1.0e-4
+  weight_decay: 5.0e-3
+  seed: 0
+  patience: 10
+  lr_factor: 0.5
+  grad_clip_norm: 1.0
+  amp_dtype: bfloat16
+  log_every_n_batches: 10
+  print_every_n_epochs: 10
+
+wandb:
+  project_prefix: lipid_gnn
+  group: null
+  mode: online
+  entity: null
+
+hpc:
+  group: cellmembrane
+  conda_env: lipid_gnn
+  module_rocm: rocm/7.2.0
+  partition_preprocess: gpu_test
+  partition_train: gpu
+  account: cellmembrane
+  work_subpath: lipid-data

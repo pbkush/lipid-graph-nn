@@ -29,13 +29,17 @@ from sklearn.model_selection import LeaveOneOut, cross_val_predict
 from sklearn.metrics import mean_squared_error, r2_score
 
 root_dir = Path(__file__).resolve().parents[2]
-DATA_DIR = root_dir / 'data/membrane_only'
-RESULTS_DIR = root_dir / 'results/properties'
-OUT_DIR = root_dir / 'results/training/lipid_packing/linear_baseline'
+sys.path.insert(0, str(root_dir))
+
+from lipid_gnn.config import CONFIG
+
+DATA_DIR = CONFIG.paths.data_dir
+RESULTS_DIR = CONFIG.paths.props_dir
+OUT_DIR = CONFIG.paths.training_results_dir / 'lipid_packing' / 'linear_baseline'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# === Lipid type vocabulary (fixed order for reproducibility) ===
-LIPID_TYPES = ['POPC', 'DOPC', 'DIPC', 'DPPC', 'POPE', 'DOPE', 'DPPE', 'DOPS', 'POPS', 'CHOL']
+# Lipid type vocabulary sourced from the central config (CONFIG.vocab.lipid_types).
+LIPID_TYPES = CONFIG.vocab.lipid_types
 
 
 def parse_composition(dirname: str) -> np.ndarray:

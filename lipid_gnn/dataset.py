@@ -9,6 +9,8 @@ from pathlib import Path
 from tqdm import tqdm
 from torch.utils.data import IterableDataset
 
+from lipid_gnn.config import CONFIG
+
 try:
     from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 except ImportError:
@@ -63,11 +65,11 @@ class MartiniDiskDataset(IterableDataset):
 def preprocess_and_save(sim_tuples,
                         processed_dir,
                         target_properties,
-                        num_frames=10,
-                        chunk_size=50,
-                        spatial_cutoff=9.0,
-                        interleave=True,
-                        shuffle_seed=42,
+                        num_frames=None,
+                        chunk_size=None,
+                        spatial_cutoff=None,
+                        interleave=None,
+                        shuffle_seed=None,
                         ff_params_path=None,
                         ff_edge_params_path=None,
                         ff_node_mapping_path=None):
@@ -101,6 +103,17 @@ def preprocess_and_save(sim_tuples,
     if not sim_tuples:
         print("Warning: sim_tuples is empty, nothing to process.")
         return []
+
+    if num_frames is None:
+        num_frames = CONFIG.dataset.num_frames
+    if chunk_size is None:
+        chunk_size = CONFIG.dataset.chunk_size
+    if spatial_cutoff is None:
+        spatial_cutoff = CONFIG.dataset.spatial_cutoff
+    if interleave is None:
+        interleave = CONFIG.dataset.interleave
+    if shuffle_seed is None:
+        shuffle_seed = CONFIG.dataset.shuffle_seed
 
     os.makedirs(processed_dir, exist_ok=True)
 

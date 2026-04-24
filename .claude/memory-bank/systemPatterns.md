@@ -34,7 +34,7 @@ MD Trajectory (.tpr + .xtc/.trr)
            │ predicted properties
            │ (lipid_packing, thickness)
            ▼
-   Training Loop (scripts/colab/train_colab.ipynb)
+   Training Loop (scripts/training/run_sweep.py — HPC via sbatch_sweep.sh)
         │
         ▼
    Weights & Biases (logging)
@@ -67,6 +67,16 @@ MD Trajectory (.tpr + .xtc/.trr)
   - Applied in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) (PR #4)
   - NOT a candidate: [scripts/training/run_sweep.py](scripts/training/run_sweep.py) — mixes FIXED hyperparams with a SWEEP grid (cartesian product) that is clumsy on the command line and belongs in code. Decision recorded after considering CLI-ifying `FIXED` and rejecting it
 
+- **Central config (YAML + dataclass loader)**: Project-wide paths, vocabulary, and experiment defaults live in [config.yaml](config.yaml); [lipid_gnn/config.py](lipid_gnn/config.py) parses it into frozen `@dataclass` sections and exposes a module-level `CONFIG` singleton. Rule of thumb: if a value is referenced by more than one file (paths, `LIPID_TYPES`, `ALL_PROPERTIES`, `spatial_cutoff`, `rbf_num_gaussians`, model defaults, training defaults), it belongs in `config.yaml`; single-use locals stay where they are.
+  - Callers consume via `from lipid_gnn.config import CONFIG` and the `None`-sentinel pattern for function defaults (`def fn(x=None): if x is None: x = CONFIG.foo.bar`) so explicit callers still override.
+  - Env-var overrides are applied at the raw-dict layer inside `load_config()` — today: `CHUNKS_DIR`, `WANDB_MODE`, `WANDB_GROUP`.
+  - Derived values are `@property` methods, not duplicated keys (`DatasetConfig.rbf_stop == spatial_cutoff`, `VocabConfig.lipid_comp_dim == len(lipid_types)`).
+  - Validation in `load_config()` catches cross-section invariants (e.g. `spatial_edge_attr_dim == rbf_num_gaussians`, `active_properties ⊆ all_properties`).
+  - Bash consumes the config through [scripts/python/print_config_var.py](scripts/python/print_config_var.py) — a tiny stdlib shim; lists are space-separated for word-splitting into CLI args. Bash scripts do NOT hardcode Python-derived values.
+  - CLI arg defaults in scripts source from `CONFIG` rather than being hardcoded literals. This composes with the "CLI for tunable runnable scripts" pattern above: config is the default, CLI is the override, hardcoded literals in script bodies are a smell.
+  - The experiment-grid in `run_sweep.py` `SWEEP` dict stays inline (cartesian product is experiment-specific, not a project default). `FIXED` reads from `CONFIG.training.*`.
+  - Out of scope by convention: stylistic choices (plot DPI, colors) and Colab notebooks (legacy). See intentional exclusions in `.claude/memory-bank/activeContext.md` under the config landing entry.
+
 ## Component Relationships
 
 - `lipid_graph.py` depends on: MDAnalysis, PyTorch Geometric, FF JSON maps from `resources/`
@@ -74,11 +84,11 @@ MD Trajectory (.tpr + .xtc/.trr)
 - `dataset.py` loads `.pt` chunk files (optional import of `lipid_graph.py` for graph generation)
 - `ff_parser.py` is standalone utility (parses raw Martini `.itp` text, no MDAnalysis dependency)
 - `scripts/training/` — preprocessing, sweeps, baselines
-- `scripts/colab/train_colab.ipynb` — main training notebook (runs on Colab with W&B logging)
+- `scripts/colab/train_colab_rev.ipynb` — legacy Colab notebook (no longer the active training path; kept for reference)
 
 ## Critical Implementation Paths
 
 - **Graph construction**: `MartiniHeteroGraphBuilder.__init__()` → loads universe, caches topology, maps FF params → `build_frame(ts)` → returns `HeteroData`
 - **Data loading**: Preprocessing scripts save `.pt` chunks → `MartiniDiskDataset` streams them → `DataLoader` with multi-worker prefetching
-- **Training loop**: `train_colab.ipynb` → loads chunked `.pt` data via `MartiniDiskDataset` → trains `MembranePropertyGNN` → logs to W&B
+- **Training loop**: `scripts/training/run_sweep.py` (submitted via `scripts/bash/sbatch_sweep.sh` on HPC) → loads chunked `.pt` data via `MartiniDiskDataset` → trains `MembranePropertyGNN` → logs to W&B
 - **LIPID_TYPES ordering**: The 10-element lipid vocabulary list must stay consistent across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py`

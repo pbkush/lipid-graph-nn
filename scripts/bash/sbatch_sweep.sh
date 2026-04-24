@@ -14,19 +14,25 @@
 set -euo pipefail
 mkdir -p logs/sweeps
 
-GROUP=cellmembrane
-USER=pberger
-
-WORK="/work/${GROUP}/${USER}/lipid_data/colab_lipid_gnn_subset/processed"
-
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
-conda activate lipid_gnn
-module load rocm/7.2.0
+
+cd "$HOME/lipid-graph-nn"
+
+CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
+conda activate "$CONDA_ENV"
+module load "$(python scripts/python/print_config_var.py hpc.module_rocm)"
+
+GROUP="$(python scripts/python/print_config_var.py hpc.group)"
+WORK_SUBPATH="$(python scripts/python/print_config_var.py hpc.work_subpath)"
+CHUNKS_REL="$(python scripts/python/print_config_var.py paths.chunks_dir)"
+# paths.chunks_dir resolves absolute against REPO_ROOT; strip to get the tail.
+CHUNKS_BASENAME="$(basename "$(dirname "$CHUNKS_REL")")/$(basename "$CHUNKS_REL")"
+WORK="/work/${GROUP}/${USER}/${WORK_SUBPATH}/${CHUNKS_BASENAME}"
 
 # Stage chunks to fast node-local storage once per job.
 # Copies the full processed/ tree (train/, val/, test/ subdirs).
 STAGE="/local/${SLURM_JOB_ID}"
-echo "Staging chunks to $STAGE ..."
+echo "Staging chunks from $WORK to $STAGE ..."
 mkdir -p "$STAGE"
 rsync -a "$WORK/" "$STAGE/"
 export CHUNKS_DIR="$STAGE"
@@ -35,8 +41,8 @@ export CHUNKS_DIR="$STAGE"
 # then after the job: wandb sync "$WORK"/wandb/offline-run-*
 export WANDB_MODE="${WANDB_MODE:-online}"
 export WANDB_GROUP="stage_2_weight_decay-sweep"
-export WANDB_DIR="/home/cellmembrane/pberger/lipid-graph-nn/results/wandb"
+WANDB_DIR="$(python scripts/python/print_config_var.py paths.wandb_dir)"
+export WANDB_DIR
 mkdir -p "$WANDB_DIR"
 
-cd "$HOME/lipid-graph-nn"
 python scripts/training/run_sweep.py

@@ -7,13 +7,11 @@ import time
 import zipfile
 from pathlib import Path
 
+from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import preprocess_and_save
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
-AVAILABLE_PROPERTIES = [
-    'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
-    'bending_modulus', 'persistence', 'diffusivity', 'variation'
-]
+AVAILABLE_PROPERTIES = CONFIG.vocab.all_properties
 
 
 def prepare_colab_subset(
@@ -25,7 +23,7 @@ def prepare_colab_subset(
     val_frac=0.15,
     test_frac=0.15,
     split_seed=0,
-    subset_name="colab_lipid_gnn_subset",
+    subset_name=None,
     sims_dir=None,
     props_dir=None,
     out_dir=None,
@@ -50,21 +48,25 @@ def prepare_colab_subset(
     git and chunks live on a separate filesystem from `$HOME`.
     """
     root_dir      = Path(__file__).resolve().parent.parent.parent
-    data_dir      = Path(sims_dir)  if sims_dir  else root_dir / 'data/membrane_only'
-    props_dir     = Path(props_dir) if props_dir else root_dir / 'results/properties'
-    resources_dir = root_dir / 'resources'
+    data_dir      = Path(sims_dir)  if sims_dir  else CONFIG.paths.data_dir
+    props_dir     = Path(props_dir) if props_dir else CONFIG.paths.props_dir
+    resources_dir = CONFIG.paths.resources_dir
 
-    ff_params_path       = resources_dir / 'martini_ff_params.json'
-    ff_edge_params_path  = resources_dir / 'martini_ff_edge_params.json'
-    ff_node_mapping_path = resources_dir / 'martini_ff_node_mapping.json'
+    ff_params_path       = CONFIG.paths.ff_params_file
+    ff_edge_params_path  = CONFIG.paths.ff_edge_params_file
+    ff_node_mapping_path = CONFIG.paths.ff_node_mapping_file
+
+    if subset_name is None:
+        subset_dir = CONFIG.paths.subset_bundle_dir
+    else:
+        subset_dir = root_dir / subset_name
 
     if no_zip:
-        proc_dest = Path(out_dir) if out_dir else root_dir / subset_name / 'processed'
+        proc_dest = Path(out_dir) if out_dir else subset_dir / 'processed'
         lib_dest  = None
     else:
-        dest_dir  = root_dir / subset_name
-        proc_dest = dest_dir / 'processed'
-        lib_dest  = dest_dir / 'lipid_gnn'
+        proc_dest = subset_dir / 'processed'
+        lib_dest  = subset_dir / 'lipid_gnn'
         if lib_dest.exists():
             shutil.rmtree(lib_dest)
 
@@ -76,8 +78,8 @@ def prepare_colab_subset(
 
     sim_tuples = []
     for comp in compositions:
-        tpr = data_dir / comp / 'run/prun.tpr'
-        xtc = data_dir / comp / 'run/prun.xtc'
+        tpr = data_dir / comp / CONFIG.paths.trajectory_subdir / CONFIG.paths.topology_filename
+        xtc = data_dir / comp / CONFIG.paths.trajectory_subdir / CONFIG.paths.trajectory_filename
         h5  = props_dir / f'{comp}.h5'
         if tpr.exists() and xtc.exists() and h5.exists():
             sim_tuples.append((tpr, xtc, h5))
@@ -158,7 +160,7 @@ def prepare_colab_subset(
     shutil.copytree(root_dir / 'lipid_gnn', lib_dest)
 
     # --- Zip (processed/{train,val,test}/ + lipid_gnn/ only) --------------
-    zip_path = root_dir / f"{subset_name}.zip"
+    zip_path = root_dir / f"{subset_dir.name}.zip"
     print(f"Creating archive: {zip_path} ...")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for subdir in [proc_dest, lib_dest]:
@@ -181,47 +183,46 @@ def _parse_args():
     parser.add_argument(
         "--properties",
         nargs="+",
-        default=['lipid_packing', 'thickness', 'thickness_std', 'compressibility',
-                 'bending_modulus', 'persistence', 'diffusivity', 'variation'],
+        default=list(AVAILABLE_PROPERTIES),
         choices=AVAILABLE_PROPERTIES,
         metavar="PROP",
         help=(
             "Properties to embed as graph.y "
-            f"(default: lipid_packing thickness). "
+            f"(default: {' '.join(AVAILABLE_PROPERTIES)}). "
             f"Available: {', '.join(AVAILABLE_PROPERTIES)}."
         ),
     )
     parser.add_argument(
-        "--num-frames", type=int, default=25,
-        help="Evenly-spaced frames sampled per system (default: 25).",
+        "--num-frames", type=int, default=CONFIG.dataset.num_frames,
+        help=f"Evenly-spaced frames sampled per system (default: {CONFIG.dataset.num_frames}).",
     )
     parser.add_argument(
-        "--chunk-size", type=int, default=50,
-        help="Graphs per .pt chunk file (default: 50).",
+        "--chunk-size", type=int, default=CONFIG.dataset.chunk_size,
+        help=f"Graphs per .pt chunk file (default: {CONFIG.dataset.chunk_size}).",
     )
     parser.add_argument(
-        "--spatial-cutoff", type=float, default=11.0,
-        help="Spatial edge cutoff in angstrom (default: 11.0).",
+        "--spatial-cutoff", type=float, default=CONFIG.dataset.spatial_cutoff,
+        help=f"Spatial edge cutoff in angstrom (default: {CONFIG.dataset.spatial_cutoff}).",
     )
     parser.add_argument(
-        "--shuffle-seed", type=int, default=42,
-        help="RNG seed for cross-system frame interleaving within each split (default: 42).",
+        "--shuffle-seed", type=int, default=CONFIG.dataset.shuffle_seed,
+        help=f"RNG seed for cross-system frame interleaving within each split (default: {CONFIG.dataset.shuffle_seed}).",
     )
     parser.add_argument(
-        "--val-frac", type=float, default=0.15,
-        help="Fraction of systems held out for validation (default: 0.15).",
+        "--val-frac", type=float, default=CONFIG.dataset.val_frac,
+        help=f"Fraction of systems held out for validation (default: {CONFIG.dataset.val_frac}).",
     )
     parser.add_argument(
-        "--test-frac", type=float, default=0.15,
-        help="Fraction of systems held out for test (default: 0.15).",
+        "--test-frac", type=float, default=CONFIG.dataset.test_frac,
+        help=f"Fraction of systems held out for test (default: {CONFIG.dataset.test_frac}).",
     )
     parser.add_argument(
-        "--split-seed", type=int, default=0,
-        help="RNG seed for train/val/test system assignment (default: 0).",
+        "--split-seed", type=int, default=CONFIG.dataset.split_seed,
+        help=f"RNG seed for train/val/test system assignment (default: {CONFIG.dataset.split_seed}).",
     )
     parser.add_argument(
-        "--subset-name", default="colab_lipid_gnn_subset",
-        help="Output directory and zip name (default: colab_lipid_gnn_subset).",
+        "--subset-name", default=None,
+        help=f"Output directory and zip name (default: {CONFIG.paths.subset_bundle_dir.name}).",
     )
     parser.add_argument(
         "--sims-dir", default=None,

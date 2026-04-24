@@ -2,9 +2,23 @@
 
 ## Current Work Focus
 
-Chunks are ready on Google Drive (all 8 properties, `y.shape == [1, 8]`). Both training entry points now correctly slice `y` to the configured property subset at runtime — no chunk rebuild needed to change the property set. Next step: run the 2-property baseline smoke run in Colab and confirm MSE ≈ 0.138 reproduces.
+Central config file landed (2026-04-24). Single source of truth at `config.yaml` + typed loader at `lipid_gnn/config.py`. Spatial-cutoff drift between `prepare_colab_subset.py` (11.0) and `dataset.py` / `lipid_graph.py` / `sbatch_preprocess.sh` (9.0) converged to **11.0 Å** across all sites. Colab notebooks deliberately not migrated (legacy reference only). Next step unchanged: run the 2-property baseline smoke run on HPC (`sbatch_sweep.sh`) and confirm MSE ≈ 0.138 reproduces.
 
 ## Latest Changes
+
+**Central config file (2026-04-24):**
+
+- New [config.yaml](../../config.yaml) at repo root — sections: `paths`, `dataset`, `vocab`, `model`, `training`, `wandb`, `hpc`.
+- New [lipid_gnn/config.py](../../lipid_gnn/config.py) — frozen `@dataclass` per section + top-level `Config`. Module-level `CONFIG = load_config()` singleton; `from lipid_gnn.config import CONFIG` is the import everywhere.
+- Env overrides at the raw-dict layer inside `load_config()`: `CHUNKS_DIR` → `paths.chunks_dir`, `WANDB_MODE` → `wandb.mode`, `WANDB_GROUP` → `wandb.group`. Relative paths resolve against `REPO_ROOT`.
+- Derived properties: `DatasetConfig.rbf_stop == spatial_cutoff` (single source); `VocabConfig.lipid_comp_dim == len(lipid_types)`. Validation rejects `spatial_edge_attr_dim != rbf_num_gaussians` and `active_properties ⊄ all_properties`.
+- New [scripts/python/print_config_var.py](../../scripts/python/print_config_var.py) — bash-side shim for reading values from `config.yaml` (e.g. `python scripts/python/print_config_var.py dataset.spatial_cutoff`). Lists are space-separated so they word-split into CLI args.
+- Migrated callers: all of `lipid_gnn/` except `functions_emil/` and `plotting.py`, all of `scripts/training/` except colab notebooks, `scripts/bash/sbatch_{preprocess,sweep}.sh`, `scripts/bash/gc_{copy,transfer}_files.sh`, and three test files. Callers use the `None`-sentinel pattern so explicit overrides still win.
+- New [tests/test_config.py](../../tests/test_config.py) — 8 tests (load, abs-path resolution, `lipid_comp_dim`, `rbf_stop==cutoff`, `active⊂all`, env overrides for `CHUNKS_DIR` + `WANDB_MODE`, two validation-rejection paths). Total: 35 tests pass.
+- PyYAML added to [requirements.txt](../../requirements.txt) (`PyYAML>=6.0`).
+- **Intentional drift converged**: default `spatial_cutoff` for `dataset.py`, `lipid_graph.py`, and `sbatch_preprocess.sh` **9.0 → 11.0 Å**. Matches what `prepare_colab_subset.py` was already producing and the Martini non-bonded range.
+- **Explicitly NOT migrated**: colab notebooks (legacy per memory bank), `lipid_gnn/functions_emil/`, `scripts/emil/`, `scripts/notebooks/`, `lipid_gnn/plotting.py` (styling only).
+- **Design decisions** recorded when implementing: YAML source of truth + Python `@dataclass` loader (not pure Python constants) for easier per-experiment overrides and type safety. `FIXED` in `run_sweep.py` reads from `CONFIG.training.*`; `SWEEP` stays inline (grid is experiment-specific, not a project-wide default). argparse defaults source from `CONFIG`, CLI overrides still win — preserves the existing "CLI for tunable runnable scripts" pattern.
 
 **Multi-property y-slicing fix (2026-04-23):**
 
@@ -161,14 +175,13 @@ Chunks are ready on Google Drive (all 8 properties, `y.shape == [1, 8]`). Both t
 
 ## Next Steps
 
-- **Config file for project paths (short-term task)**: Create a central config file (e.g. `config.yaml` or `config.py`) for project-wide path and experiment settings — chunk directories, data roots, W&B project names, spatial cutoff, num_frames, etc. Currently these are scattered as hardcoded constants across `run_sweep.py`, `prepare_colab_subset.py`, and the Colab notebook. Update all three entry points to load from the config file instead of duplicating constants.
-- **Smoke run / baseline check (immediate)**: 10 epochs, batch size 2, `PROPERTIES = ['lipid_packing', 'thickness']` on the new Drive chunks — overall MSE should reproduce ≈ 0.138. This confirms the y-slicing fix and chunk interleaving both work end-to-end.
+- **Smoke run / baseline check (immediate)**: 10 epochs, batch size 2, `PROPERTIES = ['lipid_packing', 'thickness']` on the HPC — overall MSE should reproduce ≈ 0.138. This confirms the y-slicing fix, chunk interleaving, and the fresh config wiring all work end-to-end. Run via `sbatch scripts/bash/sbatch_sweep.sh`.
 - **Batch-heterogeneity probe**: pull one batch, confirm `batch.y.std(dim=0)` is non-zero for all 8 properties.
 - **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
   - **Tier A** (HP-tune here): `['lipid_packing', 'thickness', 'variation', 'thickness_std']`
   - **Tier B** (check negative transfer): add `'persistence'`, `'diffusivity'`
   - **Tier C** (report-only): add `'compressibility'`, `'bending_modulus'`
-- Execute the Goethe-HLR bootstrap: rsync raw data to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then submit `sbatch_preprocess.sh` + 1-seed `sbatch_sweep.sh` smoke run
+- Execute the Goethe-HLR bootstrap: rsync raw data to `/work`, install miniforge + ROCm PyTorch inside a `gpu_test` allocation, `pytest -q` on the cluster, then submit `sbatch_preprocess.sh` + 1-seed `sbatch_sweep.sh` smoke run. This is the primary training path going forward.
 
 ## Long-term parallel track: representation learning (2026-04-21)
 

@@ -18,18 +18,21 @@ import matplotlib.pyplot as plt
 root_dir = Path(__file__).resolve().parents[2]
 sys.path.append(str(root_dir))
 
+from lipid_gnn.config import CONFIG
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder, LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.functions_emil.functions import pkl_load
 
-# Global Config Defaults
-DATA_DIR = root_dir / 'data/membrane_only'
-RESULTS_BASE_DIR = root_dir / 'results/properties'
-FF_PARAMS_PATH = root_dir / 'resources/martini_ff_params.json'
-FF_EDGE_PARAMS_PATH = root_dir / 'resources/martini_ff_edge_params.json'
-FF_NODE_MAPPING_PATH = root_dir / 'resources/martini_ff_node_mapping.json'
+# Paths are sourced from the central config.
+DATA_DIR             = CONFIG.paths.data_dir
+RESULTS_BASE_DIR     = CONFIG.paths.props_dir
+FF_PARAMS_PATH       = CONFIG.paths.ff_params_file
+FF_EDGE_PARAMS_PATH  = CONFIG.paths.ff_edge_params_file
+FF_NODE_MAPPING_PATH = CONFIG.paths.ff_node_mapping_file
 
-def load_data(target_properties=['lipid_packing'], spatial_cutoff=11.0, test_size=0.2):
+def load_data(target_properties=['lipid_packing'], spatial_cutoff=None, test_size=0.2):
+    if spatial_cutoff is None:
+        spatial_cutoff = CONFIG.dataset.spatial_cutoff
     """
     Loads and preprocesses graphs from the data directory.
 
@@ -42,8 +45,8 @@ def load_data(target_properties=['lipid_packing'], spatial_cutoff=11.0, test_siz
     print(f"Found {len(compositions)} membrane compositions.")
 
     for comp in tqdm(compositions, desc="Building Graphs"):
-        top_file = os.path.join(DATA_DIR, comp, "run/prun.tpr")
-        traj_file = os.path.join(DATA_DIR, comp, "run/prun.xtc")
+        top_file = os.path.join(DATA_DIR, comp, CONFIG.paths.trajectory_subdir, CONFIG.paths.topology_filename)
+        traj_file = os.path.join(DATA_DIR, comp, CONFIG.paths.trajectory_subdir, CONFIG.paths.trajectory_filename)
         prop_file = os.path.join(RESULTS_BASE_DIR, f"{comp}.h5")
         
         if not (os.path.exists(top_file) and os.path.exists(traj_file) and os.path.exists(prop_file)):
@@ -119,7 +122,7 @@ def train_experiment(config, train_graphs, test_graphs):
     # Setup Logging
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     run_id = f"{timestamp}_{config['run_name']}"
-    train_res_dir = root_dir / "results/training" / config['property_label'] / run_id
+    train_res_dir = CONFIG.paths.training_results_dir / config['property_label'] / run_id
     train_res_dir.mkdir(parents=True, exist_ok=True)
     log_file = train_res_dir / "training_log.txt"
 
@@ -228,14 +231,16 @@ if __name__ == "__main__":
     # 2. Phase 1 Comparison Sweep
     # Three modes × best config from sweep 2 (nl=2, wd=0.005, bs=1, lr=5e-4, h=32)
     # Each mode run 3 times to account for random seed variance.
+    # Smoke-test overrides: epochs/batch/seeds are intentionally small and
+    # stay inline rather than coming from CONFIG.training.
     base_config = {
         'property_label': 'lipid_packing',
         'target_properties': target_properties,
-        'in_channels': 4,
+        'in_channels': CONFIG.model.in_channels,
         'hidden_dim': 32,
         'num_layers': 2,
         'out_dim': 1,
-        'epochs': 1,             # Smoke test: 1 epoch only
+        'epochs': 1,
         'batch_size': 1,
         'learning_rate': 5e-4,
         'weight_decay': 5e-3,

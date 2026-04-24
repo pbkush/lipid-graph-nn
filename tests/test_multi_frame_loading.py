@@ -5,6 +5,7 @@ import pytest
 import torch
 from unittest.mock import MagicMock, patch
 
+from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import preprocess_and_save
 
 
@@ -140,9 +141,10 @@ def test_train_val_test_splits_are_disjoint(mock_pkl_load, mock_builder_class, t
         for i in range(n_systems)
     ]
 
-    # Replicate the split logic from prepare_colab_subset (val_frac=0.15, test_frac=0.15)
-    val_frac = test_frac = 0.15
-    rng = _random.Random(0)
+    # Replicate the split logic from prepare_colab_subset using config defaults.
+    val_frac  = CONFIG.dataset.val_frac
+    test_frac = CONFIG.dataset.test_frac
+    rng = _random.Random(CONFIG.dataset.split_seed)
     shuffled = list(all_sims)
     rng.shuffle(shuffled)
     n_test = max(1, round(len(shuffled) * test_frac))
@@ -189,10 +191,7 @@ def test_preprocess_and_save_all_8_properties(mock_pkl_load, mock_builder_class,
     Verifies that the full property vector is baked into .pt files so training can subset
     at runtime by column-slicing y without regenerating chunks.
     """
-    all_props = [
-        'lipid_packing', 'thickness', 'thickness_std', 'compressibility',
-        'bending_modulus', 'persistence', 'diffusivity', 'variation',
-    ]
+    all_props = list(CONFIG.vocab.all_properties)
     prop_values = {p: float(i) for i, p in enumerate(all_props)}
 
     mock_pkl_load.return_value = (prop_values, None)

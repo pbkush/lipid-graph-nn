@@ -7,13 +7,14 @@
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
-- **Test suite**: 8 test files, 26 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, multi-frame preprocessing, interleaving invariant, train/val/test split disjointness, and all-8-property y-shape invariant
+- **Test suite**: 9 test files, 35 tests (added `test_config.py` with 8 tests on 2026-04-24) covering graph construction, dataset loading, model modes, FF parsing, benchmarks, multi-frame preprocessing, interleaving invariant, train/val/test split disjointness, all-8-property y-shape invariant, and config loading/validation/env-override
+- **Central config**: `config.yaml` + `lipid_gnn/config.py` landed 2026-04-24. All runtime callers in `lipid_gnn/` (ex-`functions_emil`), `scripts/training/`, `scripts/bash/`, and `tests/` read defaults from `CONFIG`. Bash shim at `scripts/python/print_config_var.py`.
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
 - **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
 
 ## What's Left to Build
 
-- Chunks regenerated with all 8 properties (2026-04-22, uploading to Google Drive). Next: run first full-scale Colab sweep and confirm 0.138 MSE baseline reproduces on the new chunks.
+- Chunks regenerated with all 8 properties (2026-04-22). Next: run first HPC sweep via `sbatch_sweep.sh` and confirm 0.138 MSE baseline reproduces on the new chunks.
 - **Multi-property training (tiered)**: y-slicing is implemented — `ALL_PROPERTIES` + `prop_cols` in both `train_colab_rev.ipynb` and `run_sweep.py`. Change `PROPERTIES` in the config section to select a tier. Tier A (4 geometric props) → Tier B (+dynamical) → Tier C (+long-wavelength, report-only). Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
 - Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
 - Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
@@ -21,13 +22,13 @@
 
 ## Current Status
 
-### Phase: Chunks ready, first full-scale Colab run pending
+### Phase: Chunks ready, first HPC sweep pending
 
-Full pipeline is implemented end-to-end and consistent between local and Colab: `prepare_colab_subset.py` bakes `NUM_FRAMES`/system into `.pt` chunks; both `scripts/training/run_sweep.py` (local) and `scripts/colab/train_colab_rev.ipynb` stream them via `MartiniDiskDataset` and run configurable sweeps logged to W&B. The zip contains only `processed/` and `lipid_gnn/` — no raw trajectory files. Current best results (from earlier smaller runs) — Overall Test MSE: **0.1378** (lipid_packing: 0.0566, thickness: 0.2190).
+Full pipeline is implemented end-to-end. `prepare_colab_subset.py` bakes `NUM_FRAMES`/system into `.pt` chunks; `scripts/training/run_sweep.py` streams them via `MartiniDiskDataset` and runs configurable sweeps logged to W&B. Training is done exclusively on the Goethe HPC cluster (AMD MI210 / ROCm 6.2) via `scripts/bash/sbatch_sweep.sh`. Current best results (from earlier smaller runs) — Overall Test MSE: **0.1378** (lipid_packing: 0.0566, thickness: 0.2190).
 
 ## Known Issues
 
-1. **Chunks on Drive**: Chunks (all 8 properties, `y.shape [1, 8]`, interleaved, 3-directory layout) uploaded 2026-04-22. Old chunks from before this date are incompatible. Baseline smoke run pending to confirm MSE ≈ 0.138 reproduces.
+1. **Chunks**: Chunks (all 8 properties, `y.shape [1, 8]`, interleaved, 3-directory layout) generated 2026-04-22. Old chunks from before this date are incompatible. Baseline smoke run on HPC pending to confirm MSE ≈ 0.138 reproduces.
 2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 

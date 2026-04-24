@@ -3,43 +3,44 @@ from pathlib import Path
 
 import pytest
 
+from lipid_gnn.config import CONFIG
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
 
 @pytest.fixture(scope="session")
 def data_dir_path():
-    return Path("/home/phillip/Goethe/Thesis/lipid-graph-nn/data/membrane_only/POPC100")
+    return CONFIG.paths.data_dir / CONFIG.dataset.reference_system
 
 
 @pytest.fixture(scope="session")
 def ff_params_file():
-    return Path("/home/phillip/Goethe/Thesis/lipid-graph-nn/resources/martini_ff_params.json")
+    return CONFIG.paths.ff_params_file
 
 
 @pytest.fixture(scope="session")
 def ff_edge_params_file():
-    return Path("/home/phillip/Goethe/Thesis/lipid-graph-nn/resources/martini_ff_edge_params.json")
+    return CONFIG.paths.ff_edge_params_file
+
 
 @pytest.fixture(scope="session")
 def ff_node_mapping_file():
-    return Path("/home/phillip/Goethe/Thesis/lipid-graph-nn/resources/martini_ff_node_mapping.json")
+    return CONFIG.paths.ff_node_mapping_file
 
 
 @pytest.fixture(scope="session")
 def test_file_paths(data_dir_path):
-    run_dir_path = data_dir_path / "run"
-    tpr_file_path = run_dir_path / "prun.tpr"
-    traj_file_path = run_dir_path / "prun.xtc"
+    run_dir_path = data_dir_path / CONFIG.paths.trajectory_subdir
+    tpr_file_path = run_dir_path / CONFIG.paths.topology_filename
+    traj_file_path = run_dir_path / CONFIG.paths.trajectory_filename
     return tpr_file_path, traj_file_path
 
 
 @pytest.fixture(scope="session")
 def hetero_graph(test_file_paths, ff_params_file, ff_edge_params_file, ff_node_mapping_file):
-    cutoff_angstroms = 11.0
     builder = MartiniHeteroGraphBuilder(
         tpr_file=test_file_paths[0],
         trajectory_file=test_file_paths[1],
-        spatial_cutoff=cutoff_angstroms,
+        spatial_cutoff=CONFIG.dataset.spatial_cutoff,
         ff_params_path=str(ff_params_file),
         ff_edge_params_path=str(ff_edge_params_file),
         ff_node_mapping_path=str(ff_node_mapping_file)
@@ -62,8 +63,8 @@ def edges_sets(edges):
     return b_set, s_set
 
 def test_node_features_shape(hetero_graph):
-    # Node features should have 4 dimensions (Mass, Charge, Sigma, Epsilon)
-    assert hetero_graph["bead"].x.shape[1] == 4
+    # Node features should match the continuous physics parameters in the config.
+    assert hetero_graph["bead"].x.shape[1] == CONFIG.model.in_channels
 
 
 def test_edge_exist(edges):

@@ -3,8 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv, HeteroConv, GATv2Conv, global_mean_pool, global_max_pool, GraphNorm
 
+from lipid_gnn.config import CONFIG
+
+
 class MembranePropertyGNN(torch.nn.Module):
-    def __init__(self, in_channels=4, hidden_dim=64, num_layers=3, out_dim=1, heads=4, comp_dim=0):
+    def __init__(self, in_channels=None, hidden_dim=None, num_layers=None, out_dim=1, heads=None, comp_dim=None):
         """
         Args:
             in_channels (int): Number of continuous physical parameters per bead (e.g. 4 for mass, charge, sigma, epsilon).
@@ -16,8 +19,18 @@ class MembranePropertyGNN(torch.nn.Module):
                             Set to 0 (default) for GNN-only mode. Set to LIPID_COMP_DIM (10) for GNN+comp mode.
         """
         super().__init__()
+        if in_channels is None:
+            in_channels = CONFIG.model.in_channels
+        if hidden_dim is None:
+            hidden_dim = CONFIG.model.hidden_dim
+        if num_layers is None:
+            num_layers = CONFIG.model.num_layers
+        if heads is None:
+            heads = CONFIG.model.heads
+        if comp_dim is None:
+            comp_dim = CONFIG.model.comp_dim
         self.comp_dim = comp_dim
-        
+
         # 1. Node Embedding: Converts continuous physical vectors into dense hidden representations
         self.bead_embedding = nn.Linear(in_channels, hidden_dim)
         
@@ -28,23 +41,25 @@ class MembranePropertyGNN(torch.nn.Module):
         # It is generally better than LayerNorm for graph-level prediction tasks because it explicitly considers graph size/structure.
         self.norms = nn.ModuleList()
         
+        bonded_edge_dim = CONFIG.model.bonded_edge_attr_dim
+        spatial_edge_dim = CONFIG.model.spatial_edge_attr_dim
         for _ in range(num_layers):
             conv = HeteroConv({
                 # GATv2Conv enables natively computing multidimensional continuous parameters directly across attention mapping metrics
-                ('bead', 'bonded', 'bead'): GATv2Conv((-1, -1), hidden_dim, edge_dim=2, heads=heads, concat=False, add_self_loops=False),
+                ('bead', 'bonded', 'bead'): GATv2Conv((-1, -1), hidden_dim, edge_dim=bonded_edge_dim, heads=heads, concat=False, add_self_loops=False),
                 # Spatial interactions now also use GATv2Conv to process RBF-encoded distances for density/packing awareness
-                ('bead', 'spatial', 'bead'): GATv2Conv((-1, -1), hidden_dim, edge_dim=16, heads=heads, concat=False, add_self_loops=False),
+                ('bead', 'spatial', 'bead'): GATv2Conv((-1, -1), hidden_dim, edge_dim=spatial_edge_dim, heads=heads, concat=False, add_self_loops=False),
             }, aggr='sum') # 'sum' aggregates the messages from both edge types
             self.convs.append(conv)
             self.norms.append(GraphNorm(hidden_dim))
-            
+
         # 3. Readout / Prediction Head
         # MLP input = mean+max pooled graph repr + optional composition vector
         mlp_in = hidden_dim * 2 + comp_dim
         self.mlp = nn.Sequential(
             nn.Linear(mlp_in, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=CONFIG.model.dropout),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, out_dim)

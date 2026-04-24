@@ -19,19 +19,26 @@ set -euo pipefail
 mkdir -p logs
 
 : "${GROUP:?set GROUP to your Goethe-HLR group (e.g. export GROUP=fias)}"
-WORK="/work/${GROUP}/${USER}/lipid-data"
 
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
-conda activate lipid_gnn
+conda activate "$(python scripts/python/print_config_var.py hpc.conda_env)"
 
 cd "$HOME/lipid-graph-nn"
+
+WORK_SUBPATH=$(python scripts/python/print_config_var.py hpc.work_subpath)
+WORK="/work/${GROUP}/${USER}/${WORK_SUBPATH}"
+
+NUM_FRAMES=$(python scripts/python/print_config_var.py dataset.num_frames)
+CHUNK_SIZE=$(python scripts/python/print_config_var.py dataset.chunk_size)
+SPATIAL_CUTOFF=$(python scripts/python/print_config_var.py dataset.spatial_cutoff)
+PROPS=$(python scripts/python/print_config_var.py vocab.active_properties)
 
 python scripts/training/prepare_colab_subset.py \
     --no-zip \
     --sims-dir  "$WORK/data/membrane_only" \
     --props-dir "$WORK/results/properties" \
     --out-dir   "$WORK/chunks" \
-    --properties lipid_packing thickness \
-    --num-frames 50 \
-    --chunk-size 50 \
-    --spatial-cutoff 9.0
+    --properties $PROPS \
+    --num-frames "$NUM_FRAMES" \
+    --chunk-size "$CHUNK_SIZE" \
+    --spatial-cutoff "$SPATIAL_CUTOFF"

@@ -1,25 +1,27 @@
 import torch
 import pytest
 from torch_geometric.data import HeteroData, Batch
+
+from lipid_gnn.config import CONFIG
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 
 def create_mock_hetero_data():
     """Creates a single mock HeteroData object for testing."""
     data = HeteroData()
-    # 4 nodes, 4 features each
-    data['bead'].x = torch.randn(4, 4)
+    # 4 nodes, in_channels features each
+    data['bead'].x = torch.randn(4, CONFIG.model.in_channels)
     data['bead'].num_nodes = 4
-    
+
     # Bonded edges (bidirectional)
     data['bead', 'bonded', 'bead'].edge_index = torch.tensor([[0, 1, 2, 3], [1, 0, 3, 2]], dtype=torch.long)
-    data['bead', 'bonded', 'bead'].edge_attr = torch.randn(4, 2)
-    
+    data['bead', 'bonded', 'bead'].edge_attr = torch.randn(4, CONFIG.model.bonded_edge_attr_dim)
+
     # Spatial edges (subset)
     data['bead', 'spatial', 'bead'].edge_index = torch.tensor([[0, 2], [2, 0]], dtype=torch.long)
-    data['bead', 'spatial', 'bead'].edge_attr = torch.randn(2, 16)
-    
-    # Composition vector (10 lipid types)
-    data.comp_vec = torch.randn(10)
+    data['bead', 'spatial', 'bead'].edge_attr = torch.randn(2, CONFIG.model.spatial_edge_attr_dim)
+
+    # Composition vector (all lipid types in the config vocabulary)
+    data.comp_vec = torch.randn(CONFIG.vocab.lipid_comp_dim)
     
     # Target
     data.y = torch.tensor([[0.5]], dtype=torch.float)
@@ -38,10 +40,10 @@ def test_model_forward_modes(comp_mode, batch_size):
     """Verifies that the model forward pass works for all three Phase 1 modes."""
     # Setup model parameters
     hidden_dim = 32
-    comp_dim = 10 if comp_mode in ["gnn_plus_comp", "comp_only"] else 0
-    
+    comp_dim = CONFIG.vocab.lipid_comp_dim if comp_mode in ["gnn_plus_comp", "comp_only"] else 0
+
     model = MembranePropertyGNN(
-        in_channels=4,
+        in_channels=CONFIG.model.in_channels,
         hidden_dim=hidden_dim,
         num_layers=2,
         out_dim=1,

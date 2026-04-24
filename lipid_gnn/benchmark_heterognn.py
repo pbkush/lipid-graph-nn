@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch_geometric
 from torch_geometric.data import HeteroData, Batch
 from torch_geometric.nn import HeteroConv, SAGEConv, GATv2Conv
+from lipid_gnn.config import CONFIG
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 import os
@@ -48,22 +49,22 @@ def generate_dummy_data(N):
     """
     data = HeteroData()
     # Emulate the 4 continuous physical parameters (Mass, Charge, Sigma, Epsilon)
-    data['bead'].x = torch.randn(N, 4, dtype=torch.float32)
+    data['bead'].x = torch.randn(N, CONFIG.model.in_channels, dtype=torch.float32)
     num_bonded = int(6 * N)
     num_spatial = int(20 * N)
 
     data['bead', 'bonded', 'bead'].edge_index = torch.randint(0, N, (2, num_bonded), dtype=torch.long)
-    data['bead', 'bonded', 'bead'].edge_attr = torch.randn(num_bonded, 2, dtype=torch.float32)
+    data['bead', 'bonded', 'bead'].edge_attr = torch.randn(num_bonded, CONFIG.model.bonded_edge_attr_dim, dtype=torch.float32)
 
     data['bead', 'spatial', 'bead'].edge_index = torch.randint(0, N, (2, num_spatial), dtype=torch.long)
-    data['bead', 'spatial', 'bead'].edge_attr = torch.randn(num_spatial, 16, dtype=torch.float32)
+    data['bead', 'spatial', 'bead'].edge_attr = torch.randn(num_spatial, CONFIG.model.spatial_edge_attr_dim, dtype=torch.float32)
 
     data.y = torch.randn(1, 1, dtype=torch.float32) # Standardized for lipid_packing regression
 
     batch = Batch.from_data_list([data])
     return batch
 
-def load_real_data(system_name, data_dir="data/membrane_only", ff_dir="resources", spatial_cutoff=11.0):
+def load_real_data(system_name, data_dir=None, ff_dir=None, spatial_cutoff=None):
     """
     Loads a real MD snapshot from the data directory and builds a HeteroData graph.
 
@@ -76,14 +77,21 @@ def load_real_data(system_name, data_dir="data/membrane_only", ff_dir="resources
     Returns:
         Batched HeteroData (batch size 1) on CPU.
     """
+    if data_dir is None:
+        data_dir = str(CONFIG.paths.data_dir)
+    if ff_dir is None:
+        ff_dir = str(CONFIG.paths.resources_dir)
+    if spatial_cutoff is None:
+        spatial_cutoff = CONFIG.dataset.spatial_cutoff
+
     print(f"--- Loading Real System: {system_name} ---")
     system_path = os.path.join(data_dir, system_name)
     if not os.path.exists(system_path):
         raise FileNotFoundError(f"System directory not found: {system_path}")
 
     # Standard Martini file naming convention in this repo
-    tpr_path = os.path.join(system_path, "run/prun.tpr")
-    xtc_path = os.path.join(system_path, "run/prun.xtc")
+    tpr_path = os.path.join(system_path, CONFIG.paths.trajectory_subdir, CONFIG.paths.topology_filename)
+    xtc_path = os.path.join(system_path, CONFIG.paths.trajectory_subdir, CONFIG.paths.trajectory_filename)
 
     if not os.path.exists(tpr_path):
         tprs = glob.glob(os.path.join(system_path, "**/*.tpr"), recursive=True)
@@ -98,9 +106,9 @@ def load_real_data(system_name, data_dir="data/membrane_only", ff_dir="resources
             if gros: xtc_path = gros[0]
             else: raise FileNotFoundError(f"No trajectory (.xtc) or structure (.gro) found in {system_path}")
 
-    ff_params = os.path.join(ff_dir, "martini_ff_params.json")
-    ff_edge_params = os.path.join(ff_dir, "martini_ff_edge_params.json")
-    ff_node_mapping = os.path.join(ff_dir, "martini_ff_node_mapping.json")
+    ff_params = os.path.join(ff_dir, CONFIG.paths.ff_params_file.name)
+    ff_edge_params = os.path.join(ff_dir, CONFIG.paths.ff_edge_params_file.name)
+    ff_node_mapping = os.path.join(ff_dir, CONFIG.paths.ff_node_mapping_file.name)
 
     builder = MartiniHeteroGraphBuilder(
         tpr_file=tpr_path,
@@ -548,7 +556,7 @@ def profiling_and_timing(data_cpu, num_iters=50):
     print(f"Data Transfer Time (CPU -> {device.type.upper()}): {timer.elapsed_ms():.2f} ms")
 
     # ---------------- 2. Setup & Warmup --------------------------
-    model = MembranePropertyGNN(in_channels=4, hidden_dim=64, num_layers=3, out_dim=1).to(device)
+    model = MembranePropertyGNN(in_channels=CONFIG.model.in_channels, hidden_dim=CONFIG.model.hidden_dim, num_layers=CONFIG.model.num_layers, out_dim=1).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.01, weight_decay=1e-4)
 
     model.train()
@@ -618,7 +626,7 @@ def profiling_and_timing(data_cpu, num_iters=50):
 def numerical_stability_test(data_cpu):
     print(f"--- Numerical Stability Test (AMP vs FP32) ---")
     data = data_cpu.to(device)
-    model = MembranePropertyGNN(in_channels=4, hidden_dim=64, num_layers=3, out_dim=1).to(device)
+    model = MembranePropertyGNN(in_channels=CONFIG.model.in_channels, hidden_dim=CONFIG.model.hidden_dim, num_layers=CONFIG.model.num_layers, out_dim=1).to(device)
     model.eval()
     is_cuda = device.type == 'cuda'
 
@@ -673,7 +681,7 @@ def stress_test(step=5000):
             if is_cuda:
                 torch.cuda.empty_cache()
 
-            model = MembranePropertyGNN(in_channels=4, hidden_dim=64, num_layers=3, out_dim=1).to(device)
+            model = MembranePropertyGNN(in_channels=CONFIG.model.in_channels, hidden_dim=CONFIG.model.hidden_dim, num_layers=CONFIG.model.num_layers, out_dim=1).to(device)
             data = generate_dummy_data(N).to(device)
 
             optimizer = torch.optim.AdamW(model.parameters(), lr=0.01, weight_decay=1e-4)
@@ -712,15 +720,15 @@ def stress_test(step=5000):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HeteroGNN Benchmarking Script")
     parser.add_argument("--use-real", action="store_true", help="Benchmark using a real MD snapshot instead of synthetic data")
-    parser.add_argument("--real-system", type=str, default="POPC100", help="Name of the real system (default: POPC100)")
-    parser.add_argument("--data-dir", type=str, default="data/membrane_only", help="Base directory for real data")
-    parser.add_argument("--ff-dir", type=str, default="resources", help="Directory for FF JSON mappings")
+    parser.add_argument("--real-system", type=str, default=CONFIG.dataset.reference_system, help=f"Name of the real system (default: {CONFIG.dataset.reference_system})")
+    parser.add_argument("--data-dir", type=str, default=str(CONFIG.paths.data_dir), help="Base directory for real data")
+    parser.add_argument("--ff-dir", type=str, default=str(CONFIG.paths.resources_dir), help="Directory for FF JSON mappings")
     parser.add_argument("--processed-dir", type=str, default=None, help="Path to preprocessed chunk_*.pt directory for comparison")
 
     parser.add_argument("--nodes", type=int, default=10000, help="Node count for synthetic data benchmarking")
     parser.add_argument("--iters", type=int, default=20, help="Number of iterations for profiling timing")
     parser.add_argument("--stress-step", type=int, default=5000, help="Node increment step size for stress test")
-    parser.add_argument("--spatial-cutoff", type=float, default=11.0, help="Spatial cutoff (Å) for fresh graph building in benchmark comparisons (default: 11.0)")
+    parser.add_argument("--spatial-cutoff", type=float, default=CONFIG.dataset.spatial_cutoff, help=f"Spatial cutoff (Å) for fresh graph building (default: {CONFIG.dataset.spatial_cutoff})")
     parser.add_argument("--skip-stress", action="store_true", help="Skip the stress test phase")
     parser.add_argument("--mem-test", action="store_true", help="Perform the memory scaling analysis on real data")
     parser.add_argument("--graph-stats", action="store_true", help="Print graph topology statistics (node/edge counts, avg degrees)")

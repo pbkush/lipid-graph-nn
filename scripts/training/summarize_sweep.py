@@ -13,6 +13,12 @@ import datetime
 import pandas as pd
 from pathlib import Path
 
+_root_dir = Path(__file__).resolve().parents[2]
+if str(_root_dir) not in sys.path:
+    sys.path.insert(0, str(_root_dir))
+
+from lipid_gnn.config import CONFIG
+
 
 # ─────────────────────────────────────────────────────────
 # Log Parsing
@@ -224,7 +230,7 @@ def summarize_sweep(results_dir, top_n=3):
 
 # ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    results_base = "results/training/lipid_packing"
+    results_base = str(CONFIG.paths.training_results_dir / 'lipid_packing')
     if len(sys.argv) > 1:
         results_base = sys.argv[1]
     summarize_sweep(results_base)

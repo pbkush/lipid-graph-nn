@@ -205,13 +205,11 @@ def create_ff_edge_node_mapping(data_dir, output_edge_json_path, output_node_jso
     print(f"Saved physical explicit molecule node/edge mappings relative to topological inputs.")
     
 if __name__ == "__main__":
-    # Resolve paths relative to this script
-    script_dir = Path(__file__).resolve().parent
-    data_dir = script_dir.parent / 'data/membrane_only'
-    out_file = script_dir.parent / 'resources/martini_ff_params.json'
-    
+    from lipid_gnn.config import CONFIG
+    data_dir = CONFIG.paths.data_dir
+    out_file = CONFIG.paths.ff_params_file
     create_ff_mapping(data_dir, out_file)
-    
-    out_edge_file = script_dir.parent / 'resources/martini_ff_edge_params.json'
-    out_node_file = script_dir.parent / 'resources/martini_ff_node_mapping.json'
+
+    out_edge_file = CONFIG.paths.ff_edge_params_file
+    out_node_file = CONFIG.paths.ff_node_mapping_file
     create_ff_edge_node_mapping(data_dir, out_edge_file, out_node_file)
