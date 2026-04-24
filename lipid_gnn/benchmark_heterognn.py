@@ -482,7 +482,7 @@ def run_memory_scaling_test(args, spatial_cutoff=11.0):
     print(f"{'Frames':<10} | {'Loaded':<10} | {'Mem/System (MB)':<18} | {'Projected Total (GB)':<20}")
     print("-" * 60)
 
-    frame_counts = [1, 10, 100, 500]
+    frame_counts = [1, 10, 100]
 
     for n_target in frame_counts:
         n_actual = min(n_target, max_frames_available)

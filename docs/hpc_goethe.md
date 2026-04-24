@@ -28,7 +28,7 @@ quota
 module avail 2>&1 | grep -iE 'rocm|python|miniforge'
 curl -I -m 5 https://pypi.org
 curl -I -m 5 https://api.wandb.ai
-srun -p gpu_test --gres=gpu:1 --time=00:10:00 --pty bash   # repeat curl inside
+srun -p gpu_test --gres=gpu:1 --time=02:00:00 --pty bash   # repeat curl inside
 ```
 
 ### Transfer data from the laptop
@@ -54,7 +54,7 @@ conda create -y -n lipid_gnn python=3.13
 conda activate lipid_gnn
 
 module load rocm/6.2.4
-pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/rocm7.2
 pip install torch-geometric
 pip install -r $HOME/lipid-graph-nn/requirements.txt
 pip install --use-pep517 $HOME/lipid-graph-nn
