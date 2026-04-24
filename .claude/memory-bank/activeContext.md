@@ -161,6 +161,7 @@ Chunks are ready on Google Drive (all 8 properties, `y.shape == [1, 8]`). Both t
 
 ## Next Steps
 
+- **Config file for project paths (short-term task)**: Create a central config file (e.g. `config.yaml` or `config.py`) for project-wide path and experiment settings — chunk directories, data roots, W&B project names, spatial cutoff, num_frames, etc. Currently these are scattered as hardcoded constants across `run_sweep.py`, `prepare_colab_subset.py`, and the Colab notebook. Update all three entry points to load from the config file instead of duplicating constants.
 - **Smoke run / baseline check (immediate)**: 10 epochs, batch size 2, `PROPERTIES = ['lipid_packing', 'thickness']` on the new Drive chunks — overall MSE should reproduce ≈ 0.138. This confirms the y-slicing fix and chunk interleaving both work end-to-end.
 - **Batch-heterogeneity probe**: pull one batch, confirm `batch.y.std(dim=0)` is non-zero for all 8 properties.
 - **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
