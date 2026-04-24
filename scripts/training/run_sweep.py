@@ -5,10 +5,12 @@ Reads preprocessed .pt chunks produced by scripts/training/prepare_colab_subset.
 expands FIXED + SWEEP into a list of experiments, and runs each via train_one_run()
 with Weights & Biases logging. Run `wandb login` once before first use.
 """
+import io
 import itertools
 import os
 import random
 import sys
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -28,8 +30,9 @@ from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.plotting import plot_property_accuracies
 
 device  = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-use_amp = device.type == 'cuda'
+use_amp = False
 
+warnings.filterwarnings("ignore", message=".*torch-scatter.*")
 
 # ── Properties to predict ─────────────────────────────────────────────────────
 # Column order in y is fixed at preprocessing time (ALL_PROPERTIES below).
@@ -43,8 +46,8 @@ PROPERTIES = ['lipid_packing', 'thickness']
 # ── Fixed hyperparameters (shared across all runs) ────────────────────────────
 FIXED = {
     "epochs":      100,
-    "batch_size":  4,
-    "num_workers": 2,
+    "batch_size":  2,
+    "num_workers": 6,
 }
 
 # ── Sweep grid: every combination produces one run ────────────────────────────
@@ -53,11 +56,11 @@ FIXED = {
 #            "comp_only"     — composition vector through MLP only (ablation)
 SWEEP = {
     "comp_mode":     ["gnn_only"],
-    "hidden_dim":    [32, 64],
-    "num_layers":    [2, 3],
-    "learning_rate": [5e-4],
-    "weight_decay":  [5e-3],
-    "seed":          [0, 1, 2],
+    "hidden_dim":    [64],
+    "num_layers":    [2],
+    "learning_rate": [1e-4],
+    "weight_decay":  [0, 1e-4, 1e-3, 5e-3, 1e-2],
+    "seed":          [0, 1],
 }
 
 # ── Data ──────────────────────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         project="lipid_gnn_" + "_".join(properties),
         name=run_name,
         config=cfg,
+        group=os.environ.get("WANDB_GROUP")
     )
 
     _loader_kw = dict(
@@ -194,9 +198,12 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         avg_val_loss = total_val_loss / n_val
         avg_prop_val = (prop_val_loss / n_val).cpu().numpy()
         scheduler.step(avg_val_loss)
-
+        
         val_preds   = np.concatenate(val_preds,   axis=0)
         val_targets = np.concatenate(val_targets, axis=0)
+        if np.any(np.isnan(val_preds)):
+            print("NaN in preds — checking train loss history")
+
         r2_scores   = r2_score(val_targets, val_preds, multioutput="raw_values")
 
         if epoch % 10 == 0 or epoch == 1:
@@ -231,8 +238,12 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     test_targets = np.concatenate(test_targets, axis=0)
     final_mse    = float(np.mean((test_preds - test_targets) ** 2))
 
+    wandb.log({"test/mse_total": final_mse})
+
     fig = plot_property_accuracies(test_targets, test_preds, properties, final_mse)
-    wandb.log({"test/accuracy_plot": wandb.Image(fig), "test/mse_total": final_mse})
+    fig_path = Path(wandb.run.dir) / "accuracy_plot.png"
+    fig.savefig(fig_path)
+    wandb.log({"test/accuracy_plot": wandb.Image(str(fig_path))})
     plt.close(fig)
 
     wandb.finish()
