@@ -85,6 +85,8 @@ MD Trajectory (.tpr + .xtc/.trr)
 - `ff_parser.py` is standalone utility (parses raw Martini `.itp` text, no MDAnalysis dependency)
 - `scripts/training/` — preprocessing, sweeps, baselines
 - `scripts/colab/train_colab_rev.ipynb` — legacy Colab notebook (no longer the active training path; kept for reference)
+- **W&B offline analysis chain**: `scripts/bash/sbatch_sweep.sh` submits sweep → W&B receives run data → `scripts/python/download_wandb_runs.py` pulls to `logs/training/<group>/` as parquet/json → `scripts/notebooks/analyze_hp_search.ipynb` aggregates and visualizes. No live W&B API needed after download. See `docs/analyze_hp_search_notebook.md` for visualization reference.
+  - **SLURM GPU column pitfall**: W&B logs all 8 visible GPUs (gpu.0–gpu.7); only the allocated GPU is non-zero. Never hardcode `system.gpu.0.*` — always scan all `gpu.N.*` columns and select the one with the highest mean/max.
 
 ## Critical Implementation Paths
 

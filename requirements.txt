@@ -9,6 +9,7 @@ MDAnalysis>=2.10.0
 numpy>=2.4.0
 h5py>=3.15.0
 pandas>=2.0.0
+pyarrow>=15.0.0
 scikit-learn>=1.8.0
 
 # Utilities

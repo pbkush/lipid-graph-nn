@@ -61,7 +61,7 @@ training:
   batch_size: 2
   num_workers: 6
   learning_rate: 1.0e-4
-  weight_decay: 5.0e-3
+  weight_decay: 1.0e-3
   seed: 0
   patience: 10
   lr_factor: 0.5

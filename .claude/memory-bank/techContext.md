@@ -38,6 +38,7 @@ Pinned in `requirements.txt` (added 2026-04-17):
 - `numpy>=2.4.0`, `h5py>=3.15.0`, `pandas>=2.0.0`, `scikit-learn>=1.8.0`
 - `matplotlib>=3.10.0`, `tqdm>=4.67.0`, `pytest>=8.0.0`
 - `PyYAML>=6.0` (added 2026-04-24 for `lipid_gnn/config.py`)
+- `pyarrow>=15.0.0` (added 2026-04-25 for W&B parquet I/O in `download_wandb_runs.py` and `analyze_hp_search.ipynb`)
 - `wandb` (unpinned; Colab/remote runs only)
 
 ## GitHub / SSH
@@ -54,3 +55,4 @@ Pinned in `requirements.txt` (added 2026-04-17):
 - **Force field data**: Stored as JSON files in `resources/` — `ff_params.json` (bead type → physics params), `ff_node_mapping.json` (molecule+atom → bead type), `ff_edge_params.json` (bond parameters). Paths sourced from `CONFIG.paths.ff_*_file`.
 - **Experiment results**: Saved to `results/training/lipid_packing/<timestamp_config>/` with metrics JSON and plots
 - **Data flow**: Raw MD trajectories → `MartiniHeteroGraphBuilder` → `.pt` chunk files → `MartiniDiskDataset` → DataLoader
+- **W&B offline analysis**: After a sweep completes, download runs with `python scripts/python/download_wandb_runs.py --group <stage_name>` → `logs/training/<group>/`. Open `scripts/notebooks/analyze_hp_search.ipynb`, set `GROUP`, run all cells for rankings and visualizations. Re-download with `--force` to refresh; the script cleans stale files automatically.

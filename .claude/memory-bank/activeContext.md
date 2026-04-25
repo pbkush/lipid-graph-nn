@@ -2,9 +2,33 @@
 
 ## Current Work Focus
 
-Central config file landed (2026-04-24). Single source of truth at `config.yaml` + typed loader at `lipid_gnn/config.py`. Spatial-cutoff drift between `prepare_colab_subset.py` (11.0) and `dataset.py` / `lipid_graph.py` / `sbatch_preprocess.sh` (9.0) converged to **11.0 Å** across all sites. Colab notebooks deliberately not migrated (legacy reference only). Next step unchanged: run the 2-property baseline smoke run on HPC (`sbatch_sweep.sh`) and confirm MSE ≈ 0.138 reproduces.
+**HP search in progress (2026-04-25)** — `gnn_only`, 2 properties (`lipid_packing` + `thickness`).
+
+Stages completed and locked HPs:
+
+- **Stage 0** (baseline): overall test MSE ≈ 0.138 reproduced ✓
+- **Stage 1** (LR sweep): best `learning_rate = 1e-4` → locked in `config.yaml`
+- **Stage 2** (WD sweep): best `weight_decay = 1e-3` → locked in `config.yaml`
+
+**Stage 3 (architecture grid) is next**: `hidden_dim ∈ {32, 64, 128}` × `num_layers ∈ {2, 3, 4}`, 18 runs (2 seeds each). `run_sweep.py` SWEEP already updated. Submit via `sbatch scripts/bash/sbatch_sweep.sh` with `export WANDB_GROUP=stage_3_arch`.
+
+After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proceed to Tier A multi-property training (4 properties).
 
 ## Latest Changes
+
+**W&B offline analysis tooling (2026-04-25):**
+
+- New [scripts/python/download_wandb_runs.py](../../scripts/python/download_wandb_runs.py) — pulls a W&B group's finished runs to `logs/training/<group>/`. Per run: `config.json`, `summary.json`, `history.parquet` (per-epoch loss + R²), `system.parquet` (GPU util %, memory, CPU RSS, sampled ~15 s). Group index at `logs/training/<group>/runs_index.json`. Skips already-cached runs unless `--force`; on re-download cleans the run dir via `shutil.rmtree` first (prevents stale file accumulation). CLI: `--group` (nargs+), `--project`, `--entity`, `--out-dir`, `--properties`, `--include-crashed`, `--force`. Defaults from `CONFIG` (project, entity, properties).
+- New [scripts/notebooks/analyze_hp_search.ipynb](../../scripts/notebooks/analyze_hp_search.ipynb) — 14 code cells. Top-level `GROUP` variable (single edit point). Loads downloaded parquet/json, builds `runs_df` (one row per run) and `cells_df` (seeds collapsed, grouped by `VARYING_HPS`). Produces 7 visualizations: (a) val-loss curves per cell, (b) per-property val curves, (c) ranking table with background_gradient, (d) heatmap (2 dims only), (e) test vs val scatter with identity line, (f) 3-panel training stats (wall time, GPU memory, Pareto scatter), (g) system time-series twin-axis for top-3 cells. Recommendation cell applies Occam tie-break and per-property gate check (`lipid_packing < 0.056`, `thickness < 0.219`). Optional multi-group comparison cell.
+- New [docs/analyze_hp_search_notebook.md](../../docs/analyze_hp_search_notebook.md) — visualization reference: what each panel shows, how to read it, what to look for; covers (a)–(g) + recommendation + multi-group cells.
+- **pyarrow** added to `requirements.txt` (`pyarrow>=15.0.0`) — required for `run.history(pandas=True)` and `.parquet` I/O.
+- **Bug fix — SLURM GPU column detection**: W&B logs all 8 visible GPUs (gpu.0–gpu.7) but SLURM only allocates one (e.g. gpu.3). Original code returned `system.gpu.0.gpu` (all zeros). Fixed in both the notebook's load cell and the visualization (g) cell: scan all `gpu.N.gpu` / `gpu.N.memoryAllocated` columns and select the one with the **highest mean/max** — robust to any SLURM GPU allocation. Confirmed: `gpu_util_col = system.gpu.3.gpu`, mean util ≈ 86.4%, peak mem ≈ 29.5 GB.
+
+**HP search results locked (2026-04-25):**
+
+- Stage 1 winner: `learning_rate = 1e-4` (already correct in `config.yaml`).
+- Stage 2 winner: `weight_decay = 1e-3` → `config.yaml` line 64 updated from `5e-3` to `1e-3`.
+- `run_sweep.py` SWEEP updated for Stage 3: `hidden_dim ∈ {32, 64, 128}` × `num_layers ∈ {2, 3, 4}`, lr/wd locked from config.
 
 **Central config file (2026-04-24):**
 
@@ -175,8 +199,8 @@ Central config file landed (2026-04-24). Single source of truth at `config.yaml`
 
 ## Next Steps
 
-- **Smoke run / baseline check (immediate)**: 10 epochs, batch size 2, `PROPERTIES = ['lipid_packing', 'thickness']` on the HPC — overall MSE should reproduce ≈ 0.138. This confirms the y-slicing fix, chunk interleaving, and the fresh config wiring all work end-to-end. Run via `sbatch scripts/bash/sbatch_sweep.sh`.
-- **Batch-heterogeneity probe**: pull one batch, confirm `batch.y.std(dim=0)` is non-zero for all 8 properties.
+- **Stage 3 (architecture grid)**: submit via `sbatch scripts/bash/sbatch_sweep.sh` with `export WANDB_GROUP=stage_3_arch`. After runs finish, download and analyze: `python scripts/python/download_wandb_runs.py --group stage_3_arch`, then open `scripts/notebooks/analyze_hp_search.ipynb` and set `GROUP = 'stage_3_arch'`.
+- **Stage 5 (5-seed confirmation)**: run the Stage-3 winner with 5 seeds; must pass per-property gates (`lipid_packing < 0.056`, `thickness < 0.219`).
 - **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
   - **Tier A** (HP-tune here): `['lipid_packing', 'thickness', 'variation', 'thickness_std']`
   - **Tier B** (check negative transfer): add `'persistence'`, `'diffusivity'`
