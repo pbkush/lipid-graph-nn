@@ -2,7 +2,6 @@ import argparse
 import gc
 import os
 import random
-import shutil
 import time
 import zipfile
 from pathlib import Path
@@ -91,9 +90,7 @@ def prepare_colab_subset(
     no_zip=False,
 ):
     """
-    Preprocesses Martini trajectories into chunked .pt graph files and (by
-    default) bundles them with the lipid_gnn library into a zip for upload
-    to Google Colab.
+    Preprocesses Martini trajectories into chunked .pt graph files.
 
     Systems are split into train/val/test at the system level (before
     preprocessing) using split_seed. Each split gets its own subdirectory
@@ -103,10 +100,11 @@ def prepare_colab_subset(
     Raw .tpr/.xtc files are NOT included in the output — all graph features and
     target properties are baked in at preprocessing time.
 
+    By default a zip of the processed chunks is created for easy transfer.
+    Code is NOT bundled — training is HPC-only and code is synced via git.
+
     When `no_zip=True`, only the processed chunks are written (to `out_dir` if
-    given, else `<root>/<subset_name>/processed`). No library bundling, no zip.
-    This is the HPC / remote-training entry point where code is deployed via
-    git and chunks live on a separate filesystem from `$HOME`.
+    given, else `<root>/<subset_name>/processed`). This is the HPC entry point.
     """
     root_dir      = Path(__file__).resolve().parent.parent.parent
     data_dir      = Path(sims_dir)  if sims_dir  else CONFIG.paths.data_dir
@@ -122,14 +120,7 @@ def prepare_colab_subset(
     else:
         subset_dir = root_dir / subset_name
 
-    if no_zip:
-        proc_dest = Path(out_dir) if out_dir else subset_dir / 'processed'
-        lib_dest  = None
-    else:
-        proc_dest = subset_dir / 'processed'
-        lib_dest  = subset_dir / 'lipid_gnn'
-        if lib_dest.exists():
-            shutil.rmtree(lib_dest)
+    proc_dest = Path(out_dir) if out_dir else subset_dir / 'processed'
 
     # --- Collect sim tuples -----------------------------------------------
     compositions = sorted(
@@ -232,30 +223,26 @@ def prepare_colab_subset(
         print(f"Done! Chunks written to {proc_dest}/{{train,val,test}}/.")
         return
 
-    # --- Bundle library ---------------------------------------------------
-    assert lib_dest is not None
-    print("Bundling lipid_gnn library...")
-    shutil.copytree(root_dir / 'lipid_gnn', lib_dest)
-
-    # --- Zip (processed/{train,val,test}/ + lipid_gnn/ only) --------------
+    # --- Zip chunks only (no library — code is synced via git on HPC) -----
     zip_path = root_dir / f"{subset_dir.name}.zip"
     print(f"Creating archive: {zip_path} ...")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for subdir in [proc_dest, lib_dest]:
-            for root, _, files in os.walk(subdir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, root_dir)
-                    zipf.write(file_path, arcname)
+        for root, _, files in os.walk(proc_dest):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, root_dir)
+                zipf.write(file_path, arcname)
 
-    print(f"Done! Upload {zip_path.name} to Google Colab.")
+    print(f"Done! Archive at {zip_path.name} (chunks only — transfer to HPC and extract).")
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Preprocess Martini trajectories into chunked .pt graph files and "
-            "bundle them with the lipid_gnn library into a zip for Colab."
+            "Preprocess Martini trajectories into chunked .pt graph files. "
+            "Writes train/val/test subdirectories under the output directory. "
+            "Use --no-zip to skip archiving (HPC mode). "
+            "Without --no-zip, creates a zip of chunks only for transfer."
         )
     )
     parser.add_argument(
