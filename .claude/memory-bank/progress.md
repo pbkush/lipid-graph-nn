@@ -8,7 +8,8 @@
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
 - **HP analysis tooling**: `scripts/python/download_wandb_runs.py` pulls W&B groups to `logs/training/`; `scripts/notebooks/analyze_hp_search.ipynb` aggregates over seeds, ranks HP cells, and produces 7 visualizations (loss curves, heatmap, training stats, system metrics). `docs/analyze_hp_search_notebook.md` documents each visualization.
-- **HP search stages 0–2 complete**: Stage 0 baseline MSE ≈ 0.138 reproduced; Stage 1 locked `lr=1e-4`; Stage 2 locked `wd=1e-3` (updated in `config.yaml`). Stage 3 architecture grid (`hidden_dim × num_layers`) is next.
+- **HP search stages 0–3 complete**: Stage 0 baseline MSE ≈ 0.138 reproduced; Stage 1 locked `lr=1e-4`; Stage 2 locked `wd=1e-3`; Stage 3 winner: `hidden_dim=128, num_layers=2` (val_mean=0.03816, val_std=0.00036).
+- **Stratified system-level split**: `prepare_colab_subset.py` now defaults to `--split-method stratified` (k-means in y-space). Fixes the bug where random `split_seed=0` made test 4× narrower than train on `lipid_packing`, causing test MSE to always appear lower than val. New CLI: `--split-method`, `--stratify-on`.
 - **Test suite**: 9 test files, 35 tests (added `test_config.py` with 8 tests on 2026-04-24) covering graph construction, dataset loading, model modes, FF parsing, benchmarks, multi-frame preprocessing, interleaving invariant, train/val/test split disjointness, all-8-property y-shape invariant, and config loading/validation/env-override
 - **Central config**: `config.yaml` + `lipid_gnn/config.py` landed 2026-04-24. All runtime callers in `lipid_gnn/` (ex-`functions_emil`), `scripts/training/`, `scripts/bash/`, and `tests/` read defaults from `CONFIG`. Bash shim at `scripts/python/print_config_var.py`.
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
@@ -24,13 +25,13 @@
 
 ## Current Status
 
-### Phase: HP search in progress — Stage 3 (architecture grid) pending
+### Phase: HP search stages 0–3 complete; re-preprocessing + Stage 5 pending
 
-Full pipeline implemented end-to-end. HP search stages 0–2 complete on Goethe HPC (AMD MI210 / ROCm 6.2): baseline MSE ≈ 0.138 reproduced, `lr=1e-4` and `wd=1e-3` locked. Stage 3 (`hidden_dim ∈ {32,64,128}` × `num_layers ∈ {2,3,4}`, 18 cells × 2 seeds) is next to submit. W&B offline analysis tooling is ready: download runs with `download_wandb_runs.py`, analyze with `analyze_hp_search.ipynb`. Current best results — Overall Test MSE: **0.1378** (lipid_packing: 0.0566, thickness: 0.2190).
+HP search complete through Stage 3. Winner: `hidden_dim=128, num_layers=2`, `lr=1e-4`, `wd=1e-3`. Val MSE at winner: **0.03816** (vs baseline 0.138, 3.6× improvement). Test MSE in old runs was artificially low due to narrow random test split — fixed by new stratified split. Next: re-preprocess chunks on HPC with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std`, then Stage 5 (5-seed confirmation on new chunks). Current best (old split, not directly comparable): test MSE ≈ 0.028 on a narrow test set.
 
 ## Known Issues
 
-1. **Chunks**: Chunks (all 8 properties, `y.shape [1, 8]`, interleaved, 3-directory layout) generated 2026-04-22. Old chunks from before this date are incompatible. Baseline MSE ≈ 0.138 has been confirmed on HPC (Stage 0).
+1. **Chunks must be regenerated** with the stratified split before Stage 5 and Tier A training. Current chunks (generated 2026-04-22 with `split_seed=0` random split) have a narrow test set — valid for HP selection only. Re-preprocess on HPC with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std`.
 2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 

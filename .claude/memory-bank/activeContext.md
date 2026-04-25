@@ -16,6 +16,14 @@ After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proce
 
 ## Latest Changes
 
+**Stratified system-level split (2026-04-25):**
+
+- `prepare_colab_subset.py` now defaults to `--split-method stratified` instead of random shuffle. New function `_stratified_split_systems`: loads per-system y-means from `.h5` pickles, z-scores each property, k-means clusters in y-space (k = min(10, N//7)), uses cluster IDs as stratification labels for two-stage `sklearn.train_test_split`. Prints per-split y-stats so coverage is visible at preprocessing time.
+- New CLI flags: `--split-method {stratified, random}` (default `stratified`), `--stratify-on PROP [PROP ...]` (default: `CONFIG.vocab.active_properties`; must be subset of `--properties`). Old random path kept as `--split-method random` for reproducibility.
+- **Root cause fixed**: the original `split_seed=0` random split gave test `lipid_packing` std=0.059 vs train std=0.251 (4.2× narrower) — test was trivially easy. Stratified split now gives test std=0.146 (comparable to train). This was why test MSE was always lower than val across all HP search stages.
+- New `tests/test_stratified_split.py` — 4 tests: `test_stratified_split_covers_y_range_2d` (adversarial mode-in-median distribution; asserts test/val std ≥ 0.5× train), `test_stratified_split_disjoint`, `test_stratified_split_deterministic`, `test_stratified_split_4d_tier_a`. Total test suite: **39 tests**.
+- **For Tier A re-preprocessing**: use `--stratify-on lipid_packing thickness variation thickness_std` to guarantee range coverage on `variation` (R² ceiling ≈ 0.5 in early runs — hard to predict, so especially important to have proper range in holdouts).
+
 **W&B offline analysis tooling (2026-04-25):**
 
 - New [scripts/python/download_wandb_runs.py](../../scripts/python/download_wandb_runs.py) — pulls a W&B group's finished runs to `logs/training/<group>/`. Per run: `config.json`, `summary.json`, `history.parquet` (per-epoch loss + R²), `system.parquet` (GPU util %, memory, CPU RSS, sampled ~15 s). Group index at `logs/training/<group>/runs_index.json`. Skips already-cached runs unless `--force`; on re-download cleans the run dir via `shutil.rmtree` first (prevents stale file accumulation). CLI: `--group` (nargs+), `--project`, `--entity`, `--out-dir`, `--properties`, `--include-crashed`, `--force`. Defaults from `CONFIG` (project, entity, properties).
@@ -199,8 +207,9 @@ After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proce
 
 ## Next Steps
 
-- **Stage 3 (architecture grid)**: submit via `sbatch scripts/bash/sbatch_sweep.sh` with `export WANDB_GROUP=stage_3_arch`. After runs finish, download and analyze: `python scripts/python/download_wandb_runs.py --group stage_3_arch`, then open `scripts/notebooks/analyze_hp_search.ipynb` and set `GROUP = 'stage_3_arch'`.
-- **Stage 5 (5-seed confirmation)**: run the Stage-3 winner with 5 seeds; must pass per-property gates (`lipid_packing < 0.056`, `thickness < 0.219`).
+- **Re-preprocess with stratified split before Stage 5 / Tier A**: run `prepare_colab_subset.py` with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std` on the HPC. Old chunks (random split) are valid for HP selection but not for final reporting — test MSE was artificially low.
+- **Stage 3 analysis**: winner is `hidden_dim=128, num_layers=2` (val_mean=0.03816, val_std=0.00036 — most stable cell). Optionally re-tune lr/wd at h=128 before Stage 5 (val_std is tiny → likely already well-tuned).
+- **Stage 5 (5-seed confirmation)**: run the Stage-3 winner with 5 seeds on the new stratified chunks; must pass per-property gates (`lipid_packing < 0.056`, `thickness < 0.219`).
 - **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
   - **Tier A** (HP-tune here): `['lipid_packing', 'thickness', 'variation', 'thickness_std']`
   - **Tier B** (check negative transfer): add `'persistence'`, `'diffusivity'`

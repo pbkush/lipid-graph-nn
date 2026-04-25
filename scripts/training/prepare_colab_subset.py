@@ -7,11 +7,70 @@ import time
 import zipfile
 from pathlib import Path
 
+import numpy as np
+
 from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import preprocess_and_save
+from lipid_gnn.functions_emil.functions import pkl_load
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
 AVAILABLE_PROPERTIES = CONFIG.vocab.all_properties
+
+
+def _stratified_split_systems(
+    sim_tuples,
+    stratify_on,
+    val_frac,
+    test_frac,
+    split_seed,
+    n_clusters=10,
+):
+    """
+    Split systems into train/val/test such that each split spans the y-range
+    of `stratify_on`, using k-means cluster IDs in standardized y-space as
+    stratification labels. Robust to property scale differences (z-scores
+    each property first) and correlations between properties (clustering
+    handles multi-D structure naturally, no per-property tercile bins).
+
+    Returns: (train_sims, val_sims, test_sims).
+    """
+    from sklearn.cluster import KMeans
+    from sklearn.model_selection import train_test_split
+
+    y_per_system = []
+    for _, _, props_path in sim_tuples:
+        mean_dict, _ = pkl_load(props_path, verbose=False)
+        y_per_system.append([float(mean_dict[p]) for p in stratify_on])
+    Y = np.asarray(y_per_system, dtype=np.float64)
+
+    Yz = (Y - Y.mean(0)) / (Y.std(0) + 1e-12)
+
+    k = min(n_clusters, max(2, len(sim_tuples) // 7))
+    labels = KMeans(n_clusters=k, random_state=split_seed, n_init=10).fit_predict(Yz)
+
+    idx = np.arange(len(sim_tuples))
+    trainval_idx, test_idx = train_test_split(
+        idx, test_size=test_frac, random_state=split_seed, stratify=labels,
+    )
+    val_relative = val_frac / (1.0 - test_frac)
+    train_idx, val_idx = train_test_split(
+        trainval_idx, test_size=val_relative, random_state=split_seed,
+        stratify=labels[trainval_idx],
+    )
+
+    train_sims = [sim_tuples[i] for i in train_idx]
+    val_sims   = [sim_tuples[i] for i in val_idx]
+    test_sims  = [sim_tuples[i] for i in test_idx]
+
+    print(f"\nStratified split (k={k} clusters in {len(stratify_on)}-D y-space):")
+    for split_name, sidx in [("train", train_idx), ("val", val_idx), ("test", test_idx)]:
+        print(f"  {split_name:<6} (n={len(sidx)}):")
+        for j, p in enumerate(stratify_on):
+            v = Y[sidx, j]
+            print(f"    {p:<20} mean={v.mean():>8.4f} std={v.std():>8.4f} "
+                  f"range=[{v.min():>8.4f}, {v.max():>8.4f}]")
+
+    return train_sims, val_sims, test_sims
 
 
 def prepare_colab_subset(
@@ -23,6 +82,8 @@ def prepare_colab_subset(
     val_frac=0.15,
     test_frac=0.15,
     split_seed=0,
+    split_method="stratified",
+    stratify_on=None,
     subset_name=None,
     sims_dir=None,
     props_dir=None,
@@ -91,17 +152,34 @@ def prepare_colab_subset(
         raise RuntimeError(f"No complete systems found in {data_dir}")
 
     # --- System-level train / val / test split ----------------------------
-    rng = random.Random(split_seed)
-    shuffled = list(sim_tuples)
-    rng.shuffle(shuffled)
-    n_test = max(1, round(len(shuffled) * test_frac))
-    n_val  = max(1, round(len(shuffled) * val_frac))
-    test_sims  = shuffled[:n_test]
-    val_sims   = shuffled[n_test:n_test + n_val]
-    train_sims = shuffled[n_test + n_val:]
-
     print(f"\nFound {len(sim_tuples)} complete systems.")
-    print(f"Split (seed={split_seed}): train={len(train_sims)}, val={len(val_sims)}, test={len(test_sims)}")
+
+    if split_method == "stratified":
+        if stratify_on is None:
+            stratify_on = list(CONFIG.vocab.active_properties)
+        missing = [p for p in stratify_on if p not in target_properties]
+        if missing:
+            raise ValueError(
+                f"--stratify-on contains properties not in --properties: {missing}. "
+                f"Stratification properties must be a subset of the saved y columns."
+            )
+        train_sims, val_sims, test_sims = _stratified_split_systems(
+            sim_tuples, stratify_on, val_frac, test_frac, split_seed,
+        )
+    elif split_method == "random":
+        rng = random.Random(split_seed)
+        shuffled = list(sim_tuples)
+        rng.shuffle(shuffled)
+        n_test = max(1, round(len(shuffled) * test_frac))
+        n_val  = max(1, round(len(shuffled) * val_frac))
+        test_sims  = shuffled[:n_test]
+        val_sims   = shuffled[n_test:n_test + n_val]
+        train_sims = shuffled[n_test + n_val:]
+    else:
+        raise ValueError(f"Unknown split_method: {split_method!r}")
+
+    print(f"Split (method={split_method}, seed={split_seed}): "
+          f"train={len(train_sims)}, val={len(val_sims)}, test={len(test_sims)}")
     print(f"Target properties : {target_properties}")
     print(f"Frames per system : {num_frames}")
     print(f"Chunk size        : {chunk_size} graphs/chunk")
@@ -221,6 +299,25 @@ def _parse_args():
         help=f"RNG seed for train/val/test system assignment (default: {CONFIG.dataset.split_seed}).",
     )
     parser.add_argument(
+        "--split-method", choices=["stratified", "random"], default="stratified",
+        help=(
+            "How to assign systems to train/val/test. 'stratified' clusters systems "
+            "in standardized y-space (k-means) so each split spans the y-range of "
+            "--stratify-on. 'random' shuffles uniformly (legacy; can produce splits "
+            "with very narrow y-range, especially in small holdouts). Default: stratified."
+        ),
+    )
+    parser.add_argument(
+        "--stratify-on", nargs="+", default=None,
+        choices=AVAILABLE_PROPERTIES, metavar="PROP",
+        help=(
+            "Properties used as stratification basis when --split-method=stratified. "
+            f"Default: active_properties from config ({list(CONFIG.vocab.active_properties)}). "
+            "Should match the property set of the upcoming experiment so each split spans "
+            "the y-range of the metrics you'll evaluate. Must be a subset of --properties."
+        ),
+    )
+    parser.add_argument(
         "--subset-name", default=None,
         help=f"Output directory and zip name (default: {CONFIG.paths.subset_bundle_dir.name}).",
     )
@@ -254,6 +351,8 @@ if __name__ == "__main__":
         val_frac=args.val_frac,
         test_frac=args.test_frac,
         split_seed=args.split_seed,
+        split_method=args.split_method,
+        stratify_on=args.stratify_on,
         subset_name=args.subset_name,
         sims_dir=args.sims_dir,
         props_dir=args.props_dir,
