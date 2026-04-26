@@ -16,12 +16,12 @@
 #
 #   # Stage 1b lr sweep — 3 lr values × 1 seed group = 3 parallel jobs:
 #   bash scripts/bash/submit_sweep.sh --group stage_1b_tier_a_lr \
-#       --lr 1e-5 --lr 1e-4 --lr 5e-4 \
+#       --lr "1e-5 1e-4 5e-4" \
 #       --seeds "0 1"
 #
 #   # Stage 2b wd sweep — 3 wd values × 2 seed groups = 6 parallel jobs:
 #   bash scripts/bash/submit_sweep.sh --group stage_2b_tier_a_wd \
-#       --wd 1e-4 --wd 1e-3 --wd 1e-2 \
+#       --wd "1e-4 1e-3 1e-2" \
 #       --seeds "0 1" --seeds "2 3"
 #
 #   # Override properties:
@@ -43,13 +43,15 @@ PROPERTIES_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --group)        GROUP="$2";                 shift 2 ;;
-        --seeds)        SEEDS_LIST+=("$2");         shift 2 ;;
-        --lr)           LR_LIST+=("$2");            shift 2 ;;
-        --wd)           WD_LIST+=("$2");            shift 2 ;;
-        --hidden-dim)   HIDDEN_DIM_LIST+=("$2");    shift 2 ;;
-        --num-layers)   NUM_LAYERS_LIST+=("$2");    shift 2 ;;
-        --properties)   PROPERTIES_OVERRIDE="$2";   shift 2 ;;
+        --group)        GROUP="$2";                                          shift 2 ;;
+        --seeds)        SEEDS_LIST+=("$2");                                  shift 2 ;;
+        --properties)   PROPERTIES_OVERRIDE="$2";                            shift 2 ;;
+        # HP flags: space-separated values in one arg OR repeated flag both work.
+        # e.g. --lr "1e-5 1e-4 5e-4"  OR  --lr 1e-5 --lr 1e-4 --lr 5e-4
+        --lr)           read -ra _v <<< "$2"; LR_LIST+=("${_v[@]}");         shift 2 ;;
+        --wd)           read -ra _v <<< "$2"; WD_LIST+=("${_v[@]}");         shift 2 ;;
+        --hidden-dim)   read -ra _v <<< "$2"; HIDDEN_DIM_LIST+=("${_v[@]}"); shift 2 ;;
+        --num-layers)   read -ra _v <<< "$2"; NUM_LAYERS_LIST+=("${_v[@]}"); shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
