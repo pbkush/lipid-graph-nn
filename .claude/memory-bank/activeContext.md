@@ -2,19 +2,42 @@
 
 ## Current Work Focus
 
-**HP search in progress (2026-04-25)** — `gnn_only`, 2 properties (`lipid_packing` + `thickness`).
+**Stage 0 re-run + Stage 5 in progress (2026-04-26)** — `gnn_only`, 2 properties (`lipid_packing` + `thickness`), on stratified chunks.
 
-Stages completed and locked HPs:
+Locked HPs (from Stages 1–3): `hidden_dim=128`, `num_layers=2`, `lr=1e-4`, `wd=1e-3`
 
-- **Stage 0** (baseline): overall test MSE ≈ 0.138 reproduced ✓
-- **Stage 1** (LR sweep): best `learning_rate = 1e-4` → locked in `config.yaml`
-- **Stage 2** (WD sweep): best `weight_decay = 1e-3` → locked in `config.yaml`
+Stage 0 re-run (`WANDB_GROUP=stage_0_baseline`, 5 seeds) and Stage 5 (`WANDB_GROUP=stage_5_confirm`, 5 seeds) are **currently running** on the HPC on the new stratified chunks.
 
-**Stage 3 (architecture grid) is next**: `hidden_dim ∈ {32, 64, 128}` × `num_layers ∈ {2, 3, 4}`, 18 runs (2 seeds each). `run_sweep.py` SWEEP already updated. Submit via `sbatch scripts/bash/sbatch_sweep.sh` with `export WANDB_GROUP=stage_3_arch`.
+**Next after runs finish:**
 
-After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proceed to Tier A multi-property training (4 properties).
+1. `python scripts/python/download_wandb_runs.py --group stage_0_baseline stage_5_confirm` — now also downloads `test_artifacts.npz` via `run.files()`.
+2. Open `analyze_stage_5.ipynb`, set `GROUP = "stage_5_confirm"`, run all 9 figures + `headline_numbers.json`.
+3. Move to **Tier A** — 4 properties. See [docs/tier_a_4prop_plan.md](../../docs/tier_a_4prop_plan.md).
+
+**Tier A activation** (no chunk rebuild needed):
+
+```yaml
+# config.yaml
+vocab:
+  active_properties: [lipid_packing, thickness, thickness_std, variation]
+```
+
+Then run Stage 1b (6 runs, lr sanity check) before Stage 5b.
 
 ## Latest Changes
+
+**Tier A 4-property plan + per-property test logging (2026-04-26):**
+
+- `scripts/training/run_sweep.py`: now logs `test/mse_{prop}` for every property alongside `test/mse_total` — visible directly in W&B without downloading artifacts. Replaces the single scalar with a dict `test_metrics` built in a loop over `properties`.
+- `scripts/python/download_wandb_runs.py` `_download_run`: now fetches W&B file artifacts uploaded via `wandb.save()` (specifically `test_artifacts.npz`) using `run.files()`. Previously only downloaded history/system parquets.
+- `docs/tier_a_4prop_plan.md`: lightweight HP re-check plan for 4-property Tier A. Stage 1b (6 runs, lr ∈ {1e-5, 1e-4, 5e-4} × 2 seeds) → optional Stage 2b → Stage 5b (5 seeds). No chunk rebuild needed.
+- `config.yaml`: `hidden_dim` locked to 128 (was 64 — now matches Stage 3 winner).
+- `sbatch_sweep.sh`: reset `--job-name` and `WANDB_GROUP` to `stage_0_baseline` for the re-run.
+
+**Bug fix — test_artifacts.npz was never actually saved (2026-04-26):**
+
+- The commit `5fead3c` claimed to add `test_artifacts.npz` saving to `run_sweep.py`, but the actual diff only updated the SWEEP grid — the saving code was missing. Fixed: test loop now collects `test_comps`/`test_sys_idx` per batch, and after the loop saves `np.savez(artifacts_path, test_preds, test_targets, test_compositions, test_system_idx, scaler_mean, scaler_scale, properties)` + `wandb.save(str(artifacts_path))`.
+- **Consequence**: Stage 0 and Stage 5 runs that completed before this fix have no `test_artifacts.npz` in W&B. Those runs must be re-run (currently in progress on HPC).
 
 **Stage 5 analysis pipeline + publication notebook (2026-04-26):**
 
