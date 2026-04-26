@@ -245,7 +245,11 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     test_targets = np.concatenate(test_targets, axis=0)
     final_mse    = float(np.mean((test_preds - test_targets) ** 2))
 
-    wandb.log({"test/mse_total": final_mse})
+    test_metrics = {"test/mse_total": final_mse}
+    prop_mse = np.mean((test_preds - test_targets) ** 2, axis=0)
+    for i, prop in enumerate(properties):
+        test_metrics[f"test/mse_{prop}"] = float(prop_mse[i])
+    wandb.log(test_metrics)
 
     artifacts_path = Path(wandb.run.dir) / "test_artifacts.npz"
     np.savez(
