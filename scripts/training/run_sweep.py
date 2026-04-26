@@ -61,6 +61,31 @@ SWEEP = {
     "seed":          [0, 1, 3],
 }
 
+# ── Submission-time env-var overrides (set by submit_sweep.sh) ────────────────
+# All HP values are frozen into env vars when sbatch is called, so queue wait
+# time cannot introduce config drift. SWEEP_SEEDS also enables seed
+# parallelization: each job gets its own seed subset.
+def _apply_submission_overrides() -> None:
+    global PROPERTIES, FIXED, SWEEP
+    if v := os.environ.get("SWEEP_SEEDS"):
+        SWEEP["seed"] = [int(s) for s in v.split()]
+    if v := os.environ.get("FREEZE_HIDDEN_DIM"):
+        SWEEP["hidden_dim"] = [int(v)]
+    if v := os.environ.get("FREEZE_NUM_LAYERS"):
+        SWEEP["num_layers"] = [int(v)]
+    if v := os.environ.get("FREEZE_LR"):
+        SWEEP["learning_rate"] = [float(v)]
+    if v := os.environ.get("FREEZE_WD"):
+        SWEEP["weight_decay"] = [float(v)]
+    if v := os.environ.get("FREEZE_EPOCHS"):
+        FIXED["epochs"] = int(v)
+    if v := os.environ.get("FREEZE_PROPERTIES"):
+        props = [p for p in v.split() if p in ALL_PROPERTIES]
+        if props:
+            PROPERTIES = props
+
+_apply_submission_overrides()
+
 # ── Data ──────────────────────────────────────────────────────────────────────
 # CHUNKS_DIR env override is handled inside lipid_gnn.config.load_config and
 # already reflected in CONFIG.paths.chunks_dir (HPC: /work/<grp>/<user>/...
