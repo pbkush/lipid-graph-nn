@@ -221,6 +221,8 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     model.eval()
     test_preds   = []
     test_targets = []
+    test_comps   = []
+    test_sys_idx = []
 
     with torch.no_grad():
         for batch in test_loader:
@@ -230,11 +232,33 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
             test_preds.append(out.cpu().numpy())
             test_targets.append(target.detach().cpu().numpy())
 
+            if hasattr(batch, 'composition'):
+                comps = batch.composition
+                test_comps.extend(comps if isinstance(comps, list) else [comps])
+            if hasattr(batch, 'system_idx'):
+                sidx = batch.system_idx
+                test_sys_idx.extend(
+                    sidx.cpu().tolist() if torch.is_tensor(sidx) else list(sidx)
+                )
+
     test_preds   = np.concatenate(test_preds,   axis=0)
     test_targets = np.concatenate(test_targets, axis=0)
     final_mse    = float(np.mean((test_preds - test_targets) ** 2))
 
     wandb.log({"test/mse_total": final_mse})
+
+    artifacts_path = Path(wandb.run.dir) / "test_artifacts.npz"
+    np.savez(
+        artifacts_path,
+        test_preds=test_preds,
+        test_targets=test_targets,
+        test_compositions=np.array(test_comps   if test_comps   else [], dtype=object),
+        test_system_idx  =np.array(test_sys_idx if test_sys_idx else [], dtype=np.int64),
+        scaler_mean  =scaler.mean_[prop_cols],
+        scaler_scale =scaler.scale_[prop_cols],
+        properties   =np.array(properties),
+    )
+    wandb.save(str(artifacts_path))
 
     fig = plot_property_accuracies(test_targets, test_preds, properties, final_mse)
     fig_path = Path(wandb.run.dir) / "accuracy_plot.png"

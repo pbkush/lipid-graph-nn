@@ -90,6 +90,15 @@ def _download_run(run, run_dir: Path) -> tuple[pd.DataFrame, dict]:
     except Exception as exc:
         print(f"    WARNING: could not fetch system metrics: {exc}")
 
+    # File artifacts uploaded via wandb.save() — e.g. test_artifacts.npz
+    _ARTIFACT_FILES = {"test_artifacts.npz"}
+    try:
+        for wf in run.files():
+            if wf.name in _ARTIFACT_FILES:
+                wf.download(root=str(run_dir), replace=True)
+    except Exception as exc:
+        print(f"    WARNING: could not fetch file artifacts: {exc}")
+
     return history_df, summary
 
 
