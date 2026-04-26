@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-USER="${USER:-pberger}"
+USER=pberger
 GROUP="$(python scripts/python/print_config_var.py hpc.group)"
 WORK_SUBPATH="$(python scripts/python/print_config_var.py hpc.work_subpath)"
 BUNDLE_DIR="$(python scripts/python/print_config_var.py paths.subset_bundle_dir)"

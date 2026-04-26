@@ -16,6 +16,14 @@ After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proce
 
 ## Latest Changes
 
+**Stage 5 analysis pipeline + publication notebook (2026-04-26):**
+
+- `lipid_gnn/dataset.py` `preprocess_and_save`: each graph now carries `hetero_data.composition` (composition directory name, e.g. `"POPC95_CHOL5"`) and `hetero_data.system_idx` (tensor). Derived from `Path(tpr).parents[1].name`. Required for per-system error analysis in the Stage 5 notebook.
+- `scripts/training/run_sweep.py` `train_one_run`: after the test loop, saves `test_artifacts.npz` to `wandb.run.dir` and uploads via `wandb.save`. Contains: `test_preds`, `test_targets`, `test_compositions`, `test_system_idx`, `scaler_mean`, `scaler_scale`, `properties` — the same format read by the notebook.
+- `scripts/training/linear_baseline.py`: new `run_stratified_baseline(chunks_dir, properties, out_npz)` — trains Ridge on train-split chunks, evaluates on test-split chunks, saves same-format `.npz` to `results/training/linear_baseline_stratified.npz`. Invoke with `python linear_baseline.py --stratified`.
+- `tests/test_dataset.py`: 3 new tests — composition labels survive `torch.save`/load, survive DataLoader iteration, and train/test composition sets are disjoint. Total suite: **42 tests**.
+- `scripts/notebooks/analyze_stage_5.ipynb`: 20-cell publication notebook. Produces 9 figures (PDF + PNG at 300 DPI) + `headline_numbers.json` with all annotated numbers. Figures: (a) loss curves with seed band, (b) pred-vs-true scatter coloured by composition, (c) per-system MAE bar chart, (d) residual histograms, (e) GNN vs baseline, (f) HP progression, (g) composition-space PCA with MAE overlay, (h) R² forest plot with bootstrap CI, (i) paired Stage-0 vs Stage-5 dot plot with t-test.
+
 **Stratified system-level split (2026-04-25):**
 
 - `prepare_colab_subset.py` now defaults to `--split-method stratified` instead of random shuffle. New function `_stratified_split_systems`: loads per-system y-means from `.h5` pickles, z-scores each property, k-means clusters in y-space (k = min(10, N//7)), uses cluster IDs as stratification labels for two-stage `sklearn.train_test_split`. Prints per-split y-stats so coverage is visible at preprocessing time.
@@ -207,7 +215,7 @@ After Stage 3: run Stage 5 (5-seed confirmation) on the winning cell, then proce
 
 ## Next Steps
 
-- **Re-preprocess with stratified split before Stage 5 / Tier A**: run `prepare_colab_subset.py` with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std` on the HPC. Old chunks (random split) are valid for HP selection but not for final reporting — test MSE was artificially low.
+- **Re-preprocess with stratified split before Stage 5 / Tier A**: run `prepare_colab_subset.py` with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std` on the HPC. Old chunks (random split) lack `composition`/`system_idx` attributes AND have the narrow test split — both issues fixed only by regenerating.
 - **Stage 3 analysis**: winner is `hidden_dim=128, num_layers=2` (val_mean=0.03816, val_std=0.00036 — most stable cell). Optionally re-tune lr/wd at h=128 before Stage 5 (val_std is tiny → likely already well-tuned).
 - **Stage 5 (5-seed confirmation)**: run the Stage-3 winner with 5 seeds on the new stratified chunks; must pass per-property gates (`lipid_packing < 0.056`, `thickness < 0.219`).
 - **Multi-property training (tiered)**: change `PROPERTIES` in the config cell — no chunk rebuild needed. Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).

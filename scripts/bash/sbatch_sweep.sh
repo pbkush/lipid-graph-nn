@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=stage_2_lipid-sweep
+#SBATCH --job-name=stage_0_lipid-sweep
 #SBATCH --mail-user=pberger@fias.uni-frankfurt.de
 #SBATCH --account=cellmembrane
 #SBATCH --partition=gpu
@@ -22,6 +22,7 @@ CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
 conda activate "$CONDA_ENV"
 module load "$(python scripts/python/print_config_var.py hpc.module_rocm)"
 
+USER=pberger
 GROUP="$(python scripts/python/print_config_var.py hpc.group)"
 WORK_SUBPATH="$(python scripts/python/print_config_var.py hpc.work_subpath)"
 CHUNKS_REL="$(python scripts/python/print_config_var.py paths.chunks_dir)"
@@ -40,7 +41,7 @@ export CHUNKS_DIR="$STAGE"
 # W&B: set WANDB_MODE=offline in your environment if compute nodes are air-gapped;
 # then after the job: wandb sync "$WORK"/wandb/offline-run-*
 export WANDB_MODE="${WANDB_MODE:-online}"
-export WANDB_GROUP="stage_2_weight_decay-sweep"
+export WANDB_GROUP="stage_0_baseline"
 WANDB_DIR="$(python scripts/python/print_config_var.py paths.wandb_dir)"
 export WANDB_DIR
 mkdir -p "$WANDB_DIR"

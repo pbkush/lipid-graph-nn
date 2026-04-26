@@ -10,6 +10,7 @@
 - **HP analysis tooling**: `scripts/python/download_wandb_runs.py` pulls W&B groups to `logs/training/`; `scripts/notebooks/analyze_hp_search.ipynb` aggregates over seeds, ranks HP cells, and produces 7 visualizations (loss curves, heatmap, training stats, system metrics). `docs/analyze_hp_search_notebook.md` documents each visualization.
 - **HP search stages 0–3 complete**: Stage 0 baseline MSE ≈ 0.138 reproduced; Stage 1 locked `lr=1e-4`; Stage 2 locked `wd=1e-3`; Stage 3 winner: `hidden_dim=128, num_layers=2` (val_mean=0.03816, val_std=0.00036).
 - **Stratified system-level split**: `prepare_colab_subset.py` now defaults to `--split-method stratified` (k-means in y-space). Fixes the bug where random `split_seed=0` made test 4× narrower than train on `lipid_packing`, causing test MSE to always appear lower than val. New CLI: `--split-method`, `--stratify-on`.
+- **Stage 5 analysis pipeline**: `dataset.py` tags graphs with `composition` + `system_idx`; `run_sweep.py` saves `test_artifacts.npz` per run; `linear_baseline.py` has `--stratified` mode matching the same `.npz` format. `scripts/notebooks/analyze_stage_5.ipynb` produces 9 publication-grade figures + `headline_numbers.json` with bootstrap CIs and paired t-test.
 - **Test suite**: 9 test files, 35 tests (added `test_config.py` with 8 tests on 2026-04-24) covering graph construction, dataset loading, model modes, FF parsing, benchmarks, multi-frame preprocessing, interleaving invariant, train/val/test split disjointness, all-8-property y-shape invariant, and config loading/validation/env-override
 - **Central config**: `config.yaml` + `lipid_gnn/config.py` landed 2026-04-24. All runtime callers in `lipid_gnn/` (ex-`functions_emil`), `scripts/training/`, `scripts/bash/`, and `tests/` read defaults from `CONFIG`. Bash shim at `scripts/python/print_config_var.py`.
 - **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
@@ -31,7 +32,7 @@ HP search complete through Stage 3. Winner: `hidden_dim=128, num_layers=2`, `lr=
 
 ## Known Issues
 
-1. **Chunks must be regenerated** with the stratified split before Stage 5 and Tier A training. Current chunks (generated 2026-04-22 with `split_seed=0` random split) have a narrow test set — valid for HP selection only. Re-preprocess on HPC with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std`.
+1. **Chunks must be regenerated** with the stratified split before Stage 5 and Tier A training. Old chunks lack `composition` + `system_idx` graph attributes — needed by `run_sweep.py` and `analyze_stage_5.ipynb`. Current chunks (generated 2026-04-22 with `split_seed=0` random split) have a narrow test set — valid for HP selection only. Re-preprocess on HPC with `--split-method stratified --stratify-on lipid_packing thickness variation thickness_std`.
 2. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
 3. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
 
