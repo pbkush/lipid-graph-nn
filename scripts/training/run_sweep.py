@@ -54,11 +54,11 @@ FIXED = {
 #            "comp_only"     — composition vector through MLP only (ablation)
 SWEEP = {
     "comp_mode":     ["gnn_only"],
-    "hidden_dim":    [32, 64, 128],
-    "num_layers":    [2, 3, 4],
+    "hidden_dim":    [CONFIG.model.hidden_dim],         # locked: 128  (Stage 3)
+    "num_layers":    [CONFIG.model.num_layers],         # locked: 2    (Stage 3)
     "learning_rate": [CONFIG.training.learning_rate],   # locked: 1e-4 (Stage 1)
     "weight_decay":  [CONFIG.training.weight_decay],    # locked: 1e-3 (Stage 2)
-    "seed":          [0, 1],
+    "seed":          [0, 1, 3],
 }
 
 # ── Data ──────────────────────────────────────────────────────────────────────

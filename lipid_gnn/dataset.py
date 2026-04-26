@@ -187,6 +187,12 @@ def preprocess_and_save(sim_tuples,
             continue
 
         hetero_data.y = torch.tensor([target_vecs[s_idx]], dtype=torch.float)
+        # Composition label for post-hoc per-system error analysis.
+        # Derived from the parent directory of the .tpr file:
+        # data/membrane_only/POPC95_CHOL5/run/prun.tpr → "POPC95_CHOL5"
+        tpr_path = sim_tuples[s_idx][0]
+        hetero_data.composition = Path(tpr_path).parents[1].name
+        hetero_data.system_idx  = torch.tensor([s_idx], dtype=torch.long)
         current_chunk.append(hetero_data)
         total_graphs += 1
 

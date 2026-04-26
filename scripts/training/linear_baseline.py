@@ -235,5 +235,121 @@ def run_baseline():
     return loo_mse, loo_r2
 
 
+def run_stratified_baseline(chunks_dir=None, properties=None, out_npz=None):
+    """
+    Train Ridge on the train split of stratified chunks, evaluate on the test
+    split, and save a test_artifacts.npz in the same format as run_sweep.py so
+    analyze_stage_5.ipynb can load both GNN and baseline side by side.
+
+    Requires chunks preprocessed with composition + system_idx labels
+    (prepare_colab_subset.py → preprocess_and_save in dataset.py).
+
+    Args:
+        chunks_dir: Root directory with train/, val/, test/ subdirs.
+                    Defaults to CONFIG.paths.chunks_dir.
+        properties: Property names to evaluate. Defaults to CONFIG.vocab.active_properties.
+        out_npz:    Path for the output .npz. Defaults to
+                    results/training/linear_baseline_stratified.npz.
+    """
+    import torch
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.linear_model import Ridge
+
+    if chunks_dir is None:
+        chunks_dir = CONFIG.paths.chunks_dir
+    chunks_dir = Path(chunks_dir)
+    if properties is None:
+        properties = list(CONFIG.vocab.active_properties)
+    if out_npz is None:
+        out_npz = CONFIG.paths.training_results_dir / 'linear_baseline_stratified.npz'
+    out_npz = Path(out_npz)
+    out_npz.parent.mkdir(parents=True, exist_ok=True)
+
+    all_props = list(CONFIG.vocab.all_properties)
+    prop_cols = [all_props.index(p) for p in properties]
+
+    def _load_split(split):
+        """Return (X, y, compositions, system_idx) for one split directory."""
+        chunks = sorted((chunks_dir / split).glob('chunk_*.pt'))
+        if not chunks:
+            raise FileNotFoundError(f"No chunk_*.pt in {chunks_dir / split}")
+        # Aggregate per-system means (composition + y are identical within a system)
+        sys_comp, sys_y = {}, {}
+        for chunk_path in chunks:
+            for g in torch.load(chunk_path, weights_only=False):
+                comp = getattr(g, 'composition', None)
+                if comp is None:
+                    raise RuntimeError(
+                        f"Graph in {chunk_path} has no .composition attribute. "
+                        "Re-run prepare_colab_subset.py to regenerate chunks."
+                    )
+                sidx = int(getattr(g, 'system_idx', torch.tensor([-1])).item())
+                key = (sidx, comp)
+                if key not in sys_y:
+                    sys_comp[key] = comp
+                    sys_y[key]   = g.y.numpy().ravel()
+        keys   = sorted(sys_y.keys())
+        comps  = [sys_comp[k] for k in keys]
+        Y      = np.array([sys_y[k][prop_cols] for k in keys], dtype=np.float32)
+        X      = np.array([parse_composition(c) for c in comps], dtype=np.float32)
+        sidxs  = np.array([k[0] for k in keys], dtype=np.int64)
+        return X, Y, comps, sidxs
+
+    print("Loading train split...")
+    X_train, Y_train, _, _ = _load_split('train')
+    print(f"  Train systems: {len(X_train)}")
+
+    print("Loading test split...")
+    X_test, Y_test, test_comps, test_sidxs = _load_split('test')
+    print(f"  Test  systems: {len(X_test)}")
+
+    # Fit scaler on train (mirrors run_sweep.py StandardScaler on training graphs)
+    scaler = StandardScaler().fit(Y_train)
+    Y_train_z = scaler.transform(Y_train)
+    Y_test_z  = scaler.transform(Y_test)
+
+    # Multi-output Ridge
+    model = Ridge(alpha=1.0)
+    model.fit(X_train, Y_train_z)
+    Y_pred_z = model.predict(X_test)
+
+    mse = float(np.mean((Y_pred_z - Y_test_z) ** 2))
+    print(f"\nTest MSE (normalized): {mse:.4f}")
+    for i, p in enumerate(properties):
+        prop_mse = float(np.mean((Y_pred_z[:, i] - Y_test_z[:, i]) ** 2))
+        print(f"  {p}: {prop_mse:.4f}")
+
+    np.savez(
+        out_npz,
+        test_preds        = Y_pred_z,
+        test_targets      = Y_test_z,
+        test_compositions = np.array(test_comps, dtype=object),
+        test_system_idx   = test_sidxs,
+        scaler_mean       = scaler.mean_,
+        scaler_scale      = scaler.scale_,
+        properties        = np.array(properties),
+    )
+    print(f"\nSaved → {out_npz}")
+    return mse
+
+
 if __name__ == "__main__":
-    run_baseline()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stratified', action='store_true',
+                        help='Run chunk-based train/test evaluation (stratified split).')
+    parser.add_argument('--chunks-dir', default=None,
+                        help='Root dir with train/val/test chunk subdirs.')
+    parser.add_argument('--properties', nargs='+', default=None,
+                        choices=list(CONFIG.vocab.all_properties))
+    parser.add_argument('--out-npz', default=None)
+    args = parser.parse_args()
+
+    if args.stratified:
+        run_stratified_baseline(
+            chunks_dir=args.chunks_dir,
+            properties=args.properties,
+            out_npz=args.out_npz,
+        )
+    else:
+        run_baseline()
