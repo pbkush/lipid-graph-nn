@@ -93,9 +93,22 @@ def _download_run(run, run_dir: Path) -> tuple[pd.DataFrame, dict]:
     # File artifacts uploaded via wandb.save() — e.g. test_artifacts.npz
     _ARTIFACT_FILES = {"test_artifacts.npz"}
     try:
+        found = []
         for wf in run.files():
-            if wf.name in _ARTIFACT_FILES:
+            if Path(wf.name).name in _ARTIFACT_FILES:
                 wf.download(root=str(run_dir), replace=True)
+                # Flatten: move from run_dir/wf.name to run_dir/basename if nested
+                src = run_dir / wf.name
+                dst = run_dir / Path(wf.name).name
+                if src.exists() and src != dst:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                found.append(Path(wf.name).name)
+        if not found:
+            all_names = [wf.name for wf in run.files()]
+            print(f"    WARNING: no artifact files found. Run contains: {all_names}")
+        else:
+            print(f"    Artifacts: {found}")
     except Exception as exc:
         print(f"    WARNING: could not fetch file artifacts: {exc}")
 
