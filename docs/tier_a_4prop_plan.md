@@ -57,9 +57,28 @@ loss scale is stable, but `variation` (R²≤0.5 preliminary) introduces noisy g
 **Watch**: `val/loss_variation` specifically. If it fails to decrease past ~epoch 20
 the property is noise-limited, not lr-limited — this is expected.
 
+**Stage 1b result (n=2 seeds)**: `lr=1e-5` won decisively. `variation` only learned at
+1e-5 (val 0.082 vs 0.459/0.476 baseline-floor at higher lr); `thickness_std` and
+`thickness` also best at 1e-5; `lipid_packing` lower mean at 1e-4 but with large
+seed variance at 1e-5 (std=0.020) → instability uncertain at n=2.
+
 ---
 
-## Stage 2b — wd check (only if Stage 1b changes lr)
+## Stage 1b' — lr refinement around 1e-5
+
+Two motivations: (i) the current grid is half-decade-spaced so the true optimum
+could lie between tested points; (ii) `lipid_packing` showed std=0.020 across only
+2 seeds at lr=1e-5 — need more seeds to separate genuine instability from a single
+bad init. Peak GPU memory was ~58-63 GB (out of 64); keep `batch_size=2`.
+
+**Grid**: `lr ∈ {3e-6, 1e-5, 3e-5}` × `seed ∈ {0, 1, 2, 3}` = 12 runs
+**W&B group**: `stage_1b_refine_tier_a_lr`
+**Decision rule**: pick lowest `val_min_last10` averaged over seeds; tie-break on
+seed std then on `val/loss_variation` (the pivotal property).
+
+---
+
+## Stage 2b — wd check (only if Stage 1b/1b' changes lr)
 
 **Grid**: `wd ∈ {1e-4, 1e-3, 1e-2}` × `seed ∈ {0, 1}` = 6 runs
 **W&B group**: `stage_2b_tier_a_wd`
@@ -75,12 +94,12 @@ Run 5 seeds at locked HP. Produces `test_artifacts.npz` for analysis.
 
 **Gate to pass** (normalized MSE per property, last-10-epoch val mean over seeds):
 
-| Property      | Gate (norm. MSE) | Notes                                |
-|---------------|------------------|--------------------------------------|
-| lipid_packing | < 0.056         | 3.6× improvement from 2-prop run     |
-| thickness     | < 0.219         | from 2-prop Stage 5                  |
-| thickness_std | TBD             | set after Stage 0b establishes floor |
-| variation     | TBD             | expect high; R² floor ~0.5           |
+| Property      | Gate (norm. MSE) | Notes                                          |
+|---------------|------------------|------------------------------------------------|
+| lipid_packing | < 0.022          | Stage 0b 4-prop baseline (5-seed val mean)     |
+| thickness     | < 0.074          | Stage 0b 4-prop baseline (5-seed val mean)     |
+| thickness_std | < 0.359          | Stage 0b 4-prop baseline (5-seed val mean)     |
+| variation     | < 0.462          | Stage 0b 4-prop baseline; expect noise-limited |
 
 ---
 

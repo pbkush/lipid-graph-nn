@@ -7,43 +7,65 @@
 - **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
-- **HP analysis tooling**: `scripts/python/download_wandb_runs.py` pulls W&B groups to `logs/training/`; `scripts/notebooks/analyze_hp_search.ipynb` aggregates over seeds, ranks HP cells, and produces 7 visualizations (loss curves, heatmap, training stats, system metrics). `docs/analyze_hp_search_notebook.md` documents each visualization.
-- **HP search stages 0–3 complete**: Stage 0 baseline MSE ≈ 0.138 reproduced; Stage 1 locked `lr=1e-4`; Stage 2 locked `wd=1e-3`; Stage 3 winner: `hidden_dim=128, num_layers=2` (val_mean=0.03816, val_std=0.00036).
-- **Stratified system-level split**: `prepare_colab_subset.py` now defaults to `--split-method stratified` (k-means in y-space). Fixes the bug where random `split_seed=0` made test 4× narrower than train on `lipid_packing`, causing test MSE to always appear lower than val. New CLI: `--split-method`, `--stratify-on`.
-- **Stage 5 analysis pipeline**: `dataset.py` tags graphs with `composition` + `system_idx`; `run_sweep.py` saves `test_artifacts.npz` per run (bug-fixed 2026-04-26 — was missing despite being in commit message) and uploads via `wandb.save()`; `download_wandb_runs.py` fetches it via `run.files()`; `linear_baseline.py` has `--stratified` mode matching the same `.npz` format. `scripts/notebooks/analyze_stage_5.ipynb` produces 9 publication-grade figures + `headline_numbers.json` with bootstrap CIs and paired t-test.
-- **Per-property test MSE**: `run_sweep.py` logs `test/mse_{prop}` for each active property to W&B summary, visible without downloading artifacts.
-- **Tier A plan**: `docs/tier_a_4prop_plan.md` — lightweight Stage 1b lr check (6 runs) + Stage 5b (5 seeds) for 4-property training. No chunk rebuild needed.
-- **Test suite**: 9 test files, 42 tests covering graph construction, dataset loading, model modes, FF parsing, benchmarks, multi-frame preprocessing, interleaving invariant, train/val/test split disjointness, all-8-property y-shape invariant, config loading/validation/env-override, composition label preservation, and stratified split coverage/disjointness.
-- **Central config**: `config.yaml` + `lipid_gnn/config.py` landed 2026-04-24. All runtime callers in `lipid_gnn/` (ex-`functions_emil`), `scripts/training/`, `scripts/bash/`, and `tests/` read defaults from `CONFIG`. Bash shim at `scripts/python/print_config_var.py`.
-- **Documentation**: `README.md` covers goal, architecture, install, training entry points, data layout, and evaluation story
-- **GitHub workflow**: SSH auth via port 443, `gh` CLI authenticated, `.claude/settings.json` permissions, short-lived feature branches → PR → merge-commit-only; 3 PRs successfully cycled end-to-end
+- **HP analysis tooling**: `scripts/python/download_wandb_runs.py` pulls W&B groups to `logs/training/`; `scripts/notebooks/analyze_hp_search.ipynb` aggregates over seeds, ranks HP cells, and produces 7 visualizations (loss curves, heatmap, training stats, system metrics).
+- **HP search (single-property, 2-prop) complete**: Stages 0–5 done. Winner: `hidden_dim=128, num_layers=2`, `lr=1e-4`, `wd=1e-3`. Val MSE: **0.038** (2-prop, stratified chunks, 5 seeds).
+- **Stratified system-level split**: `prepare_colab_subset.py` defaults to `--split-method stratified` (k-means in y-space). Fixes test-narrowness bug from random split.
+- **Stage 5 analysis pipeline**: `dataset.py` tags graphs with `composition` + `system_idx`; `run_sweep.py` saves `test_artifacts.npz` per run and uploads via `wandb.save()`; `download_wandb_runs.py` fetches it via `run.files()` (basename matching); `linear_baseline.py` has `--stratified` mode. `scripts/notebooks/analyze_stage_5.ipynb` produces 9 publication-grade figures + `headline_numbers.json` with bootstrap CIs and paired t-test.
+- **Per-property test MSE**: `run_sweep.py` logs `test/mse_{prop}` for each active property to W&B summary.
+- **SLURM queue-drift fix**: `scripts/bash/submit_sweep.sh` freezes all HP values as `FREEZE_*` env vars at submission time. `run_sweep.py::_apply_submission_overrides()` reads them at execution time. Seed parallelization via repeatable `--seeds` flag.
+- **Tier A plan**: `docs/tier_a_4prop_plan.md` — Stage 0b → 1b → 1b' (refinement) → optional 2b → 5b.
+- **Test suite**: 9 test files, 42 tests.
+- **Central config**: `config.yaml` + `lipid_gnn/config.py`. All runtime callers read defaults from `CONFIG`.
+
+## Tier A Status (4 properties: lipid_packing, thickness, thickness_std, variation)
+
+| Stage | Status | Key result |
+|-------|--------|------------|
+| Stage 0b — 4-prop GNN baseline | **done** | val_min_last10: lp=0.022, th=0.074, th_std=0.359, var=0.462 |
+| Stage 1b — lr sweep {1e-5, 1e-4, 5e-4} × 2 seeds | **done** | lr=1e-5 wins; variation only learns at 1e-5 |
+| Stage 1b' — lr refinement {3e-6, 1e-5, 3e-5} × 4 seeds | **next** | Need to submit |
+| Stage 2b — wd sweep | pending | Only if 1b' changes lr |
+| Stage 5b — 5-seed confirmation | pending | Locked HP to be determined |
+
+**GATES** (Stage 0b 4-prop baseline, 5-seed val_min_last10 mean — in both plan doc and notebook):
+`lipid_packing < 0.022`, `thickness < 0.074`, `thickness_std < 0.359`, `variation < 0.462`
 
 ## What's Left to Build
 
-- Chunks regenerated with all 8 properties (2026-04-22). Next: run first HPC sweep via `sbatch_sweep.sh` and confirm 0.138 MSE baseline reproduces on the new chunks.
-- **Multi-property training (tiered)**: y-slicing is implemented — `ALL_PROPERTIES` + `prop_cols` in both `train_colab_rev.ipynb` and `run_sweep.py`. Change `PROPERTIES` in the config section to select a tier. Tier A (4 geometric props) → Tier B (+dynamical) → Tier C (+long-wavelength, report-only). Full plan: [docs/multi_property_training_plan.md](../../docs/multi_property_training_plan.md).
-- Execute Goethe-HLR (AMD MI210 / ROCm) bootstrap end-to-end. Scaffolding is landed — `--no-zip`/`--sims-dir`/`--props-dir`/`--out-dir` flags on `prepare_colab_subset.py`, `CHUNKS_DIR` env on `run_sweep.py`, `scripts/bash/sbatch_preprocess.sh` + `sbatch_sweep.sh`, and [docs/hpc_goethe.md](docs/hpc_goethe.md). Remaining: rsync raw data to `/work`, install miniforge + ROCm 6.2 PyTorch inside a `gpu_test` allocation, and submit the first preprocess + smoke sweep
-- Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`
-- Explore transfer to protein+membrane systems (long-term research goal)
+- **Stage 1b' (lr refinement)**: submit and analyze; decide locked lr for Tier A.
+- **Stage 5b (5-seed confirmation)**: run at locked HP after lr is decided.
+- **Tier A Stage 5 analysis**: run `analyze_stage_5.ipynb` with `GROUP="stage_5b_tier_a_confirm"`, `BASELINE_GROUP="stage_0b_tier_a"`.
+- **Multi-property training (tiered)**: Tier A done after 5b. Tier B (+persistence, +diffusivity), Tier C (+compressibility, +bending_modulus).
+- Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`.
+- Explore transfer to protein+membrane systems (long-term research goal).
 
 ## Current Status
 
-### Phase: Stage 0 re-run + Stage 5 running on HPC; Tier A next
+### Phase: Tier A — Stage 1b' lr refinement next
 
-HP search complete through Stage 3. Winner: `hidden_dim=128, num_layers=2`, `lr=1e-4`, `wd=1e-3`. Val MSE at winner: **0.03816** (vs baseline 0.138, 3.6× improvement). New stratified chunks preprocessed. Stage 0 re-run and Stage 5 (5 seeds each) currently running on HPC with `WANDB_GROUP=stage_0_baseline` / `stage_5_confirm`. After those finish: download runs (including `test_artifacts.npz`), run `analyze_stage_5.ipynb`, then activate Tier A by setting `active_properties: [lipid_packing, thickness, thickness_std, variation]` in `config.yaml` and running Stage 1b.
+`config.yaml` active_properties set to 4-property Tier A. Stage 0b and 1b complete. Stage 1b' refinement to be submitted:
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_1b_refine_tier_a_lr \
+    --lr "3e-6 1e-5 3e-5" \
+    --seeds "0" --seeds "1" --seeds "2" --seeds "3"
+```
 
 ## Known Issues
 
-1. **Memory pressure**: Partially mitigated — removed `.pos` from graphs; spatial cutoff raised to 11.0 Å (doubles graph size vs 9.0 Å) but `num_frames` halved to 25 to compensate. Batch size still limited by VRAM.
-2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — currently maintained manually.
+1. **Memory pressure**: Peak GPU memory 58–63 GB out of 64 GB (MI210) at `batch_size=2`. Keep at batch_size=2; fallback is batch_size=1 + gradient accumulation.
+2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — maintained manually.
+3. **Per-property test MSE missing in Stage 0b runs**: `test/mse_{prop}` logging was added after Stage 0b ran; only `test/mse_total` is in those summaries. Val-only analysis for Stage 0b.
 
 ## Deferred Ideas (Not Active Tasks)
 
-- **Euclidean Fast Attention (EFA) block on the spatial channel.** Linear-cost, SE(3)-equivariant, globally-connected attention from Frank et al. (Nat. Mach. Intell. 2026, arXiv:2412.08541). Theoretical fit for the *spatial* edge type only — replaces the hard distance cutoff with a soft `sinc(ω·r)` kernel and reaches long-wavelength targets (`bending_modulus`, `compressibility`) that a cutoff-limited local MP cannot. Bonded channel should stay as `GATv2Conv` (chemistry needs explicit topology with force-constant edge features; EFA has no edge list). Requires the **PBC variant** of ERoPE, not the paper's default SO(3) integration, because Martini boxes are periodic and break the unit-cell SO(3) symmetry. Would reverse the 2026-04-18 `.pos` removal. Reconsider **only after** all 8 targets are implemented and simpler levers (deeper MP, HP sweeps, richer features) are exhausted. Suggested order when picked up: deeper-MP null hypothesis → readout-only EFA → per-layer parallel EFA. Full plan at [docs/efa_spatial_layer_future.md](../../docs/efa_spatial_layer_future.md).
+- **Euclidean Fast Attention (EFA) block on the spatial channel.** Linear-cost, SE(3)-equivariant attention (Frank et al., Nat. Mach. Intell. 2026). Reconsider only after all 8 targets are implemented and simpler levers are exhausted. Full plan at [docs/efa_spatial_layer_future.md](../../docs/efa_spatial_layer_future.md).
 
 ## Evolution of Project Decisions
 
-1. **Integer vocab → continuous physics features**: Originally used integer bead-type encodings with a learned embedding layer. Switched to continuous `[mass, charge, sigma, epsilon]` from Martini 3 FF for physics-informed input. `create_global_encoder` was deprecated.
-2. **Single graph type → heterogeneous graph**: Moved to `HeteroData` with separate bonded and spatial edge types to distinguish chemical topology from physical proximity.
-3. **Full in-memory loading → chunked disk streaming**: Added `MartiniDiskDataset` to handle memory constraints.
-4. **GNN-only → optional composition mode**: Added composition vector concatenation as a model option to study whether bulk composition signals dominate or complement the GNN's per-bead features.
+1. **Integer vocab → continuous physics features**: Switched to continuous `[mass, charge, sigma, epsilon]` from Martini 3 FF.
+2. **Single graph type → heterogeneous graph**: Moved to `HeteroData` with bonded and spatial edge types.
+3. **Full in-memory loading → chunked disk streaming**: Added `MartiniDiskDataset`.
+4. **GNN-only → optional composition mode**: Added composition vector concatenation.
+5. **Random split → stratified split**: Fixed test-narrowness bug (test std 4× narrower than train).
+6. **Live config at execution → frozen env vars at submission**: `submit_sweep.sh` + `_apply_submission_overrides()` to prevent queue-drift corruption.
+7. **Single lr=1e-4 → lr=1e-5 for 4-property Tier A**: `variation` property only learns at lower lr; grid spacing too coarse — refinement sweep needed.
