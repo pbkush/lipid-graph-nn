@@ -126,6 +126,62 @@ distinguish "rare bad init" from "this specific init is always bad" — the seed
 deterministically produces the same init each time. Need fresh seeds to estimate
 the population failure rate.
 
+**Stage 1c result (n=5; seed 7 skipped, HPC I/O error)**: 1 failure (seed 9,
+val_min10_variation = 0.471). Combined with Stage 1b': **2/9 = 22% failure rate**.
+Healthy seeds {4,5,6,8} converged to val_total 0.114–0.122. **Critical new
+finding from seed 6**: variation curve plateaued at ~0.5 from epoch 20–50, then
+**broke through at epoch ~60** and converged to val_variation = 0.082 (best of
+the whole sweep). The plateau is *escapable* — failures may be slow-convergence
+bounded by the 100-epoch budget, not true local minima. Real GPU memory
+(`gpu/peak_mem_actual_gb`) confirmed 8.0–8.4 GB across all seeds — huge headroom
+for Tier B/C.
+
+---
+
+## Stage 1d — long-training resilience check on failed seeds
+
+Seed 6's late-epoch breakthrough (Stage 1c) suggests the variation plateau is
+escapable given enough epochs. Seeds 2 and 9 may be on the same trajectory but
+cut off by the 100-epoch budget. Cheaper to test "more epochs" than to
+implement gradient clipping or warmup.
+
+**Grid**: `lr=3e-5` (locked) × `seed ∈ {2, 9}` × `epochs=200` = 2 runs
+**W&B group**: `stage_1d_long_train_tier_a`
+
+**Decision rule**:
+
+- **Both seeds converge** (val_min10_variation < 0.15 by epoch 200): plateau is
+  slow-convergence-bounded. Action: bump `training.epochs` to 200 in
+  `config.yaml`, re-run Stage 5b at 200 epochs. Update memory bank.
+- **Neither converges**: true local minimum / degenerate basin. Action: run
+  gradient clipping substage (1d-clip) — wire `grad_clip_norm=1.0` into
+  `run_sweep.py` and re-run failing seeds. If still stuck, try lr warmup
+  (1d-warmup, linear 0 → 3e-5 over first 5 epochs).
+- **Mixed (1 of 2 escapes)**: some seeds genuinely fail. Action: keep
+  `epochs=100` default, drop seeds 2 and 9 for Stage 5b, document fragility.
+
+**Submit**: `submit_sweep.sh` has no `--epochs` flag yet, so two options:
+
+```bash
+# Option A — temporarily edit config.yaml epochs: 100 → 200, submit, then revert
+bash scripts/bash/submit_sweep.sh --group stage_1d_long_train_tier_a \
+    --lr "3e-5" \
+    --seeds "2" --seeds "9"
+# After both jobs complete: edit config.yaml back to epochs: 100.
+
+# Option B — bypass the wrapper, sbatch directly with FREEZE_EPOCHS=200
+for SEED in 2 9; do
+    sbatch --export=ALL,WANDB_GROUP=stage_1d_long_train_tier_a,\
+FREEZE_HIDDEN_DIM=128,FREEZE_NUM_LAYERS=2,FREEZE_LR=3e-5,FREEZE_WD=1e-3,\
+FREEZE_EPOCHS=200,FREEZE_PROPERTIES="lipid_packing thickness thickness_std variation",\
+SWEEP_SEEDS=${SEED} \
+        scripts/bash/sbatch_sweep.sh
+done
+```
+
+If long-training experiments become recurring, add `--epochs` flag to
+`submit_sweep.sh` (mirrors `--lr`/`--wd` pattern, ~4 lines).
+
 ---
 
 ## Stage 2b — wd check (only if Stage 1b/1b' changes lr)

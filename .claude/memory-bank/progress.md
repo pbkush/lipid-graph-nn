@@ -21,21 +21,34 @@
 
 | Stage | Status | Key result |
 |-------|--------|------------|
-| Stage 0b — 4-prop GNN baseline | **done** | val_min_last10: lp=0.022, th=0.074, th_std=0.359, var=0.462 |
-| Stage 1b — lr sweep {1e-5, 1e-4, 5e-4} × 2 seeds | **done** | lr=1e-5 wins; variation only learns at 1e-5 |
-| Stage 1b' — lr refinement {3e-6, 1e-5, 3e-5} × 4 seeds | **done** | lr=3e-5 wins (val_total 0.149); seed-2 variation failure exposed |
-| Stage 1c — seed stability check at lr=3e-5 | **next** | Need to submit; 6 new seeds {4..9} |
-| Stage 2b — wd sweep | **skipped** | 1b'/1c clearly favor lr=3e-5 |
-| Stage 5b — 5-seed confirmation | pending 1c | Seeds reselected based on 1c findings |
+| Stage 0b — 4-prop GNN baseline | done | val_min10: lp=0.022, th=0.074, th_std=0.359, var=0.462 |
+| Stage 1b — lr sweep {1e-5,1e-4,5e-4} × 2 seeds | done | lr=1e-5 wins; variation only learns at 1e-5 |
+| Stage 1b' — lr refinement {3e-6,1e-5,3e-5} × 4 seeds | done | lr=3e-5 wins (val_total 0.149); seed-2 variation failure exposed |
+| Stage 1c — seed stability at lr=3e-5 | done | 1/5 fail (seed 9); 22% combined failure rate; seed-6 late-escape pattern |
+| Stage 1d — long-training rescue at 200 ep | done | seed 9 rescued (val_var ~0.10); seed 2 stuck (~0.53) — drop permanently |
+| Stage 2b — wd verification at lr=3e-5 | done | wd insensitive in [3e-4, 1e-3, 3e-3] (val_total 0.116-0.118) |
+| Stage 5b — 5-seed confirmation | **next** | Seeds {0,1,3,4,5} at lr=3e-5, 200 epochs |
 
-**Locked HPs (provisional)**: `hidden_dim=128`, `num_layers=2`, `lr=3e-5`, `wd=1e-3`. Awaiting Stage 1c verification of seed stability.
+**Locked HPs (final, in config.yaml)**: `hidden_dim=128`, `num_layers=2`, `lr=3.0e-5`, `wd=1.0e-3`, `epochs=200`.
 
-**Seed-2 variation failure** (Stage 1b'): seed 2 fails to learn `variation` at all three lrs (val_min10 = 0.60/0.55/0.52 vs ~0.08 for healthy seeds). Curve plateaus from epoch ~30 onward. Init-dependent failure, not lr-dependent. Other properties for seed 2 are healthy. Without seed 2 the lr=3e-5 mean val_total drops from 0.149 to 0.108.
+**Variation seed-fragility** — two failure modes identified:
+- *Slow escapers* (seeds 6, 9): variation plateau at ~0.5 from epoch 20–50, then breakthrough to ~0.08–0.10. Rescued by 200-epoch training. Validates the epochs=200 default.
+- *True dead-init* (seed 2): plateau forever, no movement after 200 epochs. Drop permanently.
+- `thickness_std` and `variation` failures are correlated within a seed → single loss-landscape pathology, not two independent ones.
+- ~20% population failure rate (2/9 seeds across Stages 1b' + 1c). Documented as a Tier A limitation for the thesis.
 
-**GATES** (Stage 0b 4-prop baseline, 5-seed val_min_last10 mean — in both plan doc and notebook):
+**HP saturation finding (from 2-prop Stage 5)**: paired t-test p=0.755 vs Stage 0 baseline — HP search produced no significant gain on 2 properties. Tier A's hope (and now confirmation) is that HP tuning matters more for harder properties: variation only learns at lr=3e-5/1e-5, not the original lr=1e-4. This is the main thesis story for Tier A.
+
+**wd is small lever**: Stage 2b confirmed wd=1e-3 is roughly optimal in [3e-4, 3e-3] range. Per-property tradeoff exists (higher wd helps variation slightly, hurts thickness_std slightly), but val_total flat. Locked wd=1e-3.
+
+**GATES** (Stage 0b 4-prop baseline, 5-seed val_min10 mean — in plan doc and notebook):
 `lipid_packing < 0.022`, `thickness < 0.074`, `thickness_std < 0.359`, `variation < 0.462`
 
-**GPU memory clarification (2026-04-27)**: earlier "97% peak = OOM danger" was a misread of W&B's `memoryAllocated` which reports PyTorch's reserved pool, not live tensors. Allocator releases mid-run without crashes. Real OOM proxy `torch.cuda.max_memory_allocated()` added to `run_sweep.py` epoch metrics as `gpu/peak_mem_actual_gb`. Conclusion: `batch_size=2` is safe; Tier B likely fits.
+**GPU memory clarification**: earlier "97% peak = OOM danger" was a misread of W&B's `memoryAllocated` (reserved pool, not live tensors). Real proxy `torch.cuda.max_memory_allocated()` added to `run_sweep.py` as `gpu/peak_mem_actual_gb` (per-epoch reset). Live peak ~8 GB out of 64 GB. Tier B/C have huge memory headroom.
+
+**Run-name encoding bug fixed**: original `gnn_only_h{h}_l{l}_lr{lr}_s{seed}` didn't include all varying HPs, causing Stage 2b download collisions. Future stages must include all varying HPs in run_name (e.g. `_wd{wd}` suffix).
+
+**R² added to analyze_hp_search.ipynb**: complementary reporting metric (selection still MSE-driven). 4 cells modified: `cell-load-fn`, `cell-detect-hps`, `cell-aggregate`, `cell-ranking-table`, `cell-recommendation`. R² uses `_tail_mean()` (not `_tail_min()`) to avoid amplifying favourable noise spikes on the small val set.
 
 ## What's Left to Build
 
