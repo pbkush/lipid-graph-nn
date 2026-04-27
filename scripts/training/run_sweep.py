@@ -240,6 +240,9 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
             metrics[f"train/loss_{prop}"] = avg_prop_train[i]
             metrics[f"val/loss_{prop}"]   = avg_prop_val[i]
             metrics[f"val/r2_{prop}"]     = float(r2_scores[i])
+        if device.type == 'cuda':
+            metrics["gpu/peak_mem_actual_gb"] = torch.cuda.max_memory_allocated() / 1e9
+            torch.cuda.reset_peak_memory_stats()
         wandb.log(metrics)
 
     # ── Final held-out test evaluation ────────────────────────────────────────

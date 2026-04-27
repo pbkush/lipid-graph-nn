@@ -76,6 +76,56 @@ bad init. Peak GPU memory was ~58-63 GB (out of 64); keep `batch_size=2`.
 **Decision rule**: pick lowest `val_min_last10` averaged over seeds; tie-break on
 seed std then on `val/loss_variation` (the pivotal property).
 
+**Stage 1b' result (n=4 seeds)**: `lr=3e-5` won (val_total mean 0.149 vs 0.164 at 1e-5
+and 0.237 at 3e-6 — 3e-6 not converged in 100 epochs). lr=3e-5 best on every
+per-property mean. **Seed-2 anomaly**: at lr=1e-5 and lr=3e-5, seed 2 fails to
+learn `variation` (val_min10 = 0.55 / 0.52 vs ~0.08 for seeds 0/1/3). Seed 2's
+variation curve plateaus from epoch ~30 across all three lrs — this is an
+init-dependent failure mode, not lr-dependent. Excluding seed 2: lr=3e-5 mean
+val_total = 0.108 (vs 0.149 with seed 2). **Decision**: lock `lr=3e-5` pending
+Stage 1c verification; skip Stage 2b.
+
+---
+
+## Stage 1c — variation seed-stability check at lr=3e-5
+
+Determine whether seed 2's `variation` failure is a chance event (~5–10% rate,
+acceptable) or a real fragility (~25%+ rate, requires a fix). Stage 1b' had only
+4 seeds — n=1 failure could be either. Run more seeds at the locked lr to
+estimate the true failure rate before committing to Stage 5b.
+
+**Grid**: `lr=3e-5` (locked) × `seed ∈ {4, 5, 6, 7, 8, 9}` = 6 runs
+**W&B group**: `stage_1c_seed_stability_tier_a`
+**Failure criterion**: `val_min10_variation > 0.3` (seed 2 was 0.52; healthy seeds
+were 0.07–0.10 — a 0.3 threshold is well above the healthy band and well below
+the failure band).
+
+**Decision rule** (informs Stage 5b seed selection):
+
+- **0–1 failures across 6 new seeds** (≤17% rate): seed 2 was unlucky. Lock
+  lr=3e-5; run Stage 5b with the 5 best-performing seeds out of {0,1,3,4,…,9}.
+  Document the seed-2 failure as a known low-rate fragility in the thesis.
+- **2+ failures** (≥33% rate): real fragility. Diagnostic substages before 5b:
+  1. **1c-clip**: re-run failing seeds with `gradient_clip_val=1.0` (add to
+     `run_sweep.py`'s training loop).
+  2. **1c-warmup**: re-run failing seeds with linear lr warmup over first
+     5 epochs (0 → lr=3e-5).
+  3. If neither helps: document `variation` as init-fragile, fall back to
+     reporting only seeds that converged.
+
+**Submit command**:
+
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_1c_seed_stability_tier_a \
+    --lr "3e-5" \
+    --seeds "4" --seeds "5" --seeds "6" --seeds "7" --seeds "8" --seeds "9"
+```
+
+**Why not just diagnose seed 2 in isolation**: a single re-run of seed 2 can't
+distinguish "rare bad init" from "this specific init is always bad" — the seed
+deterministically produces the same init each time. Need fresh seeds to estimate
+the population failure rate.
+
 ---
 
 ## Stage 2b — wd check (only if Stage 1b/1b' changes lr)
@@ -87,9 +137,10 @@ seed std then on `val/loss_variation` (the pivotal property).
 
 ## Stage 5b — 5-seed confirmation
 
-Run 5 seeds at locked HP. Produces `test_artifacts.npz` for analysis.
+Run 5 seeds at locked HP (`lr=3e-5`). Produces `test_artifacts.npz` for analysis.
 
-**Grid**: `seed ∈ {0, 1, 2, 3, 4}` = 5 runs
+**Grid**: `seed ∈ {0, 1, 2, 3, 4}` = 5 runs (re-using Stage 1b' seeds 0,1,3 + new
+4,5; OR reselect after Stage 1c if seed-stability findings warrant skipping seed 2).
 **W&B group**: `stage_5b_tier_a_confirm`
 
 **Gate to pass** (normalized MSE per property, last-10-epoch val mean over seeds):

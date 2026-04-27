@@ -60,7 +60,7 @@ training:
   epochs: 100
   batch_size: 2
   num_workers: 6
-  learning_rate: 1.0e-4
+  learning_rate: 3.0e-5
   weight_decay: 1.0e-3
   seed: 0
   patience: 10

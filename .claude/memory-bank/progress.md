@@ -23,12 +23,19 @@
 |-------|--------|------------|
 | Stage 0b — 4-prop GNN baseline | **done** | val_min_last10: lp=0.022, th=0.074, th_std=0.359, var=0.462 |
 | Stage 1b — lr sweep {1e-5, 1e-4, 5e-4} × 2 seeds | **done** | lr=1e-5 wins; variation only learns at 1e-5 |
-| Stage 1b' — lr refinement {3e-6, 1e-5, 3e-5} × 4 seeds | **next** | Need to submit |
-| Stage 2b — wd sweep | pending | Only if 1b' changes lr |
-| Stage 5b — 5-seed confirmation | pending | Locked HP to be determined |
+| Stage 1b' — lr refinement {3e-6, 1e-5, 3e-5} × 4 seeds | **done** | lr=3e-5 wins (val_total 0.149); seed-2 variation failure exposed |
+| Stage 1c — seed stability check at lr=3e-5 | **next** | Need to submit; 6 new seeds {4..9} |
+| Stage 2b — wd sweep | **skipped** | 1b'/1c clearly favor lr=3e-5 |
+| Stage 5b — 5-seed confirmation | pending 1c | Seeds reselected based on 1c findings |
+
+**Locked HPs (provisional)**: `hidden_dim=128`, `num_layers=2`, `lr=3e-5`, `wd=1e-3`. Awaiting Stage 1c verification of seed stability.
+
+**Seed-2 variation failure** (Stage 1b'): seed 2 fails to learn `variation` at all three lrs (val_min10 = 0.60/0.55/0.52 vs ~0.08 for healthy seeds). Curve plateaus from epoch ~30 onward. Init-dependent failure, not lr-dependent. Other properties for seed 2 are healthy. Without seed 2 the lr=3e-5 mean val_total drops from 0.149 to 0.108.
 
 **GATES** (Stage 0b 4-prop baseline, 5-seed val_min_last10 mean — in both plan doc and notebook):
 `lipid_packing < 0.022`, `thickness < 0.074`, `thickness_std < 0.359`, `variation < 0.462`
+
+**GPU memory clarification (2026-04-27)**: earlier "97% peak = OOM danger" was a misread of W&B's `memoryAllocated` which reports PyTorch's reserved pool, not live tensors. Allocator releases mid-run without crashes. Real OOM proxy `torch.cuda.max_memory_allocated()` added to `run_sweep.py` epoch metrics as `gpu/peak_mem_actual_gb`. Conclusion: `batch_size=2` is safe; Tier B likely fits.
 
 ## What's Left to Build
 
