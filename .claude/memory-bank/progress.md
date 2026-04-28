@@ -69,13 +69,22 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 **R² added to analyze_hp_search.ipynb**: complementary reporting metric (selection still MSE-driven). 4 cells modified: `cell-load-fn`, `cell-detect-hps`, `cell-aggregate`, `cell-ranking-table`, `cell-recommendation`. R² uses `_tail_mean()` (not `_tail_min()`) to avoid amplifying favourable noise spikes on the small val set.
 
+## Tier B Status (6 properties: + persistence, + diffusivity)
+
+| Stage | Status | Key result |
+|-------|--------|------------|
+| Stage 0c — 6-prop GNN floor at locked Tier A HPs | done | val_min10: lp=0.019, th=0.067, th_std=0.302, var=0.151, persistence=0.362, diffusivity=0.059. No negative transfer; `diffusivity` learns cleanly (R² ≈ 0.96), `persistence` floor-like (R² ≈ 0.66). 4/5 seeds healthy (seed 3 stuck on `variation`). Decision matrix outcome **A** with caveat: `persistence` may need lr re-tune. |
+| Stage 1e — lr sanity check | next | Test `lr ∈ {1e-5, 3e-5, 1e-4}` × 2 seeds; watch `val/loss_persistence` specifically. |
+
+**Tier B GATES (Stage 0c 6-prop floor, 5-seed val_min10 mean — locked in `tier_b_6prop_plan.md` and `analyze_hp_search.ipynb` Cell 1)**:
+`lipid_packing < 0.019`, `thickness < 0.067`, `thickness_std < 0.302`, `variation < 0.151`, `persistence < 0.362`, `diffusivity < 0.059`.
+
 ## What's Left to Build
 
-- **Tier B (+persistence, +diffusivity)**: replicate the Tier A stage chain (0c → 1 → 5c). Watch for negative transfer through the shared MLP trunk; remedy if needed is homoscedastic uncertainty weighting (Kendall & Gal 2017).
+- **Tier B remaining stages**: 1e (lr sanity → conditional 1e' refinement) → 5c (5-seed confirm). Plan in `docs/tier_b_6prop_plan.md`. Negative transfer was *not* observed at Stage 0c, so the homoscedastic uncertainty weighting remedy stays deferred.
 - **Tier C (+compressibility, +bending_modulus)**: likely floor-bound until the spatial channel is extended (`docs/efa_spatial_layer_future.md`).
 - **Train-coverage augmentation**: more DPPC- and DOPC-rich compositions to address the per-system MAE concentration on chemically extreme mixtures (Stage 5b finding).
 - **Embedding evaluation, not just property prediction**: the long-term scientific question is the quality of the membrane embedding. Once Tier A/B/C land, probe the embedding directly (clustering, interpretability, transfer to held-out compositions or to protein+membrane systems).
-- Switch `MartiniHeteroGraphBuilder` to require `.tpr` file for topology instead of `.gro`.
 - Explore transfer to protein+membrane systems (long-term research goal).
 
 ## Current Status
@@ -86,10 +95,9 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 ## Known Issues
 
-1. **Memory pressure**: Peak GPU memory 58–63 GB out of 64 GB (MI210) at `batch_size=2`. Keep at batch_size=2; fallback is batch_size=1 + gradient accumulation.
-2. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — maintained manually.
-3. **Per-property test MSE missing in Stage 0b runs**: `test/mse_{prop}` logging was added after Stage 0b ran; only `test/mse_total` is in those summaries. Val-only analysis for Stage 0b.
-4. **Seed-6 jitter in Stage 5b**: seed 6 escaped `variation` in Stage 1c but failed in 5b at the same config. Escape is non-deterministic per seed — running the same seed twice can produce different outcomes. For thesis reporting, prefer the planned 5-seed pool {0,1,3,4,5}.
+1. **LIPID_TYPES consistency**: The 10-element lipid list must be identical across `lipid_graph.py`, `linear_baseline.py`, and `run_sweep.py` — maintained manually.
+2. **Per-property test MSE missing in Stage 0b runs**: `test/mse_{prop}` logging was added after Stage 0b ran; only `test/mse_total` is in those summaries. Val-only analysis for Stage 0b.
+3. **Seed-6 jitter in Stage 5b**: seed 6 escaped `variation` in Stage 1c but failed in 5b at the same config. Escape is non-deterministic per seed — running the same seed twice can produce different outcomes. For thesis reporting, prefer the planned 5-seed pool {0,1,3,4,5}.
 
 ## Deferred Ideas (Not Active Tasks)
 

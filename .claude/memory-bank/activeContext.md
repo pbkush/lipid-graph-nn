@@ -2,13 +2,13 @@
 
 ## Current Work Focus
 
-**Tier A confirmed (2026-04-28)** — Stage 5b complete. Tier A locked HPs validated against Stage 0b baseline; the 4-property pipeline is the new reference result. Next phase: Tier B (+`persistence`, +`diffusivity`).
+**Tier B Stage 0c done (2026-04-28)** — 6-property floor measured; no negative transfer at locked Tier A HPs. Decision-matrix outcome **A** (clean floor): Tier A properties hold or improve vs Stage 5b. `diffusivity` learns cleanly; `persistence` is the hard target (R² ≈ 0.66, floor-like). Next: Stage 1e (lr sanity check, focus on `persistence`).
 
-`config.yaml` (locked Tier A defaults):
-- `active_properties: [lipid_packing, thickness, thickness_std, variation]`
-- `learning_rate: 3.0e-5` (locked from Stage 1b'/1c, verified by Stage 2b)
-- `weight_decay: 1.0e-3` (verified insensitive in [3e-4, 3e-3] by Stage 2b)
-- `epochs: 200` (verified by Stage 1d slow-escaper rescue)
+`config.yaml` (Tier B active; locked HPs inherited from Tier A):
+- `active_properties: [lipid_packing, thickness, thickness_std, variation, persistence, diffusivity]`
+- `learning_rate: 3.0e-5` (Tier A lock; Stage 1e will retest for `persistence`)
+- `weight_decay: 1.0e-3`
+- `epochs: 200`
 - `hidden_dim: 128`, `num_layers: 2`
 
 ### Tier A stage status
@@ -67,9 +67,32 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 **GPU memory clarification**: live-tensor peak ~8 GB out of 64 GB (logged via `gpu/peak_mem_actual_gb` in `run_sweep.py`). Earlier "97 % peak" was W&B's reserved pool, not actual usage. Tier B/C have huge memory headroom.
 
-### Gates (Stage 0b 4-prop baseline, val_min_last10 mean)
-- `lipid_packing < 0.022`, `thickness < 0.074`, `thickness_std < 0.359`, `variation < 0.462`
-- Set in [docs/tier_a_4prop_plan.md](../../docs/tier_a_4prop_plan.md) and [scripts/notebooks/analyze_hp_search.ipynb](../../scripts/notebooks/analyze_hp_search.ipynb) Cell 1 `GATES`.
+### Gates (Tier B — Stage 0c 6-prop floor, val_min_last10 mean over 5 seeds)
+
+- `lipid_packing < 0.019`, `thickness < 0.067`, `thickness_std < 0.302`, `variation < 0.151`, `persistence < 0.362`, `diffusivity < 0.059`
+- These are the gates Stage 5c must beat. Set in [docs/tier_b_6prop_plan.md](../../docs/tier_b_6prop_plan.md) and [scripts/notebooks/analyze_hp_search.ipynb](../../scripts/notebooks/analyze_hp_search.ipynb) Cell 1 `GATES`.
+- Historic Tier A gates (Stage 0b 4-prop floor) preserved in the notebook as a reference comment: `lp<0.022, th<0.074, th_std<0.359, var<0.462`.
+
+### Tier B Stage 0c headline (2026-04-28)
+
+5/5 seeds finished, 4/5 healthy (seed 3 stuck on `variation` ≈ 0.45 — same dead-init pattern as Tier A seed 2). All at locked Tier A HPs.
+
+| Property | val_min10 (5-seed mean) | R² (epoch-200) | vs Stage 5b |
+|---|---|---|---|
+| `lipid_packing` | 0.019 | 0.94 | −14 % |
+| `thickness` | 0.067 | 0.95 | −8 % |
+| `thickness_std` | 0.302 | 0.66 | +1 % (tied) |
+| `variation` | 0.151 | 0.95 (healthy) | −0 % (tied) |
+| `persistence` | 0.362 | 0.66 | new |
+| `diffusivity` | 0.059 | 0.96 | new |
+
+**No negative transfer** — Tier A properties hold or improve at the inherited HPs. **`diffusivity` learns cleanly** (R² ≈ 0.96 — comparable to `lipid_packing`/`thickness`); a meaningful positive thesis result that a single-frame embedding can predict a time-averaged dynamical property. **`persistence` is the hard target** (val 0.36, R² ≈ 0.66, floor-like across all 5 seeds); first candidate to test in Stage 1e for a different lr.
+
+### Open hypothesis: capacity trade-off between heterogeneity properties and `persistence`
+
+Seed 3 — the only seed in 0c that failed `variation` (0.45) and had the worst `thickness_std` (0.37) — had simultaneously the **best** `persistence` (0.336) of the 5 seeds. Across all 5 seeds: r(`variation`,`persistence`) = −0.73, r(`thickness_std`,`persistence`) = −0.83. **But excluding seed 3 the variation correlation flips to +0.86**, so the negative correlation is a single-seed anecdote, not a population effect.
+
+Two readings: (a) when the shared trunk gives up on the hard structural-heterogeneity signals (`variation`, `thickness_std`), capacity is freed for `persistence`; (b) noise at n=5 with one outlier. Stage 1e is the natural test: if a different lr improves `persistence` *without* breaking `variation`, the trade-off was illusory; if better `persistence` only comes at the cost of `variation`/`thickness_std`, the capacity-competition hypothesis is real and motivates homoscedastic uncertainty weighting or separate heads (per the plan's negative-transfer remedy).
 
 ## Latest Changes (this session, 2026-04-28)
 

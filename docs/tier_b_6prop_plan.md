@@ -100,17 +100,20 @@ bash scripts/bash/submit_sweep.sh --group stage_0c_tier_b \
 
 **Acceptance gates for Stage 0c** (val_min_last10 mean, 5 seeds — set the Tier B floor):
 
-Record the Stage 0c per-property means here after the runs complete. These become
-the gates for Stage 5c.
+Stage 0c finished 2026-04-28 with 5/5 seeds (`{0, 1, 3, 4, 5}`). Decision matrix
+outcome: **A — clean floor**. No negative transfer; Tier A properties hold or
+improve vs Stage 5b at the inherited locked HPs.
 
-| Property      | Stage 0c floor (TBD) | Notes |
-|---------------|----------------------|-------|
-| lipid_packing | —                    | Expect ~0.022 (Tier A 5b) |
-| thickness     | —                    | Expect ~0.073 |
-| thickness_std | —                    | May degrade slightly if new properties add noise |
-| variation     | —                    | Init-fragile; pool only converged seeds |
-| persistence   | —                    | Unknown; first measurement |
-| diffusivity   | —                    | Unknown; first measurement |
+| Property      | Stage 0c floor | Δ vs Stage 5b (4-prop) | Notes                                                                                              |
+|---------------|----------------|------------------------|----------------------------------------------------------------------------------------------------|
+| lipid_packing | **0.019**      | −14 %                  | Cleanly learnt; R² ≈ 0.94                                                                          |
+| thickness     | **0.067**      | −8 %                   | Cleanly learnt; R² ≈ 0.95                                                                          |
+| thickness_std | **0.302**      | +1 %                   | Holds within seed jitter; R² ≈ 0.66                                                                |
+| variation     | **0.151**      | −0 %                   | Init-fragile recurred (seed 3 stuck ~0.45); 4/5 health                                             |
+| persistence   | **0.362**      | new                    | Hard target. Stuck high across all seeds; R² ≈ 0.66. Floor-like, candidate for Stage 1e re-tune.   |
+| diffusivity   | **0.059**      | new                    | Cleanly learnt; R² ≈ 0.96. Single-frame embedding *can* predict time-averaged lateral mobility.    |
+
+These are the gates for Stage 5c.
 
 ---
 
@@ -190,17 +193,18 @@ Run 5 seeds at the Tier B locked HP. Produces `test_artifacts.npz` for analysis.
 **Grid**: `seed ∈ {0, 1, 3, 4, 5}` = 5 runs
 **W&B group**: `stage_5c_tier_b_confirm`
 
-**Gate to pass** (normalized MSE per property, last-10-epoch val mean over seeds):
-Gates are set from Stage 0c results. Placeholder table:
+**Gate to pass** (normalized val MSE per property, last-10-epoch mean over seeds):
+Locked from Stage 0c results (all 5 seeds, including the variation-failure seed 3,
+following the Stage 0b convention).
 
-| Property      | Gate (Stage 0c floor) | Notes |
-|---------------|-----------------------|-------|
-| lipid_packing | < [Stage 0c mean]     | Should remain near 0.022 |
-| thickness     | < [Stage 0c mean]     | Should remain near 0.073 |
-| thickness_std | < [Stage 0c mean]     |                          |
-| variation     | < [Stage 0c mean]     | Exclude dead-init seeds  |
-| persistence   | < [Stage 0c mean]     | First Tier B gate        |
-| diffusivity   | < [Stage 0c mean]     | First Tier B gate        |
+| Property      | Gate (Stage 0c floor) | Notes                                            |
+|---------------|-----------------------|--------------------------------------------------|
+| lipid_packing | < 0.019               | Should remain near Stage 5b 0.022                |
+| thickness     | < 0.067               | Should remain near Stage 5b 0.073                |
+| thickness_std | < 0.302               | Holds within seed jitter at locked HPs           |
+| variation     | < 0.151               | Pool reflects ~20 % init-failure rate            |
+| persistence   | < 0.362               | First Tier B gate; floor-like at locked lr=3e-5  |
+| diffusivity   | < 0.059               | First Tier B gate; learnt cleanly at locked HPs  |
 
 **Success criterion for thesis**: all Tier B properties show statistically
 significant improvement over Stage 0c (paired t-test p < 0.05 on common seeds)

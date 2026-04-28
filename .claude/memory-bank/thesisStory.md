@@ -125,9 +125,52 @@ The 2-property HP search produced a clean negative result — paired t-test p = 
 
 ---
 
-## 6. Open questions and next phases
+## 6. Tier B Stage 0c — first 6-property measurement (2026-04-28)
 
-- **Tier B (+`persistence`, +`diffusivity`)** — same architecture, locally dynamical properties. Watch for negative transfer through the shared MLP trunk; remedy if needed is homoscedastic uncertainty weighting (Kendall & Gal 2017).
+`active_properties` extended to 6 by adding `persistence` and `diffusivity` to
+the `config.yaml`; locked Tier A HPs unchanged. 5 seeds `{0, 1, 3, 4, 5}` ran at
+the inherited config. Headline:
+
+| Property        | val_min10 (5-seed mean) | R² (epoch 200) | Δ vs Stage 5b |
+|-----------------|-------------------------|----------------|---------------|
+| `lipid_packing` | 0.019                   | 0.94           | −14 %         |
+| `thickness`     | 0.067                   | 0.95           | −8 %          |
+| `thickness_std` | 0.302                   | 0.66           | +1 %          |
+| `variation`     | 0.151                   | 0.95 (healthy) | −0 %          |
+| `persistence`   | **0.362**               | 0.66           | new           |
+| `diffusivity`   | **0.059**               | 0.96           | new           |
+
+Three findings worth keeping for the thesis:
+
+1. **No negative transfer.** Adding two more targets to the shared trunk did not
+   degrade Tier A — every 4-property number holds within seed jitter, with
+   `lipid_packing` and `thickness` actually improving by ~10 %. The
+   homoscedastic-uncertainty-weighting remedy planned in `tier_b_6prop_plan.md`
+   stays deferred.
+2. **`diffusivity` is recoverable from a static snapshot.** R² ≈ 0.96 — on par
+   with `lipid_packing`. A single MD frame's bead geometry contains enough
+   information to predict the time-averaged lateral diffusion coefficient. This
+   is a non-trivial structural-vs-dynamical positive result; pre-registered as
+   uncertain in the plan.
+3. **`persistence` is the new hard target.** val 0.36, R² ≈ 0.66, floor-like
+   across all 5 seeds. Same structural-vs-dynamical question as `diffusivity`,
+   opposite answer. Most likely candidate for an lr re-tune in Stage 1e —
+   echoing the Stage 1b finding where `variation` only learned at lr two
+   decades below the 2-prop optimum.
+
+Seed fragility on `variation` recurred (seed 3 stuck ~0.45 — true dead-init,
+matching Tier A seed 2). 4/5 healthy is consistent with the documented ~20 %
+init-failure rate.
+
+The Stage 0c per-property means become the Tier B gates for Stage 5c, locked
+in `tier_b_6prop_plan.md` § "Acceptance gates for Stage 0c" and in
+`scripts/notebooks/analyze_hp_search.ipynb` Cell 1 `GATES`.
+
+---
+
+## 7. Open questions and next phases
+
+- **Tier B Stage 1e (next)** — `lr ∈ {1e-5, 3e-5, 1e-4}` × 2 seeds. Watch `val/loss_persistence` specifically. If `persistence` learns at a lower lr, the 4 → 6 property pivot will replay the Stage 1b lr-saturation discovery.
 - **Tier C (+`compressibility`, +`bending_modulus`)** — these need long-range receptive fields the 11 Å cutoff cannot provide. Likely floor-bound until the spatial channel is extended (`docs/efa_spatial_layer_future.md` proposes Euclidean Fast Attention as the eventual remedy; deferred until simpler levers exhaust).
 - **Train-coverage gap** — Stage 5b per-system MAE concentrates on DPPC- and DOPC-rich mixtures (POPC30_DOPC70 worst, ~19 Å thickness MAE). Augmenting train coverage in the PC1 < 0 region of composition space is the most direct remediation; alternative is to document as a Tier A scope limit.
 - **Seed fragility** — 20 % init-failure rate is acknowledged in the thesis but not yet remedied. Possible levers: warm-up + cosine schedule; init-conditioned learning rate; gradient clipping at the property head.
@@ -135,4 +178,4 @@ The 2-property HP search produced a clean negative result — paired t-test p = 
 
 ---
 
-*Last updated: 2026-04-28, after Stage 5b confirmation.*
+*Last updated: 2026-04-28, after Tier B Stage 0c (6-property floor measured).*
