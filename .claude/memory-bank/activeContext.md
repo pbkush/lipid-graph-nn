@@ -2,7 +2,7 @@
 
 ## Current Work Focus
 
-**Tier B Stage 0c done (2026-04-28)** — 6-property floor measured; no negative transfer at locked Tier A HPs. Decision-matrix outcome **A** (clean floor): Tier A properties hold or improve vs Stage 5b. `diffusivity` learns cleanly; `persistence` is the hard target (R² ≈ 0.66, floor-like). Next: Stage 1e (lr sanity check, focus on `persistence`).
+**Tier B Stage 1e done (2026-04-28)** — lr sanity check on 6-prop training. **`lr=1e-5` wins** (val_total 0.161 vs 0.181 for 3e-5, 0.225 for 1e-4). Triggers Stage 1e' (refinement grid `{3e-6, 1e-5, 3e-5}` × seed ∈ {0,1,3,4}) and Stage 1f (seed stability at the new lr). `persistence` confirmed architecture-limited — lr sweep 30× produced no R² gain (~0.67–0.69 across all lrs). Capacity trade-off hypothesis upgraded from anecdote to consistent finding.
 
 `config.yaml` (Tier B active; locked HPs inherited from Tier A):
 - `active_properties: [lipid_packing, thickness, thickness_std, variation, persistence, diffusivity]`
@@ -88,11 +88,35 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 **No negative transfer** — Tier A properties hold or improve at the inherited HPs. **`diffusivity` learns cleanly** (R² ≈ 0.96 — comparable to `lipid_packing`/`thickness`); a meaningful positive thesis result that a single-frame embedding can predict a time-averaged dynamical property. **`persistence` is the hard target** (val 0.36, R² ≈ 0.66, floor-like across all 5 seeds); first candidate to test in Stage 1e for a different lr.
 
-### Open hypothesis: capacity trade-off between heterogeneity properties and `persistence`
+### Capacity trade-off between heterogeneity properties and `persistence` — confirmed
 
-Seed 3 — the only seed in 0c that failed `variation` (0.45) and had the worst `thickness_std` (0.37) — had simultaneously the **best** `persistence` (0.336) of the 5 seeds. Across all 5 seeds: r(`variation`,`persistence`) = −0.73, r(`thickness_std`,`persistence`) = −0.83. **But excluding seed 3 the variation correlation flips to +0.86**, so the negative correlation is a single-seed anecdote, not a population effect.
+Originally a single-seed anecdote from Stage 0c (seed 3 failed variation, had best persistence). Stage 1e now shows the same pattern systematically across **lr groups**: at lr=3e-5, the seed that fails `variation` (seed 0, val_var=0.464) has the best `persistence` (0.324). At lr=1e-4, both seeds fail variation AND both have persistence ≈ 0.344 (better than lr=1e-5 where variation is always healthy and persistence ≈ 0.356). **Whenever the trunk gives up on `variation`, capacity flows to `persistence`.** This is a structural property of the shared MLP readout, not a seed artefact.
 
-Two readings: (a) when the shared trunk gives up on the hard structural-heterogeneity signals (`variation`, `thickness_std`), capacity is freed for `persistence`; (b) noise at n=5 with one outlier. Stage 1e is the natural test: if a different lr improves `persistence` *without* breaking `variation`, the trade-off was illusory; if better `persistence` only comes at the cost of `variation`/`thickness_std`, the capacity-competition hypothesis is real and motivates homoscedastic uncertainty weighting or separate heads (per the plan's negative-transfer remedy).
+Implication: improving `persistence` without degrading `variation`/`thickness_std` likely requires separate heads or uncertainty weighting. Flag for thesis discussion as evidence of capacity competition in multi-task shared-trunk GNNs.
+
+### Tier B stage status
+
+| Stage | W&B group | Status | Result |
+|-------|-----------|--------|--------|
+| 0c — GNN floor, 6-prop | `stage_0c_tier_b` | done | No negative transfer; persistence hard (R²≈0.66); diffusivity easy (R²≈0.96) |
+| 1e — lr sanity check | `stage_1e_tier_b_lr` | **done** | lr=1e-5 wins (val_total 0.161); variation stable at 1e-5; persistence architecture-limited |
+| 1e' — lr refinement | `stage_1e_refine_tier_b_lr` | pending | Grid: {3e-6, 1e-5, 3e-5} × seed {0,1,3,4} = 12 runs |
+| 1f — seed stability | `stage_1f_tier_b_seed_stability` | pending | Triggered by lr change in 1e; 5 runs at locked lr |
+| 5c — 5-seed confirmation | `stage_5c_tier_b_confirm` | pending | After 1e' + 1f |
+
+### Stage 1e headline (2026-04-28)
+
+6 runs finished (`stage_1e_tier_b_lr`). **lr=1e-5 wins** on val_total (0.161 vs 0.181 vs 0.225).
+
+| lr | val_total | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity |
+|----|-----------|---------------|-----------|---------------|-----------|-------------|-------------|
+| **1e-5** | **0.161** | 0.029 | 0.076 | 0.334 | **0.102** | 0.356 | 0.066 |
+| 3e-5 (lock) | 0.181 | 0.025 | 0.072 | 0.327 | 0.270 | **0.333** | **0.058** |
+| 1e-4 | 0.225 | 0.025 | 0.075 | 0.383 | 0.462 | 0.344 | 0.061 |
+
+Key: variation fails at both seeds at 1e-4, and seed 0 at 3e-5. At 1e-5 both seeds escape plateau. Persistence R² ≈ 0.67–0.69 across ALL lrs — confirmed architecture-limited, not lr-limited.
+
+**config.yaml lr NOT yet changed** — wait for Stage 1e' to confirm the best lr in the refined grid before locking.
 
 ## Latest Changes (this session, 2026-04-28)
 

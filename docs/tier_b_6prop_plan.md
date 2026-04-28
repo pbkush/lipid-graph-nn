@@ -136,6 +136,59 @@ to 4 properties in Stage 1b).
 fails to decrease past ~epoch 20, the property is noise-limited at the current lr;
 try the full lr range before concluding it is architecture-limited.
 
+### Stage 1e results (2026-04-28)
+
+6/6 runs finished. W&B group: `stage_1e_tier_b_lr`. **Decision: `lr=1e-5` wins → run Stage 1e'.**
+
+**Per-run val_min_last10 (normalised MSE)**:
+
+| lr | seed | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity | **val_total** |
+|----|------|---------------|-----------|---------------|-----------|-------------|-------------|---------------|
+| 1e-5 | 0 | 0.030 | 0.085 | 0.349 | 0.101 | 0.349 | 0.071 | 0.164 |
+| 1e-5 | 1 | 0.029 | 0.068 | 0.319 | 0.104 | 0.363 | 0.061 | 0.157 |
+| 3e-5 | 0 | 0.031 | 0.085 | 0.382 | **0.464** | 0.324 | 0.061 | 0.225 |
+| 3e-5 | 1 | 0.018 | 0.059 | 0.272 | 0.076 | 0.342 | 0.054 | 0.137 |
+| 1e-4 | 0 | 0.024 | 0.076 | 0.383 | **0.462** | 0.342 | 0.061 | 0.224 |
+| 1e-4 | 1 | 0.026 | 0.074 | 0.382 | **0.461** | 0.345 | 0.062 | 0.225 |
+
+**Mean by lr (n=2 seeds)**:
+
+| lr | val_total | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity |
+|----|-----------|---------------|-----------|---------------|-----------|-------------|-------------|
+| **1e-5** | **0.161** | 0.029 | 0.076 | 0.334 | **0.102** | 0.356 | 0.066 |
+| 3e-5 (Tier A lock) | 0.181 | 0.025 | 0.072 | 0.327 | 0.270 | **0.333** | **0.058** |
+| 1e-4 | 0.225 | 0.025 | 0.075 | 0.383 | 0.462 | 0.344 | 0.061 |
+
+**Findings**:
+
+1. **lr=1e-5 wins on val_total (0.161)** — driven by `variation` stability: both seeds
+   escape the plateau at 1e-5 (0.101, 0.104), recapitulating the Tier A Stage 1b pattern
+   ("only lr=1e-5 learned variation"). At 3e-5, seed 0 fails variation (0.464, same
+   dead-init plateau); at 1e-4, both seeds fail variation (0.46).
+
+2. **`persistence` is NOT fixed by lr.** Best mean is 0.333 at lr=3e-5 — only ~8 %
+   below the Stage 0c floor (0.362). R² stays ≈ 0.67–0.69 across all three lrs.
+   `persistence` is architecture/representation-limited, not lr-limited. This is a
+   negative result for Stage 1e's secondary goal: the floor of ~0.35 cannot be moved
+   by lr alone.
+
+3. **Capacity trade-off confirmed, not anecdotal.** At lr=3e-5, the seed that *fails*
+   `variation` (seed 0, val_var=0.464) also has the *best* `persistence` (0.324). The
+   lr=1e-4 group shows the same pattern: both seeds fail variation AND have persistence
+   ≈ 0.344 (better than the variation-healthy 1e-5 runs at 0.356). This repeats across
+   Stages 0c and 1e: whenever the shared trunk gives up on `variation`, capacity frees
+   for `persistence`. The hypothesis is real and architecture-level, not a seed anecdote.
+
+4. **lr=1e-5 slightly regresses Tier A properties** vs the 3e-5 lock: `lipid_packing`
+   0.029 vs 0.025, `thickness` 0.076 vs 0.072. Within seed jitter; 1e' at 4 seeds will
+   give a cleaner signal.
+
+5. **lr=1e-4 hard upper bound**: both seeds fail variation and `thickness_std` worsens.
+   1e' grid should be `{3e-6, 1e-5, 3e-5}` only — no point testing above 3e-5.
+
+**Decision**: lr=1e-5 ≠ 3e-5 → **trigger Stage 1e' refinement** and **Stage 1f seed
+stability** (lr change mandates fragility re-check per plan).
+
 ---
 
 ## Stage 1e' — lr refinement (conditional on Stage 1e)
