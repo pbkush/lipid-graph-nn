@@ -104,16 +104,21 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
+    run_id = wandb.util.generate_id()
     run_name = (
         f"{comp_mode}"
         f"_h{cfg['hidden_dim']}"
         f"_l{cfg['num_layers']}"
         f"_lr{cfg['learning_rate']:.0e}"
+        f"_wd{cfg['weight_decay']:.0e}"
+        f"_e{cfg['epochs']}"
         f"_s{seed}"
+        f"_{run_id}"
     )
     wandb.init(
         project=f"{CONFIG.wandb.project_prefix}_" + "_".join(properties),
         name=run_name,
+        id=run_id,
         config=cfg,
         group=CONFIG.wandb.group,
     )

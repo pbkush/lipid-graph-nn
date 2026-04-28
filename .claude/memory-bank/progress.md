@@ -65,7 +65,7 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 **GPU memory clarification**: earlier "97 % peak = OOM danger" was a misread of W&B's `memoryAllocated` (reserved pool, not live tensors). Real proxy `torch.cuda.max_memory_allocated()` added to `run_sweep.py` as `gpu/peak_mem_actual_gb` (per-epoch reset). Live peak ~8 GB out of 64 GB. Tier B/C have huge memory headroom.
 
-**Run-name encoding bug fixed**: original `gnn_only_h{h}_l{l}_lr{lr}_s{seed}` didn't include all varying HPs, causing Stage 2b download collisions. Future stages must include all varying HPs in run_name (e.g. `_wd{wd}` suffix).
+**Run-name schema (collision-proof)**: schema is `{comp_mode}_h{h}_l{l}_lr{lr:.0e}_wd{wd:.0e}_e{e}_s{seed}_{run_id}`. W&B `run.id` suffix (8 chars, globally unique) guarantees no collision even for same-(HPs, seed) retries. `download_wandb_runs.py` writes `.wandb_run_id` marker file and raises `RuntimeError` on mismatch (defence-in-depth). Preserve trailing `_{run.id}` in all future stages.
 
 **R² added to analyze_hp_search.ipynb**: complementary reporting metric (selection still MSE-driven). 4 cells modified: `cell-load-fn`, `cell-detect-hps`, `cell-aggregate`, `cell-ranking-table`, `cell-recommendation`. R² uses `_tail_mean()` (not `_tail_min()`) to avoid amplifying favourable noise spikes on the small val set.
 

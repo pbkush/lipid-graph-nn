@@ -177,6 +177,15 @@ def download_group(
 
         print(f"  DL    {run.name:<45}", end="  ", flush=True)
         run_dir = group_dir / run.name
+        marker = run_dir / ".wandb_run_id"
+        if marker.exists() and marker.read_text().strip() != run.id:
+            raise RuntimeError(
+                f"Local dir {run_dir} already holds W&B run "
+                f"{marker.read_text().strip()!r}; refusing to overwrite with {run.id!r}. "
+                "Delete or rename the directory before re-downloading."
+            )
+        run_dir.mkdir(parents=True, exist_ok=True)
+        marker.write_text(run.id)
         history_df, summary = _download_run(run, run_dir)
 
         runtime = summary.get("_runtime")
