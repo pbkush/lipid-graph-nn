@@ -2,13 +2,13 @@
 
 ## Current Work Focus
 
-**Tier A — Stage 5b ready to submit (2026-04-27)**
+**Tier A confirmed (2026-04-28)** — Stage 5b complete. Tier A locked HPs validated against Stage 0b baseline; the 4-property pipeline is the new reference result. Next phase: Tier B (+`persistence`, +`diffusivity`).
 
-`config.yaml` finalized for Tier A:
+`config.yaml` (locked Tier A defaults):
 - `active_properties: [lipid_packing, thickness, thickness_std, variation]`
 - `learning_rate: 3.0e-5` (locked from Stage 1b'/1c, verified by Stage 2b)
 - `weight_decay: 1.0e-3` (verified insensitive in [3e-4, 3e-3] by Stage 2b)
-- `epochs: 200` (bumped from 100 per Stage 1d — slow-converger seeds need >100 epochs)
+- `epochs: 200` (verified by Stage 1d slow-escaper rescue)
 - `hidden_dim: 128`, `num_layers: 2`
 
 ### Tier A stage status
@@ -21,41 +21,66 @@
 | 1c — seed stability | `stage_1c_seed_stability_tier_a` | done | 1/5 fail (seed 9); 22% combined (2/9) failure rate; seed 6 late-escape pattern found |
 | 1d — long-training rescue | `stage_1d_long_train_tier_a` | done | seed 9 RESCUED at 200ep (val_var ~0.10); seed 2 still stuck (~0.53) — drop permanently |
 | 2b — wd verification | `stage_2b_quick_wd_tier_a` | done | wd insensitive in [3e-4, 1e-3, 3e-3]; tiny per-property tradeoffs but val_total flat |
-| 5b — 5-seed confirmation | `stage_5b_tier_a_confirm` | **next to submit** | Seeds {0,1,3,4,5} at lr=3e-5, 200 epochs |
+| 5b — 5-seed confirmation | `stage_5b_tier_a_confirm` | **done** | 6/7 seeds healthy; paired t=−31.5, p=3.5e-5 vs Stage 0b; per-prop R² ≥ 0.87 |
 
-### Stage 5b submit command
+### Stage 5b headline results (2026-04-28)
 
-```bash
-bash scripts/bash/submit_sweep.sh --group stage_5b_tier_a_confirm \
-    --lr "3e-5" \
-    --seeds "0" --seeds "1" --seeds "3" --seeds "4" --seeds "5"
-```
+7 finished runs analysed (planned seeds {0,1,3,4,5} plus extras {6,9} that the W&B group filter pulled in). All at locked Tier A config.
 
-5 SLURM jobs, ~2.8h each, all parallel. Skips seed 2 (confirmed bad-init). Available healthy pool: {0,1,3,4,5,6,8,9}.
+**Test MSE / R² (pooled, normalised)**:
 
-### Key Tier A findings
+| Property | MSE mean ± std | R² (95 % CI) |
+|---|---|---|
+| `lipid_packing` | 0.020 ± 0.003 | 0.975 [0.972, 0.978] |
+| `thickness`     | 0.076 ± 0.007 | 0.908 [0.898, 0.917] |
+| `thickness_std` | 0.145 ± 0.024 | 0.873 [0.856, 0.888] |
+| `variation`     | 0.131 ± 0.171 | 0.872 [0.856, 0.887] |
 
-**Variation-property fragility (init-dependent failure mode)**:
-- ~20% of seed inits fail to learn `variation` regardless of lr.
-- Two failure subtypes identified:
-  - "Slow escapers" (e.g. seed 6, 9): plateau at ~0.5 from epoch 20-50, then break through to ~0.08-0.10. Rescued by 200-epoch training.
-  - "True dead-init" (e.g. seed 2): plateau forever. No movement after 200 epochs. Only fix: drop the seed.
-- `thickness_std` and `variation` failures are correlated within a seed — same loss-landscape pathology. Suggests one bottleneck, not two independent ones.
+**Acceptance gates (val MSE, last-10 mean)** — 3 of 4 pass:
+- `lipid_packing` 0.0222 vs 0.022 — **fail by −0.0002** (statistical tie within seed jitter; per-property tradeoff documented in 2b)
+- `thickness` 0.0732 vs 0.074 — pass
+- `thickness_std` 0.299 vs 0.359 — pass (+17 %)
+- `variation` 0.151 vs 0.462 — pass (+67 %)
 
-**HP saturation finding**: 2-prop Stage 5 (already done, lr=1e-4) showed paired t-test p=0.755 vs Stage 0 baseline — HP search produced NO significant improvement. Tier A's hope is that HP tuning matters more for harder properties; Stage 1b' confirmed this for variation (only learns at lr=3e-5/1e-5, not lr=1e-4).
+**Paired t-test vs Stage 0b** (n=4 common seeds: 0,1,3,4): **t = −31.5, p = 3.5 × 10⁻⁵**, ~66 % test-MSE reduction. Direct counterpoint to the 2-prop Stage 5 null result (p = 0.755) — the thesis story for Tier A.
 
-**GPU memory clarification**: live-tensor peak ~8 GB out of 64 GB (logged via `gpu/peak_mem_actual_gb` in `run_sweep.py`). Earlier "97% peak" was W&B's reserved pool, not actual usage. Tier B/C have huge memory headroom.
+**GNN vs Ridge-on-composition baseline**: GNN beats Ridge by 56–84 % across all four properties.
 
-**wd is small lever**: Stage 2b (4 runs at wd∈{3e-4, 3e-3} × seeds {0,4}) found val_total flat across the 10× wd range (0.116 vs 0.118). Per-property: higher wd improves variation slightly (val 0.090 → 0.079), hurts thickness_std slightly (0.272 → 0.287). Net wash. Locked wd=1e-3.
+**Seed health in 5b**: 6/7 seeds healthy (`val_min_last10` ∈ [0.107, 0.143]). Seed 6 failed `variation` despite escaping at ~50 ep in Stage 1c — escape is non-deterministic per seed; widens `variation` MSE std from ~0.02 to 0.171. For thesis reporting, prefer the planned 5-seed pool {0,1,3,4,5} as primary numbers.
+
+**Per-system error concentration**: errors dominate on DPPC- and DOPC-rich mixtures (POPC30_DOPC70 worst, ~19 Å thickness MAE); these sit at the boundary of the test cloud in PCA(composition) space where train density also drops. Documented as a Tier A scope limit.
+
+Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../results/figures/stage_5b/stage_5b_analysis_report.md). Headline JSON: `results/figures/stage_5b/headline_numbers.json`.
+
+### Key Tier A findings (consolidated)
+
+**HP saturation finding**: 2-prop Stage 5 (lr=1e-4) had paired t-test p=0.755 — HP search produced no significant improvement. Tier A reverses this: paired t=−31.5, p=3.5e-5. **HP tuning matters more for harder properties** is the main thesis story.
+
+**Variation-property fragility (init-dependent)**:
+- ~20 % of seed inits fail to learn `variation` regardless of lr.
+- Two failure subtypes:
+  - *Slow escapers* (seeds 6, 9): plateau at ~0.5 from epoch 20–50, then break through to ~0.08–0.10. Rescued by 200-epoch training. Escape is non-deterministic — seed 6 escaped in 1c, failed in 5b.
+  - *True dead-init* (seed 2): plateau forever. No movement after 200 epochs. Drop permanently.
+- `thickness_std` and `variation` failures are correlated within a seed — one loss-landscape pathology, not two independent ones.
+
+**wd is small lever**: Stage 2b found val_total flat across the 10× wd range. Per-property tradeoff exists (higher wd helps variation slightly, hurts thickness_std slightly). Locked wd=1e-3.
+
+**GPU memory clarification**: live-tensor peak ~8 GB out of 64 GB (logged via `gpu/peak_mem_actual_gb` in `run_sweep.py`). Earlier "97 % peak" was W&B's reserved pool, not actual usage. Tier B/C have huge memory headroom.
 
 ### Gates (Stage 0b 4-prop baseline, val_min_last10 mean)
 - `lipid_packing < 0.022`, `thickness < 0.074`, `thickness_std < 0.359`, `variation < 0.462`
 - Set in [docs/tier_a_4prop_plan.md](../../docs/tier_a_4prop_plan.md) and [scripts/notebooks/analyze_hp_search.ipynb](../../scripts/notebooks/analyze_hp_search.ipynb) Cell 1 `GATES`.
 
-## Latest Changes (this session, 2026-04-27)
+## Latest Changes (this session, 2026-04-28)
+
+- **`scripts/notebooks/analyze_stage_5.ipynb`**: re-pointed at `stage_5b_tier_a_confirm` and `stage_0b_tier_a`; FIGURES_DIR is `results/figures/stage_5b`; HP-progression `GROUPS_PROG` now lists the full Tier A stage chain. All 9 figures regenerated.
+- **`results/figures/stage_5b/`**: 9 PDF + PNG figures + `headline_numbers.json` + new `stage_5b_analysis_report.md` (full per-section analysis).
+- **`.claude/memory-bank/thesisStory.md`** (new): narrative arc of the project from starting point through Tier A confirmation. Indexed in `.claude/CLAUDE.md` as core file 7.
+
+## Latest Changes (previous, 2026-04-27)
 
 - **`config.yaml`**: `epochs: 100 → 200`, `learning_rate: 1.0e-4 → 3.0e-5`. Tier A defaults locked.
-- **`docs/tier_a_4prop_plan.md`**: Stage 1b'/1c/1d/2b results recorded; Stage 5b seed selection finalized.
+- **`docs/tier_a_4prop_plan.md`**: Stage 1b'/1c/1d/2b results recorded; Stage 5b seed selection finalised.
 - **`scripts/notebooks/analyze_hp_search.ipynb`**: R² wired into 4 cells:
   1. `cell-load-fn`: `_tail_mean()` helper + `val_r2_{prop}` per-property loading from `history.parquet`.
   2. `cell-detect-hps`: `_PROP_VALS` excludes `val_r2_*` from HP detection.
@@ -72,7 +97,7 @@ bash scripts/bash/submit_sweep.sh --group stage_5b_tier_a_confirm \
 - **Seed 6 late-escape**: variation plateaued at ~0.5 until epoch ~50, then broke through to val_var=0.082 (best of sweep). First evidence the plateau is escapable.
 
 **Stage 1d findings (200-epoch rescue test on seeds 2 and 9)**:
-- Seed 9: variation broke through at step ~3500 (~55 epochs), val_var settled at ~0.08-0.10 by 200 epochs. Train and val track. **Rescued — keep as healthy seed**.
+- Seed 9: variation broke through at step ~3500 (~55 epochs), val_var settled at ~0.08–0.10 by 200 epochs. Train and val track. **Rescued — keep as healthy seed**.
 - Seed 2: completely flat throughout 200 epochs (val_var ~0.53). True bad-init. **Drop permanently**.
 - Conclusion: bump default epochs to 200, drop seed 2 only.
 
@@ -95,3 +120,4 @@ bash scripts/bash/submit_sweep.sh --group stage_5b_tier_a_confirm \
 - All HP values frozen at sbatch submission time via `submit_sweep.sh`; `run_sweep.py` reads them via `_apply_submission_overrides()`.
 - Run names must include all varying HPs to avoid download collisions.
 - Selection metric is MSE (`val_min_last10`); R² is reported alongside as a complementary, more interpretable signal (R²≥0.85 GOOD, ≥0.5 OK, <0.5 WEAK).
+- For thesis reporting on multi-seed runs that include rescued/extra seeds, prefer the planned-pool primary numbers and footnote the extras (5b precedent: seeds {0,1,3,4,5} primary, {6,9} extras).

@@ -61,6 +61,13 @@ The Memory Bank consists of core files and optional context files, all in Markdo
    - Known issues
    - Evolution of project decisions
 
+7. `thesisStory.md`
+   - Narrative arc of the project from start to current state
+   - Motivation and problem framing
+   - Major decisions and the reasoning behind them
+   - Headline results and findings per phase
+   - Open questions and future directions
+
 ### Additional Context
 Create additional files/folders within memory-bank/ when they help organize:
 - Complex feature documentation
