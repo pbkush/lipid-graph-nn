@@ -41,7 +41,7 @@ export CHUNKS_DIR="$STAGE"
 # W&B: set WANDB_MODE=offline in your environment if compute nodes are air-gapped;
 # then after the job: wandb sync "$WORK"/wandb/offline-run-*
 export WANDB_MODE="${WANDB_MODE:-online}"
-export WANDB_GROUP="stage_0_baseline"
+export WANDB_GROUP="${WANDB_GROUP:-stage_0_baseline}"
 WANDB_DIR="$(python scripts/python/print_config_var.py paths.wandb_dir)"
 export WANDB_DIR
 mkdir -p "$WANDB_DIR"
