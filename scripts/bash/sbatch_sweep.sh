@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=stage_0_lipid-sweep
+#SBATCH --job-name=lipid-sweep
 #SBATCH --mail-user=pberger@fias.uni-frankfurt.de
 #SBATCH --account=cellmembrane
 #SBATCH --partition=gpu
