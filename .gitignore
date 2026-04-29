@@ -230,6 +230,9 @@ colab_lipid_gnn_subset/
 # Scratch / temporary
 tmp/
 
+# Claude Code skills (local tooling, not tracked)
+.claude/skills/
+
 # Agent prompt scratch files
 agent_handover_prompt.md
 mem_issue_prompt.md
