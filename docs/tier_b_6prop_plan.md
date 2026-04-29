@@ -202,12 +202,62 @@ Only run if Stage 1e selects a lr other than `3e-5`.
 Example: if Stage 1e selects `lr=1e-5`, the refinement grid would be
 `{3e-6, 1e-5, 3e-5}`.
 
+### Stage 1e' results (2026-04-29)
+
+12/12 runs finished (`stage_1e_refine_tier_b_lr`, grid `{3e-6, 1e-5, 3e-5}` × `seed ∈ {0, 1, 3, 4}`).
+**Decision: `lr=3e-5` wins → keep Tier A lock. Skip Stage 1f, proceed to Stage 5c.**
+
+**Mean by lr (4 seeds, val_min_last10 normalised MSE)** — winner row marked `←`:
+
+| lr            | val_total | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity |
+|---------------|-----------|---------------|-----------|---------------|-----------|-------------|-------------|
+| 3e-6          | 0.179     | 0.027         | 0.089     | 0.372         | 0.175     | 0.364       | 0.082       |
+| 1e-5          | 0.153     | 0.027         | 0.075     | 0.319         | 0.091     | 0.344       | 0.068       |
+| 3e-5 (lock) ← | 0.148     | 0.020         | 0.066     | 0.297         | 0.084     | 0.368       | 0.059       |
+
+**Seed std on val_total**: 3e-6 = 0.0102, 1e-5 = 0.0069, **3e-5 = 0.0013** (≈5–8× tighter
+than the lower lrs).
+
+**Findings**:
+
+1. **lr=3e-5 wins on val_total (0.148)** and on every property except `persistence`.
+   The Stage 1e signal (1e-5 wins) was driven entirely by a single seed-0 variation
+   failure at 3e-5; with 4 seeds, **all 4 seeds at 3e-5 escape the variation plateau**
+   (val_var ∈ [0.075, 0.099]). The seed-0 failure was a one-seed bad init, not a
+   systematic lr=3e-5 problem.
+
+2. **3e-5 is the most stable lr** (seed std ≈ 0.001 on val_total). Lower lrs are
+   noisier seed-to-seed; higher lrs (Stage 1e: 1e-4) fail variation outright.
+
+3. **Persistence is flat across all 3 lrs** (0.344–0.368, R² 0.66–0.69). Confirms
+   the Stage 1e finding: persistence is architecture-limited, not lr-limited. The
+   marginal lr=1e-5 advantage on persistence (0.344 vs 0.368, ≈7 %) does not justify
+   sacrificing the clean Tier A wins.
+
+4. **lr=3e-6 is too low**: every property worsens vs 1e-5/3e-5; variation suffers
+   most (0.175 mean), and no seed achieves the variation health seen at 3e-5.
+
+**Decision rationale**:
+
+- val_total winner: 3e-5
+- Tier A property winner: 3e-5
+- Variation health: 4/4 seeds healthy at 3e-5 (vs 3/4 at 1e-5; the Stage 1e seed-0
+  3e-5 failure was a single-seed event not replicated in 1e')
+- Seed stability: 3e-5 is ≈5× tighter than alternatives
+- Only loss: persistence (0.368 vs 0.344) — small, and persistence is architecture-bound
+
+**Action**: Keep `learning_rate: 3.0e-5` in `config.yaml`. **Skip Stage 1f** (only
+required if 1e' changed the locked lr). **Proceed to Stage 5c**.
+
 ---
 
 ## Stage 1f — seed stability check (conditional)
 
 Only run if Stage 0c reveals significant seed fragility on `persistence` or
 `diffusivity` (outcome D above), or if Stage 1e' changes the locked lr.
+
+**Status (2026-04-29): SKIPPED.** Stage 1e' confirmed `lr=3e-5` lock; 4/4 seeds
+healthy at the locked lr in 1e' provides the seed-stability check implicitly.
 
 **Grid**: locked lr × `seed ∈ {4, 5, 6, 8, 9}` = 5 runs (or a fresh 5-seed pool
 if different fragility pattern emerges)
