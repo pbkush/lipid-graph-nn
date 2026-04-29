@@ -2,11 +2,12 @@
 
 ## Current Work Focus
 
-**Tier B Stage 1e done (2026-04-28)** — lr sanity check on 6-prop training. **`lr=1e-5` wins** (val_total 0.161 vs 0.181 for 3e-5, 0.225 for 1e-4). Triggers Stage 1e' (refinement grid `{3e-6, 1e-5, 3e-5}` × seed ∈ {0,1,3,4}) and Stage 1f (seed stability at the new lr). `persistence` confirmed architecture-limited — lr sweep 30× produced no R² gain (~0.67–0.69 across all lrs). Capacity trade-off hypothesis upgraded from anecdote to consistent finding.
+**Tier B Stage 1e' done (2026-04-29)** — lr refinement grid `{3e-6, 1e-5, 3e-5}` × seed ∈ {0,1,3,4} on 6-prop training. **`lr=3e-5` wins** (val_total 0.148 vs 0.153 for 1e-5, 0.179 for 3e-6) — Stage 1e signal flips. The Stage 1e seed-0 variation failure at 3e-5 was a single-seed bad init; 4/4 seeds at 3e-5 in 1e' escape the variation plateau. lr=3e-5 also wins on every property except `persistence` (0.368 vs 0.344 at 1e-5; ~7 % difference, not worth losing the Tier A wins) AND has ≈5× tighter seed-std than alternatives (0.0013 vs 0.0069/0.0102). `persistence` flat across all lrs (0.344–0.368), reconfirms architecture-limited finding. **Decision: keep Tier A lr=3e-5 lock, skip Stage 1f, proceed directly to Stage 5c.**
 
-`config.yaml` (Tier B active; locked HPs inherited from Tier A):
+`config.yaml` (Tier B active; locked HPs unchanged from Tier A):
+
 - `active_properties: [lipid_packing, thickness, thickness_std, variation, persistence, diffusivity]`
-- `learning_rate: 3.0e-5` (Tier A lock; Stage 1e will retest for `persistence`)
+- `learning_rate: 3.0e-5` (Tier A lock — confirmed by Stage 1e')
 - `weight_decay: 1.0e-3`
 - `epochs: 200`
 - `hidden_dim: 128`, `num_layers: 2`
@@ -90,7 +91,9 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 ### Capacity trade-off between heterogeneity properties and `persistence` — confirmed
 
-Originally a single-seed anecdote from Stage 0c (seed 3 failed variation, had best persistence). Stage 1e now shows the same pattern systematically across **lr groups**: at lr=3e-5, the seed that fails `variation` (seed 0, val_var=0.464) has the best `persistence` (0.324). At lr=1e-4, both seeds fail variation AND both have persistence ≈ 0.344 (better than lr=1e-5 where variation is always healthy and persistence ≈ 0.356). **Whenever the trunk gives up on `variation`, capacity flows to `persistence`.** This is a structural property of the shared MLP readout, not a seed artefact.
+Originally a single-seed anecdote from Stage 0c (seed 3 failed variation, had best persistence). Stage 1e showed the same pattern systematically across **lr groups**: at lr=3e-5, the seed that fails `variation` (seed 0, val_var=0.464) has the best `persistence` (0.324). At lr=1e-4, both seeds fail variation AND both have persistence ≈ 0.344 (better than lr=1e-5 where variation is always healthy and persistence ≈ 0.356). **Whenever the trunk gives up on `variation`, capacity flows to `persistence`.** This is a structural property of the shared MLP readout, not a seed artefact.
+
+Stage 1e' (4 seeds × 3 lrs, all 12 seeds with healthy variation) reframes the pattern: the marginal `persistence` advantage of lr=1e-5 over lr=3e-5 (0.344 vs 0.368, ≈7 %) is the *floor* of how much capacity competition costs once variation is healthy across all seeds. The architecture floor for `persistence` is ~0.35 regardless of lr. Both observations stand together: capacity competition is real (1e dataset) AND lr alone cannot move the persistence floor (1e' dataset).
 
 Implication: improving `persistence` without degrading `variation`/`thickness_std` likely requires separate heads or uncertainty weighting. Flag for thesis discussion as evidence of capacity competition in multi-task shared-trunk GNNs.
 
@@ -99,24 +102,38 @@ Implication: improving `persistence` without degrading `variation`/`thickness_st
 | Stage | W&B group | Status | Result |
 |-------|-----------|--------|--------|
 | 0c — GNN floor, 6-prop | `stage_0c_tier_b` | done | No negative transfer; persistence hard (R²≈0.66); diffusivity easy (R²≈0.96) |
-| 1e — lr sanity check | `stage_1e_tier_b_lr` | **done** | lr=1e-5 wins (val_total 0.161); variation stable at 1e-5; persistence architecture-limited |
-| 1e' — lr refinement | `stage_1e_refine_tier_b_lr` | pending | Grid: {3e-6, 1e-5, 3e-5} × seed {0,1,3,4} = 12 runs |
-| 1f — seed stability | `stage_1f_tier_b_seed_stability` | pending | Triggered by lr change in 1e; 5 runs at locked lr |
-| 5c — 5-seed confirmation | `stage_5c_tier_b_confirm` | pending | After 1e' + 1f |
+| 1e — lr sanity check | `stage_1e_tier_b_lr` | done | 2-seed pilot: lr=1e-5 wins (val_total 0.161); but seed-0 3e-5 variation failure inflated 3e-5 mean |
+| 1e' — lr refinement | `stage_1e_refine_tier_b_lr` | **done** | 4-seed grid: **lr=3e-5 wins** (val_total 0.148); Tier A lock preserved |
+| 1f — seed stability | `stage_1f_tier_b_seed_stability` | skipped | Not triggered: 1e' kept the lock; 4/4 seeds healthy at 3e-5 in 1e' is implicit stability evidence |
+| 5c — 5-seed confirmation | `stage_5c_tier_b_confirm` | next | At locked HPs (lr=3e-5, wd=1e-3, h=128, l=2, e=200) on seed pool {0,1,3,4,5} |
 
 ### Stage 1e headline (2026-04-28)
 
-6 runs finished (`stage_1e_tier_b_lr`). **lr=1e-5 wins** on val_total (0.161 vs 0.181 vs 0.225).
+6 runs finished (`stage_1e_tier_b_lr`, 2-seed pilot). Initial signal: **lr=1e-5 wins** on val_total (0.161 vs 0.181 vs 0.225). Variation fails at both seeds at 1e-4 and at seed-0 at 3e-5. Persistence R² ≈ 0.67–0.69 across all lrs — confirmed architecture-limited. **Triggered Stage 1e' refinement at 4 seeds.**
 
-| lr | val_total | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity |
-|----|-----------|---------------|-----------|---------------|-----------|-------------|-------------|
-| **1e-5** | **0.161** | 0.029 | 0.076 | 0.334 | **0.102** | 0.356 | 0.066 |
-| 3e-5 (lock) | 0.181 | 0.025 | 0.072 | 0.327 | 0.270 | **0.333** | **0.058** |
-| 1e-4 | 0.225 | 0.025 | 0.075 | 0.383 | 0.462 | 0.344 | 0.061 |
+### Stage 1e' headline (2026-04-29)
 
-Key: variation fails at both seeds at 1e-4, and seed 0 at 3e-5. At 1e-5 both seeds escape plateau. Persistence R² ≈ 0.67–0.69 across ALL lrs — confirmed architecture-limited, not lr-limited.
+12/12 runs finished (`stage_1e_refine_tier_b_lr`, grid `{3e-6, 1e-5, 3e-5}` × seed ∈ {0,1,3,4}). **lr=3e-5 wins on val_total (0.148) — Tier A lock confirmed.** Stage 1e signal flips at 4 seeds.
 
-**config.yaml lr NOT yet changed** — wait for Stage 1e' to confirm the best lr in the refined grid before locking.
+| lr            | val_total | lipid_packing | thickness | thickness_std | variation | persistence | diffusivity |
+|---------------|-----------|---------------|-----------|---------------|-----------|-------------|-------------|
+| 3e-6          | 0.179     | 0.027         | 0.089     | 0.372         | 0.175     | 0.364       | 0.082       |
+| 1e-5          | 0.153     | 0.027         | 0.075     | 0.319         | 0.091     | 0.344       | 0.068       |
+| 3e-5 (lock) ← | 0.148     | 0.020         | 0.066     | 0.297         | 0.084     | 0.368       | 0.059       |
+
+Seed std on val_total: 3e-6 = 0.0102, 1e-5 = 0.0069, **3e-5 = 0.0013** (≈5–8× tighter).
+
+**Key resolution**: the Stage 1e seed-0 3e-5 variation failure (val_var=0.464) was a **single-seed bad init**, not a lr=3e-5 problem. In 1e', all 4 seeds at 3e-5 escape plateau (val_var ∈ [0.075, 0.099]). 3e-5 also wins every property except `persistence` (lr=1e-5 marginally better at 0.344 vs 0.368, ≈7 % — small relative to architecture floor of ~0.35; persistence is bound by representation, not lr).
+
+**Decision**: keep `lr=3e-5` lock in `config.yaml` (no change needed). **Skip Stage 1f** — only required if 1e' had changed the lr; 4/4 seeds healthy at 3e-5 in 1e' provides the seed-stability check implicitly. **Proceed directly to Stage 5c.**
+
+**Next command** (Stage 5c — 5-seed confirmation):
+
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_5c_tier_b_confirm \
+    --lr "3e-5" \
+    --seeds "0" --seeds "1" --seeds "3" --seeds "4" --seeds "5"
+```
 
 ## Latest Changes (this session, 2026-04-28)
 

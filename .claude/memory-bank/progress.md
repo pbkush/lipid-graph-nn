@@ -74,7 +74,10 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 | Stage | Status | Key result |
 |-------|--------|------------|
 | Stage 0c — 6-prop GNN floor at locked Tier A HPs | done | val_min10: lp=0.019, th=0.067, th_std=0.302, var=0.151, persistence=0.362, diffusivity=0.059. No negative transfer; `diffusivity` learns cleanly (R² ≈ 0.96), `persistence` floor-like (R² ≈ 0.66). 4/5 seeds healthy (seed 3 stuck on `variation`). Decision matrix outcome **A** with caveat: `persistence` may need lr re-tune. |
-| Stage 1e — lr sanity check | next | Test `lr ∈ {1e-5, 3e-5, 1e-4}` × 2 seeds; watch `val/loss_persistence` specifically. |
+| Stage 1e — lr sanity check (2 seeds) | done | Initial signal: lr=1e-5 wins (val_total 0.161); seed-0 variation failure at 3e-5 inflated 3e-5 mean. Triggered 1e'. |
+| Stage 1e' — lr refinement (4 seeds × 3 lrs) | done | **lr=3e-5 wins (val_total 0.148)** — Tier A lock confirmed; signal from 1e was a single-seed bad-init artefact. 4/4 seeds healthy at 3e-5, ≈5× tighter seed-std than alternatives. Persistence floor (~0.35) flat across all lrs — architecture-limited. |
+| Stage 1f — seed stability | skipped | Not triggered; 1e' kept the lock and 4/4 seeds at 3e-5 are implicit stability evidence. |
+| Stage 5c — 5-seed confirmation | next | At locked HPs (lr=3e-5) on seed pool {0,1,3,4,5}. |
 
 **Tier B GATES (Stage 0c 6-prop floor, 5-seed val_min10 mean — locked in `tier_b_6prop_plan.md` and `analyze_hp_search.ipynb` Cell 1)**:
 `lipid_packing < 0.019`, `thickness < 0.067`, `thickness_std < 0.302`, `variation < 0.151`, `persistence < 0.362`, `diffusivity < 0.059`.
