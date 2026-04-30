@@ -1,0 +1,208 @@
+# Tier C — 7-Property Training Plan
+
+**Properties**: `lipid_packing`, `thickness`, `thickness_std`, `variation`, `persistence`,
+`diffusivity`, `compressibility`
+
+**Inherited locked HPs** (from Tier B Stage 5c confirmation):
+`hidden_dim=128`, `num_layers=2`, `lr=3.0e-5`, `wd=1.0e-3`, `epochs=200`
+
+---
+
+## Scientific motivation
+
+Tier B confirmed that dynamical properties (diffusivity R²=0.96, persistence R²=0.58) are
+learnable from a single-frame snapshot embedding, with `persistence` being architecture-limited
+(flat across all lrs). Tier C adds **`compressibility`** — the area compressibility modulus
+(units Å³/kT; POPC100 ref ≈ 4.9) — a thermodynamic/mechanical property that couples to
+area fluctuations at the whole-bilayer scale.
+
+**Expected difficulty**: `compressibility` is derived from area-fluctuation statistics, which
+have a longer correlation length than the 11 Å spatial cutoff of the current GNN. Expect
+R² to be architecture-limited (similar to `persistence`), not HP-limited. The question is
+whether the single-frame local geometry still carries a usable signal, and whether adding a
+noisy long-wavelength target degrades the already-good Tier B properties.
+
+**`bending_modulus` excluded**: fit from undulation-spectrum regression, carries higher label
+noise, and is even more strongly long-wavelength than compressibility. It remains deferred
+to a future EFA (equivariant fast-attention spatial layer) experiment
+([docs/efa_spatial_layer_future.md](efa_spatial_layer_future.md)).
+
+**Primary HP criterion**: `val_total` over the **6 Tier A+B properties only**.
+`compressibility` R² is reported and tracked but excluded from the HP selection metric —
+it cannot be improved by lr/wd/capacity changes without an architectural change to the
+spatial channel.
+
+---
+
+## Config change to activate Tier C
+
+Edit `config.yaml` before any of the stages below:
+
+```yaml
+vocab:
+  active_properties: [lipid_packing, thickness, thickness_std, variation, persistence, diffusivity, compressibility]
+```
+
+No chunk rebuild needed — `compressibility` is column 3 in the preprocessed `y` vector
+(`y` stores all 8 properties; `run_sweep.py` slices `prop_cols` at runtime).
+
+Verify the column order:
+
+```bash
+python -c "
+from lipid_gnn.config import CONFIG
+print(CONFIG.vocab.active_properties)
+"
+```
+
+---
+
+## Stage 0d — GNN floor on 7 properties
+
+Establishes the Tier C baseline and checks for negative transfer from adding
+`compressibility` to the shared loss.
+
+**Grid**: `seed ∈ {0, 1, 3, 4, 5}` = 5 runs (same pool as Tiers A and B)
+**W&B group**: `stage_0d_tier_c`
+**HPs**: locked Tier B config (no changes)
+
+Also run the linear baseline for 7 properties:
+
+```bash
+python scripts/training/linear_baseline.py --stratified
+```
+
+**Submit command**:
+
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_0d_tier_c \
+    --lr "3e-5" \
+    --seeds "0" --seeds "1" --seeds "3" --seeds "4" --seeds "5"
+```
+
+**Decision rule after Stage 0d**:
+
+| Outcome | Condition | Action |
+|---------|-----------|--------|
+| A — clean floor | `compressibility` shows any learning (val MSE < 1.0), Tier A+B props hold within ~10 % of Stage 5c | Proceed directly to Stage 5d. No HP re-tune needed — compressibility is architecture-bound. |
+| B — compressibility stuck | `compressibility` val MSE ≈ 1.0 throughout (no learning signal) | Proceed to Stage 5d regardless. Document as architecture-limited. Do not run Stage 1g. |
+| C — negative transfer | Tier A+B properties degrade > 20 % vs Stage 5c at same HPs | Run Stage 1g (lr check with compressibility in loss). Consider uncertainty weighting. |
+| D — broad seed fragility | Wide variation in Tier A+B val MSE across seeds, or new properties triggering variation failures | Run Stage 1g-analog seed stability check. |
+
+**Acceptance gates** (Tier B Stage 5c floors — locked):
+
+| Property      | Gate (Tier B floor)  |
+|---------------|----------------------|
+| lipid_packing | < 0.019              |
+| thickness     | < 0.067              |
+| thickness_std | < 0.302              |
+| variation     | < 0.151              |
+| persistence   | < 0.362              |
+| diffusivity   | < 0.059              |
+| compressibility | *new — floor set by Stage 0d result* |
+
+---
+
+## Stage 1g — lr sanity check (conditional)
+
+Only run if Stage 0d shows outcome C (negative transfer > 20 % on Tier A+B props).
+`compressibility` being architecture-limited means lr changes are unlikely to improve it;
+Stage 1g's goal is to protect the Tier A+B result, not to rescue compressibility.
+
+**Grid**: `lr ∈ {1e-5, 3e-5, 1e-4}` × `seed ∈ {0, 1}` = 6 runs
+**W&B group**: `stage_1g_tier_c_lr`
+**HP selection metric**: `val_total` computed over the **6 Tier A+B properties only**
+(exclude `compressibility` from the total when comparing lrs)
+
+- If `lr=3e-5` wins → keep lock, proceed to Stage 5d.
+- If a different lr wins → run Stage 1g' (half-decade refinement, 4 seeds ×
+  3 lrs = 12 runs), following the Stage 1e' pattern.
+
+---
+
+## Stage 1g' — lr refinement (conditional on Stage 1g)
+
+Only run if Stage 1g selects a lr other than `3e-5`.
+
+**Grid**: half-decade triplet centred on Stage 1g winner × `seed ∈ {0, 1, 3, 4}` = 12 runs
+**W&B group**: `stage_1g_refine_tier_c_lr`
+**HP selection metric**: val_total over 6 Tier A+B properties
+
+---
+
+## Stage 5d — 5-seed confirmation
+
+Run 5 seeds at the Tier C locked HP. Produces `test_artifacts.npz` for analysis.
+
+**Grid**: `seed ∈ {0, 1, 3, 4, 5}` = 5 runs
+**W&B group**: `stage_5d_tier_c_confirm`
+
+**Submit command** (run after Stage 0d decision — assuming outcome A or B):
+
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_5d_tier_c_confirm \
+    --lr "3e-5" \
+    --seeds "0" --seeds "1" --seeds "3" --seeds "4" --seeds "5"
+```
+
+**Gates** (set from Stage 0d 5-seed mean):
+
+| Property      | Gate |
+|---------------|------|
+| lipid_packing | < Stage 0d mean |
+| thickness     | < Stage 0d mean |
+| thickness_std | < Stage 0d mean |
+| variation     | < Stage 0d mean |
+| persistence   | < Stage 0d mean |
+| diffusivity   | < Stage 0d mean |
+| compressibility | < Stage 0d mean |
+
+**Success criterion for thesis**: Tier A+B properties maintained within ~10 % of Stage 5c
+(paired t-test vs Stage 0d on common seeds). `compressibility` R² reported as exploratory;
+low R² is the expected and interpretable result (architecture-limited, documents a known
+scope limit of the 11 Å spatial cutoff).
+
+---
+
+## Stage chain summary
+
+| Stage | W&B group | Condition | What it answers |
+|-------|-----------|-----------|-----------------|
+| 0d — 7-prop GNN floor | `stage_0d_tier_c` | always | Baseline + negative-transfer check |
+| 1g — lr sanity check | `stage_1g_tier_c_lr` | if outcome C in 0d | Does lr=3e-5 still protect Tier A+B? |
+| 1g' — lr refinement | `stage_1g_refine_tier_c_lr` | if 1g changes lr | What is the better lr? |
+| 5d — 5-seed confirmation | `stage_5d_tier_c_confirm` | always | Final Tier C result |
+
+---
+
+## Reporting
+
+Use `analyze_stage_5.py` with:
+
+```python
+GROUP          = "stage_5d_tier_c_confirm"
+BASELINE_GROUP = "stage_0d_tier_c"
+```
+
+The notebook is parameterised for any number of active properties — all figures extend
+naturally to 7 rows. `headline_numbers.json` will include `compressibility`.
+
+For the thesis, present `compressibility` R² as a secondary result alongside the note that
+it is architecture-limited (long-wavelength property beyond the 11 Å spatial cutoff).
+Contrast with `diffusivity` (R²=0.96, also a non-geometric property but local in scale)
+to tell the story about which properties a single-frame GNN can and cannot learn.
+
+---
+
+## Tier C scope limits (pre-registered)
+
+- **Architecture ceiling on `compressibility`**: area fluctuation statistics require
+  long-wavelength receptive fields. The 11 Å spatial cutoff samples ~4 nearest neighbours;
+  the compressibility modulus integrates area fluctuations at box scale. Expect R² << 0.5
+  regardless of HP changes. Flag for EFA future work.
+- **Loss dilution**: adding a high-noise compressibility gradient to the shared trunk may
+  slightly dampen updates on Tier A+B properties. Monitor per-property val curves in Stage 0d
+  from epoch 0 — if Tier A+B properties converge slower, that is the dilution signal.
+- **`bending_modulus` deferred**: excluded due to higher label noise from undulation-spectrum
+  regression. If Tier C results motivate a future architectural extension (EFA spatial layer),
+  `bending_modulus` would be the natural 8th property to add at that point.
