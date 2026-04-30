@@ -168,7 +168,35 @@ in `tier_b_6prop_plan.md` § "Acceptance gates for Stage 0c" and in
 
 ---
 
-## 7. Open questions and next phases
+## 7. Tier B Stage 5c — 6-property confirmation (2026-04-30)
+
+5-seed confirmation at the locked Tier A HPs on all six Tier B properties.
+Full report in `results/figures/stage_5c/` (10 figures + `headline_numbers.json`).
+
+| Property | MSE mean ± std | R² (95 % CI) |
+| --- | --- | --- |
+| `lipid_packing` | 0.0182 ± 0.0028 | 0.978 [0.974, 0.981] |
+| `thickness` | 0.0789 ± 0.0059 | 0.905 [0.892, 0.916] |
+| `thickness_std` | 0.1342 ± 0.0115 | 0.882 [0.863, 0.897] |
+| `variation` | 0.0730 ± 0.0370 | 0.929 [0.921, 0.936] |
+| `persistence` | 0.4077 ± 0.0065 | 0.578 [0.528, 0.621] |
+| `diffusivity` | 0.0337 ± 0.0014 | 0.959 [0.953, 0.964] |
+
+**Paired t-test vs Stage 0c**: t = −0.614, p = 0.286 — not significant. This is *expected*: Stage 1e' confirmed the Tier A lr=3e-5 lock was already optimal, so Stage 5c and Stage 0c differ only in run order, not in configuration. Unlike Tier A (t=−31.5 because lr changed from 1e-4 to 3e-5), the Tier B HP search produced no configuration change. The story is: **HP search confirmed the optimum rather than finding a new one.**
+
+Three headline findings for the thesis:
+
+1. **`persistence` is architecture-limited, not HP-limited.** R² = 0.578, flat across all seeds and all three lrs tested in Stage 1e'. The capacity-competition finding from Stage 1e/1e' (seeds that fail `variation` have better `persistence`) implies the shared MLP trunk cannot simultaneously represent both heterogeneity properties and persistence. Separate heads or uncertainty weighting are the likely remedy.
+
+2. **`diffusivity` confirms static-snapshot → dynamical-property prediction.** R² = 0.959, comparable to `lipid_packing`. A single MD frame's bead geometry carries enough information to predict the time-averaged lateral diffusion coefficient. This is a clean positive result that addresses the "can structure predict dynamics" question directly.
+
+3. **No negative transfer confirmed at the formal confirmation stage.** Tier A R² values hold within seed jitter when two additional properties are added. The homoscedastic weighting remedy from the tier-B plan stays deferred.
+
+A new figure (j) — percentage-error box plot `(pred−true)/true×100` — was added to the analysis notebook as a direct counterpart to Emil's composition-only FFNN reference. The GNN achieves ±1–2 % IQR on `lipid_packing`, `thickness`, `variation`; `diffusivity` ±5 % IQR; `persistence` shows widest spread (+3.5 % median bias).
+
+---
+
+## 8. Open questions and next phases
 
 - **Tier B Stage 1e (next)** — `lr ∈ {1e-5, 3e-5, 1e-4}` × 2 seeds. Watch `val/loss_persistence` specifically. If `persistence` learns at a lower lr, the 4 → 6 property pivot will replay the Stage 1b lr-saturation discovery.
 - **Tier C (+`compressibility`, +`bending_modulus`)** — these need long-range receptive fields the 11 Å cutoff cannot provide. Likely floor-bound until the spatial channel is extended (`docs/efa_spatial_layer_future.md` proposes Euclidean Fast Attention as the eventual remedy; deferred until simpler levers exhaust).

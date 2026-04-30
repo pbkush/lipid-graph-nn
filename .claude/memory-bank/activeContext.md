@@ -2,7 +2,7 @@
 
 ## Current Work Focus
 
-**Tier B Stage 1e' done (2026-04-29)** — lr refinement grid `{3e-6, 1e-5, 3e-5}` × seed ∈ {0,1,3,4} on 6-prop training. **`lr=3e-5` wins** (val_total 0.148 vs 0.153 for 1e-5, 0.179 for 3e-6) — Stage 1e signal flips. The Stage 1e seed-0 variation failure at 3e-5 was a single-seed bad init; 4/4 seeds at 3e-5 in 1e' escape the variation plateau. lr=3e-5 also wins on every property except `persistence` (0.368 vs 0.344 at 1e-5; ~7 % difference, not worth losing the Tier A wins) AND has ≈5× tighter seed-std than alternatives (0.0013 vs 0.0069/0.0102). `persistence` flat across all lrs (0.344–0.368), reconfirms architecture-limited finding. **Decision: keep Tier A lr=3e-5 lock, skip Stage 1f, proceed directly to Stage 5c.**
+**Tier B Stage 5c done (2026-04-30)** — 5-seed confirmation at locked Tier A HPs on 6 properties complete. Marimo analysis notebook `scripts/notebooks/analyze_stage_5.py` written and verified. **Tier B pipeline complete.**
 
 `config.yaml` (Tier B active; locked HPs unchanged from Tier A):
 
@@ -105,7 +105,7 @@ Implication: improving `persistence` without degrading `variation`/`thickness_st
 | 1e — lr sanity check | `stage_1e_tier_b_lr` | done | 2-seed pilot: lr=1e-5 wins (val_total 0.161); but seed-0 3e-5 variation failure inflated 3e-5 mean |
 | 1e' — lr refinement | `stage_1e_refine_tier_b_lr` | **done** | 4-seed grid: **lr=3e-5 wins** (val_total 0.148); Tier A lock preserved |
 | 1f — seed stability | `stage_1f_tier_b_seed_stability` | skipped | Not triggered: 1e' kept the lock; 4/4 seeds healthy at 3e-5 in 1e' is implicit stability evidence |
-| 5c — 5-seed confirmation | `stage_5c_tier_b_confirm` | next | At locked HPs (lr=3e-5, wd=1e-3, h=128, l=2, e=200) on seed pool {0,1,3,4,5} |
+| 5c — 5-seed confirmation | `stage_5c_tier_b_confirm` | **done** | 5/5 seeds healthy; R² ≥ 0.88 on 5/6 props; persistence floor R²=0.578; t-test p=0.286 vs Stage 0c (expected — same HPs) |
 
 ### Stage 1e headline (2026-04-28)
 
@@ -125,23 +125,29 @@ Seed std on val_total: 3e-6 = 0.0102, 1e-5 = 0.0069, **3e-5 = 0.0013** (≈5–8
 
 **Key resolution**: the Stage 1e seed-0 3e-5 variation failure (val_var=0.464) was a **single-seed bad init**, not a lr=3e-5 problem. In 1e', all 4 seeds at 3e-5 escape plateau (val_var ∈ [0.075, 0.099]). 3e-5 also wins every property except `persistence` (lr=1e-5 marginally better at 0.344 vs 0.368, ≈7 % — small relative to architecture floor of ~0.35; persistence is bound by representation, not lr).
 
-**Decision**: keep `lr=3e-5` lock in `config.yaml` (no change needed). **Skip Stage 1f** — only required if 1e' had changed the lr; 4/4 seeds healthy at 3e-5 in 1e' provides the seed-stability check implicitly. **Proceed directly to Stage 5c.**
+**Decision**: keep `lr=3e-5` lock in `config.yaml` (no change needed). **Skip Stage 1f** — only required if 1e' had changed the lr; 4/4 seeds healthy at 3e-5 in 1e' provides the seed-stability check implicitly.
 
-**Next command** (Stage 5c — 5-seed confirmation):
+## Latest Changes (this session, 2026-04-30)
 
-```bash
-bash scripts/bash/submit_sweep.sh --group stage_5c_tier_b_confirm \
-    --lr "3e-5" \
-    --seeds "0" --seeds "1" --seeds "3" --seeds "4" --seeds "5"
-```
+- **`scripts/notebooks/analyze_stage_5.py`** (new): marimo conversion of `analyze_stage_5.ipynb`, following the `marimo-data-analysis` skill. Pointed at `stage_5c_tier_b_confirm`. 10 figures (a–j) including new figure (j) — percentage-error box plot, direct counterpart to Emil's composition-only FFNN reference. Train compositions derived from `CONFIG.paths.data_dir` listing to avoid `torch_geometric` dependency in fresh envs.
+- **`results/figures/stage_5c/`**: 10 PDF + PNG figures + `headline_numbers.json`.
 
-## Latest Changes (this session, 2026-04-28)
+### Stage 5c headline results (2026-04-30)
 
-- **`scripts/notebooks/analyze_stage_5.ipynb`**: re-pointed at `stage_5b_tier_a_confirm` and `stage_0b_tier_a`; FIGURES_DIR is `results/figures/stage_5b`; HP-progression `GROUPS_PROG` now lists the full Tier A stage chain. All 9 figures regenerated.
-- **`results/figures/stage_5b/`**: 9 PDF + PNG figures + `headline_numbers.json` + new `stage_5b_analysis_report.md` (full per-section analysis).
-- **`.claude/memory-bank/thesisStory.md`** (new): narrative arc of the project from starting point through Tier A confirmation. Indexed in `.claude/CLAUDE.md` as core file 7.
+5/5 seeds, all with `test_artifacts.npz`. Locked HPs: `lr=3e-5, wd=1e-3, hidden_dim=128, num_layers=2, epochs=200`.
 
-## Latest Changes (previous, 2026-04-27)
+| Property | MSE mean ± std | R² (95 % CI) |
+| --- | --- | --- |
+| `lipid_packing` | 0.0182 ± 0.0028 | 0.978 [0.974, 0.981] |
+| `thickness` | 0.0789 ± 0.0059 | 0.905 [0.892, 0.916] |
+| `thickness_std` | 0.1342 ± 0.0115 | 0.882 [0.863, 0.897] |
+| `variation` | 0.0730 ± 0.0370 | 0.929 [0.921, 0.936] |
+| `persistence` | 0.4077 ± 0.0065 | 0.578 [0.528, 0.621] |
+| `diffusivity` | 0.0337 ± 0.0014 | 0.959 [0.953, 0.964] |
+
+Paired t-test vs Stage 0c: t = −0.614, **p = 0.286** — not significant (expected; Stage 5c and 0c share identical HPs; Stage 1e' confirmed the Tier A lock was already optimal). GNN beats composition-only Ridge by ~80 % overall. Tier B pipeline complete.
+
+## Latest Changes (previous session, 2026-04-28)
 
 - **`config.yaml`**: `epochs: 100 → 200`, `learning_rate: 1.0e-4 → 3.0e-5`. Tier A defaults locked.
 - **`docs/tier_a_4prop_plan.md`**: Stage 1b'/1c/1d/2b results recorded; Stage 5b seed selection finalised.
