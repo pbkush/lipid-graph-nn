@@ -2,6 +2,8 @@
 
 ## Current Work Focus
 
+**`analyze_hp_search.py` marimo notebook overhauled (2026-05-05)** — All 7 plotting cells were broken (invisible output due to `_run_plot()` function wrapper anti-pattern); recommendation + multi-group cells also silent. Full rewrite fixes all rendering, adds `save_fig` → `results/training/<GROUP>/`, and resolves `sns`/`HAS_SEABORN` crash when seaborn absent. `pyarrow` and `jinja2` added to script dependencies.
+
 **Tier B Stage 5c done (2026-04-30)** — 5-seed confirmation at locked Tier A HPs on 6 properties complete. Marimo analysis notebook `scripts/notebooks/analyze_stage_5.py` written and verified. **Tier B pipeline complete.**
 
 `config.yaml` (Tier B active; locked HPs unchanged from Tier A):
