@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animationt
 from IPython import display
 from time import sleep
-from functions import pkl_save, pkl_load
+from lipid_gnn.functions_emil.functions import pkl_save, pkl_load
 
 class Network(torch.nn.Module):
     """Neural network representation of the free energy landscape."""
@@ -264,9 +264,9 @@ def train(network,
         if epoch%20 == 0:
             error = []
             error_prop = []
-            for membrane_composition in os.listdir('pickles/properties'):
+            for membrane_composition in os.listdir('/home/phillip/Goethe/Thesis/lipid-graph-nn/results/properties'):
                 estimate = evaluate(network, np.array([transfer_membrane_comp(membrane_composition[:-3])]))
-                properties, values = zip(*pkl_load(f'pickles/properties/{membrane_composition}')[0].items())
+                properties, values = zip(*pkl_load(f'/home/phillip/Goethe/Thesis/lipid-graph-nn/results/properties/{membrane_composition}')[0].items())
                 result = np.asanyarray(values)[[0,1,2,3,5,6,7]]
                 error.append(np.mean(np.abs(result - estimate)/result)*100)
                 error_prop.append(np.max(np.abs(result - estimate)/result)*100)

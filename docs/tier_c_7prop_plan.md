@@ -101,6 +101,45 @@ bash scripts/bash/submit_sweep.sh --group stage_0d_tier_c \
 | diffusivity   | < 0.059              |
 | compressibility | *new — floor set by Stage 0d result* |
 
+### Stage 0d Results (2026-05-01) — **OUTCOME C: Negative Transfer**
+
+**5-seed mean val MSE** (W&B group `stage_0d_tier_c`, seeds {0,1,3,4,5}, 200 epochs, `lr=3e-5`):
+
+| Property        | val MSE (5-seed mean) | Stage 5c gate | Δ vs gate  | Status |
+|-----------------|----------------------|---------------|-----------|--------|
+| lipid_packing   | 0.0236               | 0.019         | +24.2 %   | ❌ FAIL |
+| thickness       | 0.0733               | 0.067         | +9.4 %    | ❌ FAIL |
+| thickness_std   | 0.3241               | 0.302         | +7.3 %    | ❌ FAIL |
+| variation       | 0.1728               | 0.151         | +14.4 %   | ❌ FAIL |
+| persistence     | 0.3701               | 0.362         | +2.2 %    | ❌ FAIL |
+| diffusivity     | 0.0655               | 0.059         | +11.0 %   | ❌ FAIL |
+| compressibility | 0.3931               | 1.0 (new)     | —         | ✅ PASS |
+
+**Per-property R² (last-10 epoch mean, 5-seed mean)**:
+
+| Property        | R²    | Rating |
+|-----------------|-------|--------|
+| lipid_packing   | 0.932 | GOOD   |
+| thickness       | 0.942 | GOOD   |
+| thickness_std   | 0.608 | OK     |
+| variation       | 0.884 | GOOD   |
+| persistence     | 0.654 | OK     |
+| diffusivity     | 0.951 | GOOD   |
+| compressibility | 0.549 | OK     |
+
+**Summary totals**: val_mean=0.2033 ± 0.0415, test_mean=0.1478, |test−val| gap=0.056
+
+**Key findings**:
+- `compressibility` shows a clear learning signal (R²=0.549), **exceeding** the pre-registered
+  expectation of R² << 0.5. The 11 Å local geometry carries a non-trivial signal for this
+  whole-bilayer property. Hypothesis: local lipid packing geometry is a partial proxy for
+  area fluctuation density.
+- `lipid_packing` degraded by **24.2 %** vs Stage 5c, exceeding the 20 % threshold → **Outcome C**.
+  This is the primary trigger for Stage 1g.
+- Remaining Tier A+B properties degraded by 2–15 %, consistent with loss dilution from the
+  `compressibility` gradient. Convergence slow-down is the likely mechanism (not instability).
+- Seed-to-seed variation is not abnormal (std=0.041 on val_mean); no Outcome D signal.
+
 ---
 
 ## Stage 1g — lr sanity check (conditional)
@@ -132,7 +171,7 @@ Only run if Stage 1g selects a lr other than `3e-5`.
 
 ## Stage 5d — 5-seed confirmation
 
-Run 5 seeds at the Tier C locked HP. Produces `test_artifacts.npz` for analysis.
+Run 5 seeds with 500 epochs at the Tier C locked HP. Produces `test_artifacts.npz` for analysis.
 
 **Grid**: `seed ∈ {0, 1, 3, 4, 5}` = 5 runs
 **W&B group**: `stage_5d_tier_c_confirm`
@@ -147,15 +186,15 @@ bash scripts/bash/submit_sweep.sh --group stage_5d_tier_c_confirm \
 
 **Gates** (set from Stage 0d 5-seed mean):
 
-| Property      | Gate |
-|---------------|------|
-| lipid_packing | < Stage 0d mean |
-| thickness     | < Stage 0d mean |
-| thickness_std | < Stage 0d mean |
-| variation     | < Stage 0d mean |
-| persistence   | < Stage 0d mean |
-| diffusivity   | < Stage 0d mean |
-| compressibility | < Stage 0d mean |
+| Property        | Gate (< Stage 0d mean) |
+|-----------------|------------------------|
+| lipid_packing   | < 0.0236               |
+| thickness       | < 0.0733               |
+| thickness_std   | < 0.3241               |
+| variation       | < 0.1728               |
+| persistence     | < 0.3701               |
+| diffusivity     | < 0.0655               |
+| compressibility | < 0.3931               |
 
 **Success criterion for thesis**: Tier A+B properties maintained within ~10 % of Stage 5c
 (paired t-test vs Stage 0d on common seeds). `compressibility` R² reported as exploratory;
@@ -198,8 +237,12 @@ to tell the story about which properties a single-frame GNN can and cannot learn
 
 - **Architecture ceiling on `compressibility`**: area fluctuation statistics require
   long-wavelength receptive fields. The 11 Å spatial cutoff samples ~4 nearest neighbours;
-  the compressibility modulus integrates area fluctuations at box scale. Expect R² << 0.5
-  regardless of HP changes. Flag for EFA future work.
+  the compressibility modulus integrates area fluctuations at box scale. Pre-registered
+  expectation was R² << 0.5, but Stage 0d achieved R²=0.549 — the local geometry carries
+  a partial proxy signal for whole-bilayer area fluctuations. This is interpretable
+  (local packing density ≈ local area fluctuation density) and does not change the
+  architectural conclusion: long-wavelength EFA would still be needed for full accuracy.
+  Flag for EFA future work.
 - **Loss dilution**: adding a high-noise compressibility gradient to the shared trunk may
   slightly dampen updates on Tier A+B properties. Monitor per-property val curves in Stage 0d
   from epoch 0 — if Tier A+B properties converge slower, that is the dilution signal.

@@ -39,8 +39,8 @@ def _():
 
     warnings.filterwarnings("ignore")
     return (
-        Path,
         PCA,
+        Path,
         importlib,
         json,
         mo,
@@ -51,8 +51,6 @@ def _():
         r2_score,
         stats,
         sys,
-        torch,
-        warnings,
     )
 
 
@@ -106,26 +104,29 @@ def _(Path, sys):
     from lipid_gnn.config import CONFIG
 
     LOGS_DIR     = REPO_ROOT / "logs" / "training"
-    FIGURES_DIR  = REPO_ROOT / "results" / "figures" / "stage_5c"
+    FIGURES_DIR  = REPO_ROOT / "results" / "figures" / "stage_1c"
     BASELINE_NPZ = REPO_ROOT / "results" / "training" / "linear_baseline_stratified.npz"
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"REPO_ROOT   : {REPO_ROOT}")
     print(f"LOGS_DIR    : {LOGS_DIR}")
     print(f"FIGURES_DIR : {FIGURES_DIR}")
-    return CONFIG, FIGURES_DIR, LOGS_DIR, BASELINE_NPZ, REPO_ROOT
+    return BASELINE_NPZ, CONFIG, FIGURES_DIR, LOGS_DIR, REPO_ROOT
 
 
 @app.cell
 def _():
     # ── User config ───────────────────────────────────────────────────────────
-    GROUP_STAGE5 = "stage_5c_tier_b_confirm"
-    GROUP_STAGE0 = "stage_0c_tier_b"
+    GROUP_STAGE5 = "stage_1c_seed_stability_tier_a"
+    GROUP_STAGE0 = "stage_0b_tier_a"
     GROUPS_PROG  = [
-        "stage_0c_tier_b",
-        "stage_1e_tier_b_lr",
-        "stage_1e_refine_tier_b_lr",
-        "stage_5c_tier_b_confirm",
+        "stage_0b_tier_a",
+        "stage_1b_tier_a_lr",
+        "stage_1b_refine_tier_a_lr",
+        "stage_1c_seed_stability_tier_a",
+        "stage_1d_long_train_tier_a",
+        "stage_2b_quick_wd_tier_a",
+        "stage_5b_tier_a_confirm",
     ]
     # Tier B gates: Stage 0c 6-prop floor (5-seed val_min_last10 mean).
     # Stage 5c must beat all gates to demonstrate HP tuning was worthwhile.
@@ -136,6 +137,12 @@ def _():
         "variation":     0.151,
         "persistence":   0.362,
         "diffusivity":   0.059,
+    }
+    GATES = {
+        "lipid_packing": 0.0218,
+        "thickness":     0.0741,
+        "thickness_std": 0.3593,
+        "variation":     0.4624
     }
     N_BOOTSTRAP = 10_000
     return GATES, GROUPS_PROG, GROUP_STAGE0, GROUP_STAGE5, N_BOOTSTRAP
@@ -159,6 +166,12 @@ def _(FIGURES_DIR, plt):
         "variation":     "Compositional variation",
         "persistence":   "Persistence length (µm)",
         "diffusivity":   "Diffusivity (µm²/s)",
+    }
+    PROP_LABELS = {
+        "lipid_packing": "Lipid packing (a.u.)",
+        "thickness":     "Bilayer thickness (Å)",
+        "thickness_std": r"$\sigma_\mathrm{thick}$ (Å)",
+        "variation":     "Compositional variation"
     }
     PAL = {
         "gnn":      "#0072B2",
@@ -233,10 +246,6 @@ def _(LOGS_DIR, json, np, pd):
     return (load_group,)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Load runs
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -261,7 +270,7 @@ def _(GROUP_STAGE0, GROUP_STAGE5, load_group):
     if not runs_df.empty:
         print(f"\nStage-5c runs ({len(runs_df)} total):")
         print(runs_df[["run_name", "seed", "val_min_last10", "test_mse_total"]].to_string(index=False))
-    return artifacts, histories, runs_df, s0_artifacts, s0_df, s0_histories
+    return artifacts, histories, runs_df, s0_artifacts, s0_df
 
 
 @app.cell
@@ -282,10 +291,6 @@ def _(mo, runs_df):
     """)
     return
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Load linear baseline
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -327,11 +332,8 @@ def _(baseline, mo):
         """)
     )
     _out
+    return
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Aggregate test artifacts
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -391,7 +393,7 @@ def _(artifacts, mo, np, runs_df):
 
 
 @app.cell
-def _(mo, N_SEEDS, N_TEST, preds_stack, properties):
+def _(N_SEEDS, N_TEST, mo, preds_stack, properties):
     mo.md(f"""
     **Artifact stack** (`preds_stack`, `targets_stack`):
     - **Shape**: ({N_SEEDS} seeds × {N_TEST} test graphs × {len(properties)} properties)
@@ -403,10 +405,6 @@ def _(mo, N_SEEDS, N_TEST, preds_stack, properties):
     """)
     return
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. De-normalise to physical units
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -422,7 +420,7 @@ def _(mo):
 
 
 @app.cell
-def _(baseline, np, preds_stack, s_mean, s_scale, targets_stack):
+def _(baseline, preds_stack, s_mean, s_scale, targets_stack):
     preds_phys   = preds_stack   * s_scale + s_mean   # (S, N, P)
     targets_phys = targets_stack * s_scale + s_mean   # (S, N, P)
     mean_preds_phys   = preds_phys.mean(0)             # (N, P)
@@ -446,7 +444,7 @@ def _(baseline, np, preds_stack, s_mean, s_scale, targets_stack):
 
 
 @app.cell
-def _(mo, mean_targets_phys, properties, PROP_LABELS):
+def _(PROP_LABELS, mean_targets_phys, mo, properties):
     _rows = "\n".join(
         f"- **`{_p}`** ({PROP_LABELS.get(_p, _p)}): "
         f"[{mean_targets_phys[:, _j].min():.3f}, {mean_targets_phys[:, _j].max():.3f}], "
@@ -459,10 +457,6 @@ def _(mo, mean_targets_phys, properties, PROP_LABELS):
     """)
     return
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Headline numbers
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -477,7 +471,7 @@ def _(mo):
 
 
 @app.cell
-def _(N_BOOTSTRAP, np, r2_score):
+def _(N_BOOTSTRAP, np):
     def bootstrap_ci(arr, stat_fn, n=N_BOOTSTRAP, ci=0.95):
         _rng = np.random.default_rng(0)
         _boot = [stat_fn(_rng.choice(arr, size=len(arr), replace=True)) for _ in range(n)]
@@ -489,7 +483,16 @@ def _(N_BOOTSTRAP, np, r2_score):
 
 
 @app.cell
-def _(N_SEEDS, bootstrap_ci, np, pd, preds_stack, properties, r2_score, targets_stack):
+def _(
+    N_SEEDS,
+    bootstrap_ci,
+    np,
+    pd,
+    preds_stack,
+    properties,
+    r2_score,
+    targets_stack,
+):
     _rows = []
     for _j, _prop in enumerate(properties):
         _per_seed_mse = [
@@ -550,10 +553,6 @@ def _(mo, tbl):
     return
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Figures
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -563,8 +562,6 @@ def _(mo):
     """)
     return
 
-
-# ── (a) Training dynamics ────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -618,10 +615,9 @@ def _(N_SEEDS, PAL, histories, np, plt, properties, save_fig):
     _fig_a.suptitle(f"Training dynamics — {N_SEEDS} seeds (mean ± 1 SD shaded)", y=1.01)
     _fig_a.tight_layout()
     save_fig(_fig_a, "fig_a_loss_curves")
-    return _fig_a,
+    _fig_a
+    return
 
-
-# ── (b) Predicted vs true scatter ────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -684,10 +680,9 @@ def _(
     _fig_b.suptitle(f"Predicted vs true — pooled over {N_SEEDS} seeds × {N_TEST} test graphs")
     _fig_b.tight_layout()
     save_fig(_fig_b, "fig_b_pred_vs_true")
-    return _fig_b,
+    _fig_b
+    return
 
-
-# ── (c) Per-composition MAE bar chart ────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -758,7 +753,8 @@ def _(
     _ax_c.legend(fontsize=8)
     _fig_c.tight_layout()
     save_fig(_fig_c, "fig_c_per_system_mae")
-    return _fig_c,
+    _fig_c
+    return
 
 
 @app.cell
@@ -784,8 +780,6 @@ def _(mo, np, preds_stack, properties, targets_stack, test_comps_list):
     return
 
 
-# ── (d) Residual distributions ───────────────────────────────────────────────
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -800,7 +794,17 @@ def _(mo):
 
 
 @app.cell
-def _(PAL, PROP_LABELS, np, plt, preds_phys, properties, save_fig, stats, targets_phys):
+def _(
+    PAL,
+    PROP_LABELS,
+    np,
+    plt,
+    preds_phys,
+    properties,
+    save_fig,
+    stats,
+    targets_phys,
+):
     _fig_d, _axes_d = plt.subplots(1, len(properties), figsize=(4.5 * len(properties), 3.5))
 
     for _j, (_ax, _prop) in enumerate(zip(_axes_d, properties)):
@@ -820,10 +824,9 @@ def _(PAL, PROP_LABELS, np, plt, preds_phys, properties, save_fig, stats, target
     _fig_d.suptitle("Residual distributions (pooled over 5 seeds; dashed = Gaussian fit)")
     _fig_d.tight_layout()
     save_fig(_fig_d, "fig_d_residuals")
-    return _fig_d,
+    _fig_d
+    return
 
-
-# ── (e) GNN vs linear baseline ───────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -850,7 +853,6 @@ def _(
     preds_phys,
     preds_stack,
     properties,
-    r2_score,
     save_fig,
     targets_phys,
     targets_stack,
@@ -924,10 +926,9 @@ def _(
     _fig_e.suptitle("GNN vs linear-composition baseline", y=1.01)
     _fig_e.tight_layout()
     save_fig(_fig_e, "fig_e_vs_baseline")
-    return _fig_e,
+    _fig_e
+    return
 
-
-# ── (f) HP search progression ────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -971,10 +972,9 @@ def _(GROUPS_PROG, PAL, load_group, np, pd, plt, save_fig):
         save_fig(_fig_f, "fig_f_hp_progression")
     else:
         print("[SKIP fig f] no HP progression groups found")
-    return _fig_f,
+    _fig_f
+    return
 
-
-# ── (g) Generalisation map ───────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1020,7 +1020,7 @@ def _(
     _X_all      = np.array([_parse_composition(c) for c in _all_comps])
     _labels_all = ["test" if c in set(test_comps_list) else "train" for c in _all_comps]
 
-    _pca     = PCA(n_components=2, random_state=0)
+    _pca     = PCA(n_components=2, random_state=42)
     _Z       = _pca.fit_transform(_X_all)
     _var_exp = _pca.explained_variance_ratio_
 
@@ -1061,10 +1061,9 @@ def _(
     ])
     _fig_g.tight_layout()
     save_fig(_fig_g, "fig_g_generalization_map")
-    return _fig_g,
+    _fig_g
+    return
 
-
-# ── (h) Per-property R² forest plot ──────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1118,10 +1117,9 @@ def _(
     _ax_h.set_xlim(-0.1, 1.1)
     _fig_h.tight_layout()
     save_fig(_fig_h, "fig_h_r2_forest")
-    return _fig_h,
+    _fig_h
+    return
 
-
-# ── (i) Stage 5c vs Stage 0c paired comparison ───────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1192,7 +1190,8 @@ def _(PAL, np, paired_ttest, plt, save_fig):
         _ax_i.legend()
         _fig_i.tight_layout()
         save_fig(_fig_i, "fig_i_paired_stages")
-    return _fig_i,
+    _fig_i
+    return
 
 
 @app.cell
@@ -1213,9 +1212,8 @@ def _(mo, paired_ttest):
         ), kind="success" if _sig else "warn")
     )
     _out_i
+    return
 
-
-# ── (j) Percentage-error box plot ────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1236,7 +1234,7 @@ def _(mo):
 
 
 @app.cell
-def _(N_SEEDS, PROP_LABELS, np, plt, preds_phys, properties, save_fig, targets_phys):
+def _(N_SEEDS, np, plt, preds_phys, properties, save_fig, targets_phys):
     # Percentage error per (seed, graph, property): (pred - true) / true * 100.
     # Skip any (graph, property) pair where target is 0 (avoid div-by-zero).
     _pct_data = []
@@ -1269,10 +1267,13 @@ def _(N_SEEDS, PROP_LABELS, np, plt, preds_phys, properties, save_fig, targets_p
     _xmax = max(abs(np.percentile(np.concatenate(_pct_data), 1)),
                 abs(np.percentile(np.concatenate(_pct_data), 99))) * 1.2
     _ax_j.set_xlim(-_xmax, _xmax)
+    _xticks_j = np.arange(0, _xmax + 2.5, 2.5)
+    _ax_j.set_xticks(np.concatenate([-_xticks_j[::-1][:-1], _xticks_j]))
 
     _fig_j.tight_layout()
     save_fig(_fig_j, "fig_j_percent_error_box")
-    return _fig_j,
+    _fig_j
+    return
 
 
 @app.cell
@@ -1292,10 +1293,6 @@ def _(mo, np, preds_phys, properties, targets_phys):
     return
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. Statistical tests
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1309,7 +1306,17 @@ def _(mo):
 
 
 @app.cell
-def _(bootstrap_ci, mo, np, pd, preds_stack, properties, r2_score, stats, targets_stack):
+def _(
+    bootstrap_ci,
+    mo,
+    np,
+    pd,
+    preds_stack,
+    properties,
+    r2_score,
+    stats,
+    targets_stack,
+):
     _stat_rows = []
     for _j, _prop in enumerate(properties):
         _pool_pred = preds_stack[:, :, _j].ravel()
@@ -1352,11 +1359,8 @@ def _(mo, stat_df):
         else mo.callout(mo.md("No systematic bias > 0.05 normalised units detected."), kind="info")
     )
     _bias_out
+    return
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. Gate check
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1405,10 +1409,6 @@ def _(GATES, histories, mo, np, pd):
     return (gate_summary,)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. Export headline numbers
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1452,12 +1452,8 @@ def _(FIGURES_DIR, gate_summary, json, mo, paired_ttest, tbl):
     return
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 10. Conclusions
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def _(mo, gate_summary, paired_ttest, tbl):
+def _(gate_summary, mo, paired_ttest, tbl):
     _r2_lines = "\n".join(
         f"- **`{p}`**: R² = {row['R²']:.3f} [{row['R² CI lo']:.3f}, {row['R² CI hi']:.3f}]"
         for p, row in tbl.iterrows()

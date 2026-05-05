@@ -44,7 +44,7 @@ vocab:
     - persistence
     - diffusivity
     - variation
-  active_properties: [lipid_packing, thickness, thickness_std, variation, persistence, diffusivity, compressibility]
+  active_properties: [lipid_packing, thickness, thickness_std, variation]
 
 model:
   in_channels: 4
