@@ -32,14 +32,6 @@ CHUNKS_REL="$(python scripts/python/print_config_var.py paths.chunks_dir)"
 CHUNKS_BASENAME="$(basename "$(dirname "$CHUNKS_REL")")/$(basename "$CHUNKS_REL")"
 WORK="/work/${GROUP_HPC}/${USER}/${WORK_SUBPATH}/${CHUNKS_BASENAME}"
 
-# Stage chunks to fast node-local storage once per job (shared by all
-# parallel processes on this node).
-STAGE="/local/${SLURM_JOB_ID}"
-echo "Staging chunks from $WORK to $STAGE ..."
-mkdir -p "$STAGE"
-rsync -a "$WORK/" "$STAGE/"
-export CHUNKS_DIR="$STAGE"
-
 # W&B: set WANDB_MODE=offline in your environment if compute nodes are air-gapped;
 # then after the job: wandb sync "$WORK"/wandb/offline-run-*
 export WANDB_MODE="${WANDB_MODE:-online}"
@@ -52,16 +44,30 @@ mkdir -p "$WANDB_DIR"
 N_RUNS="${N_RUNS_PER_NODE:-1}"
 echo "Launching $N_RUNS parallel training run(s) on $(hostname)"
 
-# Scale DataLoader workers down so the total worker-process count on the node
-# stays bounded. 4 runs × 6 workers = 24 concurrent workers share the same
-# /dev/shm and multiprocessing IPC sockets, which overloads the resource
-# sharer and causes "Pin memory thread exited unexpectedly" / FileNotFoundError.
-# Integer division floors at 0, which is valid (synchronous loading in main
-# process — safe and often fast enough from node-local staging).
 DEFAULT_NUM_WORKERS=$(python scripts/python/print_config_var.py training.num_workers)
-PER_GPU_WORKERS=$(( DEFAULT_NUM_WORKERS / N_RUNS ))
-export FREEZE_NUM_WORKERS="$PER_GPU_WORKERS"
-echo "  DataLoader workers: ${DEFAULT_NUM_WORKERS} config → ${PER_GPU_WORKERS}/slot (${N_RUNS} slots)"
+
+if (( N_RUNS > 1 )); then
+    # Multi-run: read chunks directly from /work/ (GPFS).
+    # /local/$SLURM_JOB_ID is a tmpfs whose pages can be evicted under the
+    # combined memory pressure of N parallel training processes, causing
+    # FileNotFoundError mid-training (typically after ~90-100 epochs).
+    # GPFS is always resident; reading from it with num_workers=0 (synchronous,
+    # main-process loading) is safe and fast enough since GPU compute dominates.
+    export CHUNKS_DIR="$WORK"
+    export FREEZE_NUM_WORKERS=0
+    echo "  Chunks : $WORK (direct GPFS — no staging)"
+    echo "  Workers: 0/slot (synchronous loading)"
+else
+    # Single-run: stage to node-local NVMe for fast multi-worker prefetching.
+    STAGE="/local/${SLURM_JOB_ID}"
+    echo "Staging chunks from $WORK to $STAGE ..."
+    mkdir -p "$STAGE"
+    rsync -a "$WORK/" "$STAGE/"
+    export CHUNKS_DIR="$STAGE"
+    export FREEZE_NUM_WORKERS="$DEFAULT_NUM_WORKERS"
+    echo "  Chunks : $STAGE (staged)"
+    echo "  Workers: ${DEFAULT_NUM_WORKERS}/slot"
+fi
 
 PIDS=()
 for ((i=0; i<N_RUNS; i++)); do
