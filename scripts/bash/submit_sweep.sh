@@ -145,6 +145,11 @@ echo "  Batches    : ${N_BATCHES} (up to ${GPUS_PER_NODE} parallel runs/node)"
 echo ""
 
 # ── Submit one sbatch job per batch of up-to-GPUS_PER_NODE runs ──────────────
+# Note: --mem-per-gpu requires SelectType=cons_tres which Goethe does not use,
+# so total memory is computed manually (N_RUNS × MEM_PER_GPU).
+MEM_NUM="${MEM_PER_GPU%[A-Za-z]*}"
+MEM_UNIT="${MEM_PER_GPU##*[0-9]}"
+
 for ((b=0; b<N_BATCHES; b++)); do
     BATCH_START=$(( b * GPUS_PER_NODE ))
     BATCH_END=$(( BATCH_START + GPUS_PER_NODE ))
@@ -167,17 +172,18 @@ for ((b=0; b<N_BATCHES; b++)); do
     done
 
     TOTAL_CPUS=$(( CPUS_PER_GPU * N_RUNS ))
+    TOTAL_MEM="$(( MEM_NUM * N_RUNS ))${MEM_UNIT}"
 
     JOB_ID=$(sbatch \
         --partition="$PARTITION" \
         --time="$TIME_LIMIT" \
         --gres="gpu:$N_RUNS" \
         --cpus-per-task="$TOTAL_CPUS" \
-        --mem-per-gpu="$MEM_PER_GPU" \
+        --mem="$TOTAL_MEM" \
         --export="$EXPORT_VARS" \
         scripts/bash/sbatch_sweep.sh | awk '{print $NF}')
 
-    echo "  Job ${JOB_ID}  batch $((b+1))/${N_BATCHES}  N_RUNS=${N_RUNS}  cpus=${TOTAL_CPUS}  mem-per-gpu=${MEM_PER_GPU}"
+    echo "  Job ${JOB_ID}  batch $((b+1))/${N_BATCHES}  N_RUNS=${N_RUNS}  cpus=${TOTAL_CPUS}  mem=${TOTAL_MEM}"
     for ((i=0; i<N_RUNS; i++)); do
         IFS='|' read -r H L LR WD SEED <<< "${COMBOS[$((BATCH_START + i))]}"
         echo "    [GPU ${i}]  h=${H} l=${L} lr=${LR} wd=${WD} seed=${SEED:-"(default)"}"
