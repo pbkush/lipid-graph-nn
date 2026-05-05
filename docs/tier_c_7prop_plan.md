@@ -157,15 +157,78 @@ Stage 1g's goal is to protect the Tier A+B result, not to rescue compressibility
 - If a different lr wins → run Stage 1g' (half-decade refinement, 4 seeds ×
   3 lrs = 12 runs), following the Stage 1e' pattern.
 
+### Stage 1g Results (2026-05-05) — **OUTCOME: lr=1e-5 wins pilot; triggers Stage 1g'**
+
+**6/6 runs finished** (`stage_1g_tier_c_lr`, `lr ∈ {1e-5, 3e-5, 1e-4}` × seeds {0, 1}):
+
+**Selection metric**: val_mean over **6 Tier A+B properties** (excludes compressibility):
+
+| lr     | val_ab6 (mean) | val_ab6 (std) | val_total7 (mean) | val_total7 (std) |
+|--------|---------------|--------------|------------------|-----------------|
+| 1e-5 ← | **0.1601**    | 0.0034       | 0.1902           | 0.0064          |
+| 3e-5   | 0.1938        | 0.0566       | 0.2235           | 0.0573          |
+| 1e-4   | 0.2348        | 0.0073       | 0.2675           | 0.0058          |
+
+**Per-property val MSE (seed-mean, min-last-10)**:
+
+| Property        | lr=1e-5 | lr=3e-5 | lr=1e-4 | Gate   |
+|-----------------|---------|---------|---------|--------|
+| lipid_packing   | 0.0285  | 0.0251  | 0.0230  | 0.019  |
+| thickness       | 0.0815  | 0.0760  | 0.0797  | 0.067  |
+| thickness_std   | 0.2962  | 0.3329  | 0.3827  | 0.302  |
+| variation       | 0.1010  | 0.2745  | 0.4596  | 0.151  |
+| persistence     | 0.3853  | 0.3923  | 0.3947  | 0.362  |
+| diffusivity     | 0.0678  | 0.0619  | 0.0691  | 0.059  |
+| compressibility | 0.3656  | 0.4014  | 0.4640  | (new)  |
+
+**Per-property R² (seed-mean, last-10 mean)**:
+
+| Property        | lr=1e-5 | lr=3e-5 | lr=1e-4 |
+|-----------------|---------|---------|---------|
+| lipid_packing   | 0.917   | 0.928   | 0.934   |
+| thickness       | 0.936   | 0.940   | 0.937   |
+| thickness_std   | 0.638   | 0.598   | 0.538   |
+| variation       | 0.932   | 0.816   | 0.692   |
+| persistence     | 0.638   | 0.633   | 0.631   |
+| diffusivity     | 0.949   | 0.954   | 0.949   |
+| compressibility | 0.576   | 0.540   | 0.468   |
+
+**Key findings**:
+- **lr=1e-5 wins on val_ab6** (0.160 vs 0.194 vs 0.235) → triggers Stage 1g' per the plan.
+- lr=3e-5 seed-0 suffered a **variation failure** (val_var≈0.454; seed-1 has val_var=0.095),
+  inflating the lr=3e-5 std (0.057) and mean artificially. This is the same pilot-level
+  noise pattern seen in Stage 1e vs 1e': at 2 seeds, a single bad-init distorts the winner.
+- lr=1e-4 clearly last: high variation MSE on both seeds (val_var=0.46) and highest
+  thickness_std (0.38). Eliminated.
+- Gate pass/fail at 2-seed level is not the decision criterion — pilot seed counts are
+  too small to assess gate compliance reliably.
+- **Stage 1e' prior**: the identical {3e-6, 1e-5, 3e-5} triplet at 4 seeds had lr=3e-5
+  winning (0.148 vs 0.153 vs 0.179) with all 4 seeds healthy. Stage 1g' will determine
+  whether lr=3e-5 recovers once the single bad-init is diluted by more seeds.
+
+**Decision**: run **Stage 1g'** with triplet `{3e-6, 1e-5, 3e-5}` × seeds {0, 1, 3, 4} = 12 runs.
+
 ---
 
 ## Stage 1g' — lr refinement (conditional on Stage 1g)
 
 Only run if Stage 1g selects a lr other than `3e-5`.
 
-**Grid**: half-decade triplet centred on Stage 1g winner × `seed ∈ {0, 1, 3, 4}` = 12 runs
+**Grid**: `lr ∈ {3e-6, 1e-5, 3e-5}` × `seed ∈ {0, 1, 3, 4}` = 12 runs
 **W&B group**: `stage_1g_refine_tier_c_lr`
-**HP selection metric**: val_total over 6 Tier A+B properties
+**HP selection metric**: val_mean over **6 Tier A+B properties** (same as Stage 1g)
+
+**Submit command**:
+
+```bash
+bash scripts/bash/submit_sweep.sh --group stage_1g_refine_tier_c_lr \
+    --lr "3e-6" --lr "1e-5" --lr "3e-5" \
+    --seeds "0" --seeds "1" --seeds "3" --seeds "4"
+```
+
+- If `lr=3e-5` wins → restore lock, proceed to Stage 5d.
+- If `lr=1e-5` wins → update lock to `1e-5` in `config.yaml`, proceed to Stage 5d.
+- If `lr=3e-6` wins → unexpected; re-examine per-property breakdown before deciding.
 
 ---
 
@@ -205,12 +268,12 @@ scope limit of the 11 Å spatial cutoff).
 
 ## Stage chain summary
 
-| Stage | W&B group | Condition | What it answers |
-|-------|-----------|-----------|-----------------|
-| 0d — 7-prop GNN floor | `stage_0d_tier_c` | always | Baseline + negative-transfer check |
-| 1g — lr sanity check | `stage_1g_tier_c_lr` | if outcome C in 0d | Does lr=3e-5 still protect Tier A+B? |
-| 1g' — lr refinement | `stage_1g_refine_tier_c_lr` | if 1g changes lr | What is the better lr? |
-| 5d — 5-seed confirmation | `stage_5d_tier_c_confirm` | always | Final Tier C result |
+| Stage | W&B group | Status | What it answers |
+|-------|-----------|--------|-----------------|
+| 0d — 7-prop GNN floor | `stage_0d_tier_c` | **done** — Outcome C | Baseline + negative-transfer check |
+| 1g — lr sanity check | `stage_1g_tier_c_lr` | **done** — lr=1e-5 wins pilot | Does lr=3e-5 still protect Tier A+B? |
+| 1g' — lr refinement | `stage_1g_refine_tier_c_lr` | **next** | What is the better lr at 4 seeds? |
+| 5d — 5-seed confirmation | `stage_5d_tier_c_confirm` | pending | Final Tier C result |
 
 ---
 
