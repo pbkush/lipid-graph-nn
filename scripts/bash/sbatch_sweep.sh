@@ -52,6 +52,17 @@ mkdir -p "$WANDB_DIR"
 N_RUNS="${N_RUNS_PER_NODE:-1}"
 echo "Launching $N_RUNS parallel training run(s) on $(hostname)"
 
+# Scale DataLoader workers down so the total worker-process count on the node
+# stays bounded. 4 runs × 6 workers = 24 concurrent workers share the same
+# /dev/shm and multiprocessing IPC sockets, which overloads the resource
+# sharer and causes "Pin memory thread exited unexpectedly" / FileNotFoundError.
+# Integer division floors at 0, which is valid (synchronous loading in main
+# process — safe and often fast enough from node-local staging).
+DEFAULT_NUM_WORKERS=$(python scripts/python/print_config_var.py training.num_workers)
+PER_GPU_WORKERS=$(( DEFAULT_NUM_WORKERS / N_RUNS ))
+export FREEZE_NUM_WORKERS="$PER_GPU_WORKERS"
+echo "  DataLoader workers: ${DEFAULT_NUM_WORKERS} config → ${PER_GPU_WORKERS}/slot (${N_RUNS} slots)"
+
 PIDS=()
 for ((i=0; i<N_RUNS; i++)); do
     LOGOUT="logs/sweeps/sweep-${SLURM_JOB_ID}-gpu${i}.out"

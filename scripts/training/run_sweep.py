@@ -79,6 +79,8 @@ def _apply_submission_overrides() -> None:
         SWEEP["weight_decay"] = [float(v)]
     if v := os.environ.get("FREEZE_EPOCHS"):
         FIXED["epochs"] = int(v)
+    if v := os.environ.get("FREEZE_NUM_WORKERS"):
+        FIXED["num_workers"] = int(v)
     if v := os.environ.get("FREEZE_PROPERTIES"):
         props = [p for p in v.split() if p in ALL_PROPERTIES]
         if props:
