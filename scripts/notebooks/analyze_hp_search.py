@@ -71,8 +71,8 @@ def _(mo):
 @app.cell
 def _(Path):
     # ── USER CONFIG ──
-    GROUP  = "stage_0d_tier_c"
-    GROUPS = ["stage_0d_tier_c"]
+    GROUP  = "stage_1g_tier_c_lr"
+    GROUPS = ["stage_0d_tier_c", "stage_1g_tier_c_lr"]
 
     GATES = {
         "lipid_packing":   0.019,
