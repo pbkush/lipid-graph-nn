@@ -46,6 +46,7 @@ FIXED = {
     "epochs":      CONFIG.training.epochs,
     "batch_size":  CONFIG.training.batch_size,
     "num_workers": CONFIG.training.num_workers,
+    "pin_memory":  True,
 }
 
 # ── Sweep grid: every combination produces one run ────────────────────────────
@@ -81,6 +82,8 @@ def _apply_submission_overrides() -> None:
         FIXED["epochs"] = int(v)
     if v := os.environ.get("FREEZE_NUM_WORKERS"):
         FIXED["num_workers"] = int(v)
+    if v := os.environ.get("FREEZE_PIN_MEMORY"):
+        FIXED["pin_memory"] = v not in ("0", "false", "False")
     if v := os.environ.get("FREEZE_PROPERTIES"):
         props = [p for p in v.split() if p in ALL_PROPERTIES]
         if props:
@@ -125,10 +128,11 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         group=CONFIG.wandb.group,
     )
 
+    use_pin_memory = cfg["pin_memory"] and device.type == 'cuda'
     _loader_kw = dict(
         batch_size=cfg["batch_size"],
         num_workers=cfg["num_workers"],
-        pin_memory=(device.type == 'cuda'),
+        pin_memory=use_pin_memory,
         persistent_workers=(cfg["num_workers"] > 0),
         prefetch_factor=(2 if cfg["num_workers"] > 0 else None),
     )

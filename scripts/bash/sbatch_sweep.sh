@@ -55,12 +55,18 @@ if (( N_RUNS > 1 )); then
     # while the GPU processes the current one, hiding I/O latency. The worker
     # count is scaled down (config // N_RUNS, min 1) to keep the total number
     # of worker processes on the node bounded.
+    # pin_memory is disabled: the extra RAM for pinned staging worsens memory
+    # pressure, and its IPC sockets are fragile when multiple training processes
+    # compete for node memory (OOM-killed worker → socket vanishes → pin_memory
+    # thread crashes). Prefetching via workers still hides GPFS I/O latency.
     export CHUNKS_DIR="$WORK"
     PER_GPU_WORKERS=$(( DEFAULT_NUM_WORKERS / N_RUNS ))
     (( PER_GPU_WORKERS < 1 )) && PER_GPU_WORKERS=1
     export FREEZE_NUM_WORKERS="$PER_GPU_WORKERS"
+    export FREEZE_PIN_MEMORY=0
     echo "  Chunks : $WORK (direct GPFS — no staging)"
     echo "  Workers: ${DEFAULT_NUM_WORKERS} config → ${PER_GPU_WORKERS}/slot (${N_RUNS} slots)"
+    echo "  Pin mem: disabled (multi-run memory pressure)"
 else
     # Single-run: stage to node-local NVMe for fast multi-worker prefetching.
     STAGE="/local/${SLURM_JOB_ID}"
