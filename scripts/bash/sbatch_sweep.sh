@@ -46,33 +46,32 @@ echo "Launching $N_RUNS parallel training run(s) on $(hostname)"
 
 DEFAULT_NUM_WORKERS=$(python scripts/python/print_config_var.py training.num_workers)
 
+STAGE="/local/${SLURM_JOB_ID}"
+echo "Staging chunks from $WORK to $STAGE ..."
+mkdir -p "$STAGE"
+rsync -a "$WORK/" "$STAGE/"
+
 if (( N_RUNS > 1 )); then
-    # Multi-run: read chunks directly from /work/ (GPFS — never evicted).
-    # /local/$SLURM_JOB_ID is a tmpfs; under combined memory pressure from N
-    # parallel training processes its pages get reclaimed mid-training (~epoch
-    # 90-100), which kills DataLoader workers with FileNotFoundError.
-    # Workers are still useful here: each prefetches the next chunk from GPFS
-    # while the GPU processes the current one, hiding I/O latency. The worker
-    # count is scaled down (config // N_RUNS, min 1) to keep the total number
-    # of worker processes on the node bounded.
-    # pin_memory is disabled: the extra RAM for pinned staging worsens memory
-    # pressure, and its IPC sockets are fragile when multiple training processes
-    # compete for node memory (OOM-killed worker → socket vanishes → pin_memory
-    # thread crashes). Prefetching via workers still hides GPFS I/O latency.
-    export CHUNKS_DIR="$WORK"
-    PER_GPU_WORKERS=$(( DEFAULT_NUM_WORKERS / N_RUNS ))
-    (( PER_GPU_WORKERS < 1 )) && PER_GPU_WORKERS=1
-    export FREEZE_NUM_WORKERS="$PER_GPU_WORKERS"
+    # Multi-run: stage to node-local NVMe, but use num_workers=0 (no DataLoader
+    # worker processes). The previous GPFS-direct + workers approach failed
+    # because worker child processes are the first OOM-kill target when N
+    # concurrent training processes compete for node memory. When a worker is
+    # killed mid-epoch its IPC socket vanishes and the DataLoader crashes with
+    # "FileNotFoundError / Pin memory thread exited unexpectedly" — regardless
+    # of pin_memory or persistent_workers settings.
+    # num_workers=0: DataLoader runs in the main process — no child processes,
+    # no IPC sockets to lose. Reads from /local (RAM-backed tmpfs or NVMe) are
+    # fast enough that the GPU is not significantly starved.
+    # Tmpfs eviction is not a risk here: it was previously caused by IPC shared
+    # memory from worker processes. With num_workers=0 there is no shared-memory
+    # pressure, so /local pages persist for the full job.
+    export CHUNKS_DIR="$STAGE"
+    export FREEZE_NUM_WORKERS=0
     export FREEZE_PIN_MEMORY=0
-    echo "  Chunks : $WORK (direct GPFS — no staging)"
-    echo "  Workers: ${DEFAULT_NUM_WORKERS} config → ${PER_GPU_WORKERS}/slot (${N_RUNS} slots)"
-    echo "  Pin mem: disabled (multi-run memory pressure)"
+    echo "  Chunks : $STAGE (staged, IPC-free)"
+    echo "  Workers: 0/slot (OOM-safe — no child processes)"
 else
-    # Single-run: stage to node-local NVMe for fast multi-worker prefetching.
-    STAGE="/local/${SLURM_JOB_ID}"
-    echo "Staging chunks from $WORK to $STAGE ..."
-    mkdir -p "$STAGE"
-    rsync -a "$WORK/" "$STAGE/"
+    # Single-run: full worker prefetching from node-local NVMe.
     export CHUNKS_DIR="$STAGE"
     export FREEZE_NUM_WORKERS="$DEFAULT_NUM_WORKERS"
     echo "  Chunks : $STAGE (staged)"
