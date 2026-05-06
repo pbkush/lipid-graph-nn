@@ -129,16 +129,30 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     )
 
     use_pin_memory = cfg["pin_memory"] and device.type == 'cuda'
-    _loader_kw = dict(
+    n_workers = cfg["num_workers"]
+    # Train loader: prefetch from GPFS while GPU computes. Workers are NOT
+    # persistent across epochs — persistent workers accumulate shared-memory
+    # segments and IPC state over 200 epochs, eventually causing the worker
+    # to be OOM-killed, which drops its IPC socket and crashes the loader.
+    # Non-persistent workers respawn fresh each epoch: no accumulation.
+    _train_loader_kw = dict(
         batch_size=cfg["batch_size"],
-        num_workers=cfg["num_workers"],
+        num_workers=n_workers,
         pin_memory=use_pin_memory,
-        persistent_workers=(cfg["num_workers"] > 0),
-        prefetch_factor=(2 if cfg["num_workers"] > 0 else None),
+        persistent_workers=False,
+        prefetch_factor=(2 if n_workers > 0 else None),
     )
-    train_loader = DataLoader(train_dataset, **_loader_kw)
-    val_loader   = DataLoader(val_dataset,   **_loader_kw)
-    test_loader  = DataLoader(test_dataset,  **_loader_kw)
+    # Val / test loaders: single pass per epoch, no prefetching needed.
+    # num_workers=0 eliminates the multiprocessing IPC path entirely for
+    # these loaders, removing another source of socket-based crashes.
+    _eval_loader_kw = dict(
+        batch_size=cfg["batch_size"],
+        num_workers=0,
+        pin_memory=False,
+    )
+    train_loader = DataLoader(train_dataset, **_train_loader_kw)
+    val_loader   = DataLoader(val_dataset,   **_eval_loader_kw)
+    test_loader  = DataLoader(test_dataset,  **_eval_loader_kw)
 
     use_comp = comp_mode in ("gnn_plus_comp", "comp_only")
     comp_dim = LIPID_COMP_DIM if use_comp else 0
