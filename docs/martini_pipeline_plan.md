@@ -138,7 +138,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 
 | # | Step | Status | Notes |
 |---|---|---|---|
-| 1 | `composition.py` + tests | [ ] | |
+| 1 | `composition.py` + tests | [x] | Token regex uses `[A-Z]+` (not `[A-Z][A-Z0-9]*`) to avoid greedy digit-consumption ambiguity; all Martini lipid names are letter-only. 203 tests pass. |
 | 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [ ] | |
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [ ] | One-shot script doubles as sanity check on legacy data |
 | 4 | `mdp_writer.py` + templates derived from audit | [ ] | Add `nsteps_*`, `save_forces` knobs |
