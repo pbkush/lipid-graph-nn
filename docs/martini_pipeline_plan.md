@@ -140,7 +140,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 |---|---|---|---|
 | 1 | `composition.py` + tests | [x] | Token regex uses `[A-Z]+` (not `[A-Z][A-Z0-9]*`) to avoid greedy digit-consumption ambiguity; all Martini lipid names are letter-only. 203 tests pass. |
 | 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [x] | `_KNOWN_FAMILIES` is a module-level `frozenset` (open for extension); bead cross-check against `node_mapping.json` is a hard assertion. 60 tests pass. |
-| 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [ ] | One-shot script doubles as sanity check on legacy data |
+| 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [x] | run.mdp: zero deviations (all 70 byte-identical). Equilibration: 7 rlist deviations on CHOL systems (Verlet-buffer auto-tuning, expected). Freeze record committed as `templates/_audit_freeze.json`. |
 | 4 | `mdp_writer.py` + templates derived from audit | [ ] | Add `nsteps_*`, `save_forces` knobs |
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` | [ ] | See Decision 2 |
 | 6 | `system_builder.py` + tests | [ ] | |
@@ -171,6 +171,9 @@ Append-only. Each entry: date · decision · rationale.
 | 8 | 2026-05-07 | Per-step git workflow: feature branch `feat/martini-pipeline-step-<NN>-<short-name>` off `main`, merge back only after the step is complete and tests pass | Aligns with the project's existing short-lived-branch + merge-commits-only convention in `techContext.md`. Keeps `main` reflecting the last completed step at all times; partial work stays off `main`. |
 | 9 | 2026-05-07 | `LIPID_REGISTRY` is functional/immutable (`MappingProxyType` + non-mutating `register_lipid`) | Matches `composition.py` pattern; registry is small enough that copy-on-extend is free; eliminates test-pollution bugs. |
 | 10 | 2026-05-07 | Bead order hardcoded in registry, cross-checked against `resources/martini_ff_node_mapping.json` by a failing test | Explicit code is reviewable in PRs; hard assertion catches drift before it silently breaks downstream graph construction. |
+| 11 | 2026-05-07 | Equilibration/minimization mdps recovered via `gmx dump -s` from `.tpr` (legacy `.mdp` sources not preserved) | `.tpr` is byte-stable and contains the full inputrec; reconstruction is deterministic. |
+| 12 | 2026-05-07 | Random-seed-like keys (`gen-seed`, `ld-seed`, `tinit`, `init-step`, `simulation-part`) excluded from deviation reporting | Per-system variation in these keys is intended; including them drowns out real deviations. |
+| 13 | 2026-05-07 | Step 4 (`mdp_writer.py`) reads `templates/_audit_freeze.json` at template-build time, fails fast if missing | Enforces audit-then-write order; prevents template defaults drifting from legacy values without explicit re-audit. |
 
 ---
 
@@ -459,3 +462,185 @@ If implementation matches this plan, append two entries to §9:
 - **Decision 10** — Bead order is hardcoded in the registry and cross-checked against `resources/martini_ff_node_mapping.json` by a unit test, rather than loaded from JSON at import time. Rationale: explicit code is reviewable in PRs; the cross-check catches drift loudly; keeps the registry usable on hosts without the resource file.
 
 If the implementation diverges, capture the actual decision instead.
+
+---
+
+## Appendix C — Step 3 detailed plan: MDP audit (`analysis.py::diff_mdps()`)
+
+### C.1 Scope
+
+A one-shot audit that produces (a) the **freeze record**: the canonical, parameter-by-parameter MDP settings used in the legacy 70 systems for production, equilibration, and minimization; and (b) the **deviation report**: any per-system variation. Output drives step 4 (`mdp_writer.py`) — which keys become template knobs vs. hardcoded constants — and doubles as a sanity check on legacy data integrity.
+
+The audit is the first piece of `lipid_gnn/martini_pipeline/analysis.py`; the module is multi-purpose ([§3](#3-module-breakdown--lipid_gnnmartini_pipeline)) but only `diff_mdps()` and its helpers land in step 3. `missing_compositions()` and `summarise_systems()` arrive in step 8.
+
+#### What's in scope for step 3
+
+- `diff_mdps(systems_root, *, stages=("run", "equilibration", "minimization"), gmx_binary="gmx") -> MDPAuditReport` — pure function over a directory tree of legacy systems.
+- A `MDPAuditReport` dataclass with: per-stage mode-value-per-key tables, per-stage list-of-deviations, list of missing files per system per stage.
+- Internal helpers: `_parse_mdp_file(path) -> dict[str, str]`, `_dump_tpr_inputrec(tpr_path, gmx_binary) -> dict[str, str]`, `_normalise_kv(raw) -> str` (collapses whitespace, lowercases booleans, sorts space-separated lists where order is irrelevant — `tc-grps` etc.).
+- A CLI driver `scripts/simulation/audit_mdps.py` that prints the report and writes:
+  - `docs/mdp_audit_report.md` — human-readable summary (canonical values + deviations).
+  - `lipid_gnn/martini_pipeline/templates/_audit_freeze.json` — machine-readable freeze record consumed by step 4 to derive templates.
+- Tests at `tests/martini_pipeline/test_analysis_diff_mdps.py`. `gmx dump` is mocked via a fake binary on `PATH`; one opt-in test uses real `gmx` against legacy data.
+
+#### What's out of scope for step 3
+
+- `mdp_writer.py` itself, template files, parameter substitution — step 4.
+- Comparison against canonical Martini 3 reference mdps (Marrink lab). The audit captures *what we ran*, not *what we should have run*.
+- Changing the legacy data. The audit is read-only.
+- `summarise_systems()`, `missing_compositions()` — step 8.
+
+### C.2 Locked-in design decisions
+
+1. **Read `run.mdp` from disk; recover `eq.mdp` / `em.mdp` from `.tpr` via `gmx dump -s`.** Verified during planning: the legacy tree has only `run.mdp` per system; equilibration/minimization mdps were not preserved as files but the inputrec is fully recoverable from the matching `.tpr`. This makes the audit machine-only — no human bookkeeping needed.
+2. **Audit runs locally, not on HPC.** The 70 systems live under `data/membrane_only/`; `gmx dump` is fast (< 100 ms per tpr). No need for SLURM. Tests mock `gmx` so CI stays gmx-free.
+3. **Deviations are reported, not fixed.** If two systems disagree on a key, the audit lists the disagreement and picks the **mode** (most frequent value) as the freeze value. The mode is what step 4 templates emit by default; deviations are documented in `docs/mdp_audit_report.md` for manual review. This avoids quietly "correcting" old data.
+4. **MDP parser is whitespace-tolerant but type-naive.** Values are stored as normalised strings (e.g. `"310"`, `"3e-5 3e-5"`, `"v-rescale"`). Type promotion (int/float/bool) is a step-4 concern, where templates know each field's expected type.
+5. **Comments and blank lines are dropped.** They contain no semantically loaded information for the audit. The freeze record is a flat `{key: value}` dict per stage.
+6. **Key normalisation: hyphens vs. underscores.** GROMACS accepts both (`tc-grps` ≡ `tc_grps`). The parser canonicalises to the hyphenated form (matches `gmx dump` output) so on-disk `run.mdp` and dumped `.tpr` records compare cleanly.
+7. **One audit per stage**, not per-system, in the report. The output asserts a single canonical value per `(stage, key)` plus a list of `(system, key, value)` triples for any divergence. Per-system identity (verified during planning: all 70 `run.mdp` md5-identical) means the deviation list will likely be empty for `run`; em/eq may differ in `gen_seed` or `tinit` and that is acceptable.
+8. **`gen_seed` is excluded from the deviation count.** Random seed is supposed to differ per system; reporting it as a deviation is noise. The freeze record stores `gen_seed = "RANDOM"` (sentinel) and `mdp_writer.py` substitutes a fresh seed per build.
+
+### C.3 Public API
+
+```python
+@dataclass(frozen=True)
+class MDPDeviation:
+    system: str           # composition name, e.g. "POPC30_DOPC70"
+    stage: str            # "run" | "equilibration" | "minimization"
+    key: str              # canonical hyphenated key, e.g. "ref-t"
+    value: str            # the system's value
+    canonical: str        # the audit's mode value for this (stage, key)
+
+
+@dataclass(frozen=True)
+class MDPStageAudit:
+    stage: str
+    n_systems: int                      # systems contributing to this stage
+    canonical: Mapping[str, str]        # mode value per key (the freeze record)
+    deviations: tuple[MDPDeviation, ...]
+    missing_systems: tuple[str, ...]    # systems where the source file/.tpr was absent
+
+
+@dataclass(frozen=True)
+class MDPAuditReport:
+    stages: Mapping[str, MDPStageAudit]   # keyed by stage name
+
+    @property
+    def total_deviations(self) -> int: ...
+    def to_markdown(self) -> str: ...     # human report
+    def to_freeze_json(self) -> str: ...  # machine record consumed by step 4
+
+
+def diff_mdps(
+    systems_root: str | os.PathLike,
+    *,
+    stages: tuple[str, ...] = ("run", "equilibration", "minimization"),
+    gmx_binary: str = "gmx",
+    skip_keys: frozenset[str] = frozenset({"gen-seed", "ld-seed", "tinit", "init-step"}),
+) -> MDPAuditReport: ...
+```
+
+### C.4 Stage source map
+
+| Stage | Source per system | Recovery |
+| --- | --- | --- |
+| `run` | `<system>/run.mdp` | direct file read |
+| `equilibration` | `<system>/equilibration/martini_eq.tpr` | `gmx dump -s ...tpr` → parse `inputrec:` block |
+| `minimization` | `<system>/minimization/martini_em.tpr` | `gmx dump -s ...tpr` → parse `inputrec:` block |
+
+`_dump_tpr_inputrec` invokes `subprocess.run([gmx_binary, "dump", "-s", tpr_path], capture_output=True, text=True, timeout=30)` and parses the `inputrec:` section by splitting `key = value` lines until the first non-indented line. Errors propagate as `RuntimeError` with the gmx stderr appended.
+
+### C.5 Internal helpers
+
+- `_parse_mdp_file(path) -> dict[str, str]` — strips comments (`;`-prefixed), splits on `=`, normalises key (lower + hyphenate), normalises value (collapse whitespace).
+- `_dump_tpr_inputrec(tpr_path, gmx_binary) -> dict[str, str]` — runs `gmx dump`, parses the `inputrec:` block, normalises like the mdp parser.
+- `_canonicalise_key(key: str) -> str` — `tc_grps` → `tc-grps`, `epsilon_r` → `epsilon-r`. Lowercased.
+- `_mode(values: Sequence[str]) -> str` — most frequent; ties broken by first-seen order.
+- `_collect_for_stage(systems_root, stage, gmx_binary) -> dict[system, dict[key, value]]` — orchestrates per-stage collection. Records absent files in a separate `missing_systems` set.
+- `_audit_stage(by_system: dict, skip_keys) -> MDPStageAudit` — computes mode per key, lists deviations.
+
+### C.6 Edge-case matrix
+
+| Input | Expected |
+|---|---|
+| `systems_root` empty | report with all stages having `n_systems=0`, no canonical, no deviations |
+| All 70 systems byte-identical at `run.mdp` (verified during planning) | `run` stage canonical = legacy values; `deviations = ()` |
+| Single system has a 1-key disagreement at `equilibration` | `MDPStageAudit.deviations` contains one entry; canonical = mode |
+| 50/50 split on a key | mode broken by first-seen order; both halves listed as deviations from canonical |
+| `gen-seed` differs across all systems | not reported (in `skip_keys`) |
+| One system missing `run.mdp` | listed in `missing_systems`; excluded from canonical computation |
+| One system missing `equilibration/martini_eq.tpr` | listed in `missing_systems` for that stage only |
+| `gmx` returns non-zero | `RuntimeError` with stderr; orchestrator marks the system as missing for that stage rather than aborting the whole audit |
+| `gmx` not on PATH | `FileNotFoundError`; orchestrator marks all `equilibration` + `minimization` as missing; `run` audit still completes |
+| MDP file with continuation comments mid-value | parser collapses to single line; whitespace-normalised |
+| MDP file with a key declared twice | last value wins (matches GROMACS semantics) |
+| Key with `;` inline comment (e.g. `tau_p = 12.0 ;parrinello-rahman is more stable...`) | inline comment stripped; value = `"12.0"` |
+| Key with `=` in value (rare; e.g. PME tunings) | first `=` splits |
+
+### C.7 Test plan — `tests/martini_pipeline/test_analysis_diff_mdps.py`
+
+Eight test groups, all stdlib + pytest. `gmx` is mocked via a fake shell script written into `tmp_path` and prepended to `PATH`.
+
+1. **`test_parse_mdp_file_*`** — parametrised over fixture mdps in `tests/martini_pipeline/fixtures/mdp/`:
+   - simple key=value
+   - inline comment after value
+   - duplicate key (last wins)
+   - whitespace-only / blank / comment-only lines ignored
+   - hyphen vs underscore canonicalised to hyphen
+2. **`test_dump_tpr_inputrec_with_mock_gmx`** — fixture: a tiny shell script `gmx` that prints a hand-crafted `inputrec:` block; assert parser extracts expected dict.
+3. **`test_dump_tpr_inputrec_gmx_failure`** — mock `gmx` exits non-zero; assert `RuntimeError` with stderr in the message.
+4. **`test_dump_tpr_inputrec_gmx_missing`** — point `gmx_binary` at a nonexistent path; assert `FileNotFoundError`.
+5. **`test_diff_mdps_synthetic_tree`** — build a `tmp_path` tree with 3 fake systems each containing a `run.mdp` (two identical, one with one differing key); assert canonical = majority value, deviations include the dissenter.
+6. **`test_diff_mdps_skips_seed_keys`** — three systems differ only on `gen-seed`; assert no deviations reported.
+7. **`test_diff_mdps_missing_files`** — one system missing `run.mdp`; assert system listed in `missing_systems`, excluded from canonical computation.
+8. **`test_diff_mdps_to_markdown_and_to_freeze_json`** — round-trip checks: markdown contains stage headers and key list; freeze JSON parses to `{stage: {key: value}}` shape and excludes `skip_keys`.
+9. **`test_diff_mdps_legacy_integration`** (`@skipif(not _HAS_LEGACY_DATA)`, `@skipif(not shutil.which("gmx"))`) — runs `diff_mdps(data/membrane_only)` for real, asserts:
+   - `n_systems == 70` for `run`
+   - `deviations == ()` for `run` (verified during planning via md5)
+   - canonical contains expected keys: `dt`, `nsteps`, `ref-t`, `ref-p`, `tau-t`, `tau-p`, `cutoff-scheme`, `coulombtype`, `vdw-type`
+   - `dt == "0.02"`, `ref-t == "310"`, `cutoff-scheme == "Verlet"` (case-insensitive), `coulombtype == "cutoff"` (case-insensitive)
+   - `equilibration` and `minimization` audits complete (n_systems == 70 each, possibly with 0 deviations once `skip_keys` are filtered)
+
+### C.8 CLI driver — `scripts/simulation/audit_mdps.py`
+
+```bash
+python scripts/simulation/audit_mdps.py \
+    --systems-root data/membrane_only \
+    --output-md docs/mdp_audit_report.md \
+    --output-freeze lipid_gnn/martini_pipeline/templates/_audit_freeze.json \
+    [--gmx-binary gmx]
+```
+
+Uses `argparse`, calls `diff_mdps`, writes both outputs, and exits non-zero if any unexpected deviations are found (i.e. deviations involving keys *not* in `skip_keys`). Step 4 reads `_audit_freeze.json` to populate template defaults; step 4 *fails fast* if the file is missing, forcing the audit to be re-run if the underlying legacy mdps ever change.
+
+### C.9 Layout & dependencies
+
+- New files:
+  - `lipid_gnn/martini_pipeline/analysis.py`
+  - `tests/martini_pipeline/test_analysis_diff_mdps.py`
+  - `tests/martini_pipeline/fixtures/mdp/` — small hand-crafted mdps for parser tests
+  - `scripts/simulation/audit_mdps.py`
+- Generated (committed):
+  - `docs/mdp_audit_report.md`
+  - `lipid_gnn/martini_pipeline/templates/_audit_freeze.json`
+- No new entries in `requirements.txt`.
+- No `config.yaml` changes; the `martini_pipeline:` block lands with step 4.
+- `analysis.py` does not import from `composition.py` or `lipid_registry.py` — the audit is purely about mdp content, not chemistry.
+
+### C.10 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_analysis_diff_mdps.py -q` passes locally and on HPC. Legacy-integration test skips cleanly when `gmx` or legacy data are absent.
+- `python scripts/simulation/audit_mdps.py --systems-root data/membrane_only` completes locally without error and produces both output files.
+- `docs/mdp_audit_report.md`'s `run` stage shows zero unexpected deviations across the 70 systems (consistent with the planning-time md5 finding).
+- `_audit_freeze.json` contains all three stages with non-empty canonical dicts.
+- Module is < ~350 LOC; no comments unless a non-obvious WHY (per project style).
+- Branch `feat/martini-pipeline-step-03-mdp-audit` merged into `main` via `--no-ff`; status table flipped to `[x]` and any divergence recorded.
+
+### C.11 New decisions to log on completion
+
+If implementation matches this plan, append three entries to §9:
+
+- **Decision 11** — Equilibration/minimization mdps are recovered via `gmx dump -s` from `.tpr` files (legacy `.mdp` sources were not preserved). Rationale: `.tpr` is byte-stable and contains the full inputrec; reconstruction is deterministic.
+- **Decision 12** — Random-seed-like keys (`gen-seed`, `ld-seed`, `tinit`, `init-step`) are excluded from deviation reporting. Rationale: per-system variation is intended; including them would drown out real findings.
+- **Decision 13** — Step 4 (`mdp_writer.py`) reads `_audit_freeze.json` at template-build time and fails fast if missing. Rationale: enforces the audit-then-write order; prevents template defaults from drifting from the legacy values without an explicit re-audit.
