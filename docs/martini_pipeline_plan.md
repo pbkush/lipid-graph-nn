@@ -139,7 +139,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | # | Step | Status | Notes |
 |---|---|---|---|
 | 1 | `composition.py` + tests | [x] | Token regex uses `[A-Z]+` (not `[A-Z][A-Z0-9]*`) to avoid greedy digit-consumption ambiguity; all Martini lipid names are letter-only. 203 tests pass. |
-| 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [ ] | |
+| 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [x] | `_KNOWN_FAMILIES` is a module-level `frozenset` (open for extension); bead cross-check against `node_mapping.json` is a hard assertion. 60 tests pass. |
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [ ] | One-shot script doubles as sanity check on legacy data |
 | 4 | `mdp_writer.py` + templates derived from audit | [ ] | Add `nsteps_*`, `save_forces` knobs |
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` | [ ] | See Decision 2 |
@@ -169,6 +169,8 @@ Append-only. Each entry: date · decision · rationale.
 | 6 | 2026-05-07 | Default output root is `data/martini_pipeline/`, distinct from legacy `data/membrane_only/` | Keeps new vs old simulations cleanly separated; downstream code is drop-in compatible by pointing at the new root. |
 | 7 | 2026-05-07 | Canonical composition naming uses descending mol fraction with alphabetical tiebreak (option A) | Deterministic and future-proof. Diverges from legacy `POPC10_DIPC90`-style ordering on binary systems; legacy names still parse (verified by xfail-marked round-trip test in step 1) but `.name` returns the canonical form. New simulations live under `data/martini_pipeline/` so legacy names remain untouched. |
 | 8 | 2026-05-07 | Per-step git workflow: feature branch `feat/martini-pipeline-step-<NN>-<short-name>` off `main`, merge back only after the step is complete and tests pass | Aligns with the project's existing short-lived-branch + merge-commits-only convention in `techContext.md`. Keeps `main` reflecting the last completed step at all times; partial work stays off `main`. |
+| 9 | 2026-05-07 | `LIPID_REGISTRY` is functional/immutable (`MappingProxyType` + non-mutating `register_lipid`) | Matches `composition.py` pattern; registry is small enough that copy-on-extend is free; eliminates test-pollution bugs. |
+| 10 | 2026-05-07 | Bead order hardcoded in registry, cross-checked against `resources/martini_ff_node_mapping.json` by a failing test | Explicit code is reviewable in PRs; hard assertion catches drift before it silently breaks downstream graph construction. |
 
 ---
 
@@ -289,3 +291,171 @@ Eight test groups, all stdlib:
 - `test_legacy_names_parse` xfail count equals the number of legacy multi-lipid systems. Pure-lipid systems (`POPC100`, `DOPC100`, …) round-trip exact.
 - Module is < ~150 LOC; no comments unless a non-obvious WHY (per project style).
 - Branch `feat/martini-pipeline-step-01-composition` merged into `main`; status table flipped to `[x]`.
+
+---
+
+## Appendix B — Step 2 detailed plan: `lipid_registry.py`
+
+### B.1 Scope
+
+`lipid_gnn/martini_pipeline/lipid_registry.py` defines what a *registered Martini 3 lipid* is and the read/extend/verify operations on the registry. Pure stdlib — no numpy, no MDAnalysis, no `insane` import, no `composition` import (independence rule).
+
+#### In scope
+
+- A frozen `LipidEntry` dataclass capturing the metadata the rest of the pipeline needs.
+- A `LIPID_REGISTRY` mapping for the current 10 lipids: `DIPC`, `DOPC`, `DPPC`, `POPC`, `DOPE`, `DPPE`, `POPE`, `DOPS`, `POPS`, `CHOL`.
+- `register_lipid(registry, entry) -> registry'` — returns a *new* registry dict with the entry added. Pure / non-mutating.
+- `validate_lipid(entry)` — shape validation: required fields, types, non-empty strings, unique bead names, `family` in known set.
+- `check_resources(entry, *, itp_dir=None, node_mapping_path=None)` — on-disk verification. Each path is optional: `None` skips that check. Returns a `ResourceCheck` dataclass with per-check booleans and an aggregated `ok` flag plus `errors: list[str]`.
+- `get_lipid(name)` / `lipid_names()` accessors for the default registry.
+
+#### Out of scope (handled in later steps)
+
+- Anything that loads/imports `insane.py` or runs `gmx`. Step 5 vendors insane and step 6's `system_builder.py` calls it. The registry only declares an `insane_keyword` field; verifying it against vendored insane is a step-6 test.
+- Mol-fraction / composition validation — that's `composition.py`.
+- `.itp` content rewriting or merging — pipeline-level concern.
+- Asymmetric leaflets, lipid mixtures, charge balance — composition + system_builder concerns.
+
+### B.2 Locked-in design decisions
+
+1. **Registry is functional, not mutable.** `register_lipid` returns a new dict. The module-level `LIPID_REGISTRY` is a `MappingProxyType` over a private dict; callers cannot mutate it. Rationale: matches the immutability pattern in `composition.py`; thesis-scale registry is small, copying is free, and we never need cross-test mutation.
+2. **Bead order is hardcoded in the registry, then *cross-checked* against `resources/martini_ff_node_mapping.json` in tests.** Source-of-truth lives in code (explicit, reviewable, version-controlled with the pipeline) but a test asserts agreement with the existing node-mapping resource so drift is caught loudly.
+3. **`check_resources` paths are injected, not read from `CONFIG`.** `config.yaml`'s `martini_pipeline:` block lands in step 4. Until then, callers (and tests) pass paths explicitly. Once step 4 lands, a thin convenience wrapper in `pipeline.py` will fill defaults from `CONFIG`; the registry stays config-free.
+4. **`family` is a closed enum-like string set**: `{"phospholipid", "sterol"}` for the current 10. Adding a new family (e.g. `"glycolipid"`, `"sphingolipid"`) requires extending the set explicitly — `validate_lipid` rejects unknown families. Forces a conscious decision when extending the pool (subgoal 3).
+5. **No `insane.py` parsing in this step.** `insane_keyword` is metadata only; verification is deferred to step 6 where a real insane parser exists. Step 2 cannot fail-or-pass on something it doesn't have access to.
+
+### B.3 Public API
+
+```python
+@dataclass(frozen=True)
+class LipidEntry:
+    name: str                        # canonical short name, e.g. "POPC"
+    resname: str                     # residue name in topology; usually == name
+    itp_file: str                    # basename of the .itp that declares the moleculetype
+    moleculetype: str                # name in [moleculetype] block; usually == name
+    beads: tuple[str, ...]           # canonical bead order, matches node_mapping.json
+    family: str                      # "phospholipid" | "sterol"
+    insane_keyword: str              # -l flag value for insane; usually == name
+
+LIPID_REGISTRY: Mapping[str, LipidEntry]   # immutable; 10 default entries
+
+def get_lipid(name: str) -> LipidEntry: ...
+def lipid_names() -> tuple[str, ...]: ...
+def register_lipid(registry: Mapping[str, LipidEntry], entry: LipidEntry) -> dict[str, LipidEntry]: ...
+def validate_lipid(entry: LipidEntry) -> None: ...
+
+@dataclass(frozen=True)
+class ResourceCheck:
+    lipid: str
+    itp_present: bool | None         # None = check skipped
+    moleculetype_declared: bool | None
+    beads_match_node_mapping: bool | None
+    errors: tuple[str, ...]
+    @property
+    def ok(self) -> bool: ...        # True iff no errors and no failed checks
+
+def check_resources(
+    entry: LipidEntry,
+    *,
+    itp_dir: str | os.PathLike | None = None,
+    node_mapping_path: str | os.PathLike | None = None,
+) -> ResourceCheck: ...
+```
+
+### B.4 The 10 default entries
+
+All ten lipids are present in `resources/martini_ff_node_mapping.json` with full bead lists; the registry mirrors those exactly. Mapping verified during planning:
+
+| name | resname | itp_file | moleculetype | family | beads (count) |
+| --- | --- | --- | --- | --- | --- |
+| `DIPC` | `DIPC` | `martini_v3.0.0_phospholipids_v1.itp` | `DIPC` | phospholipid | 12 |
+| `DOPC` | `DOPC` | `martini_v3.0.0_phospholipids_v1.itp` | `DOPC` | phospholipid | 12 |
+| `DPPC` | `DPPC` | `martini_v3.0.0_phospholipids_v1.itp` | `DPPC` | phospholipid | 12 |
+| `POPC` | `POPC` | `martini_v3.0.0_phospholipids_v1.itp` | `POPC` | phospholipid | 12 |
+| `DOPE` | `DOPE` | `martini_v3.0.0_phospholipids_v1.itp` | `DOPE` | phospholipid | 12 |
+| `DPPE` | `DPPE` | `martini_v3.0.0_phospholipids_v1.itp` | `DPPE` | phospholipid | 12 |
+| `POPE` | `POPE` | `martini_v3.0.0_phospholipids_v1.itp` | `POPE` | phospholipid | 12 |
+| `DOPS` | `DOPS` | `martini_v3.0.0_phospholipids_v1.itp` | `DOPS` | phospholipid | 12 |
+| `POPS` | `POPS` | `martini_v3.0.0_phospholipids_v1.itp` | `POPS` | phospholipid | 12 |
+| `CHOL` | `CHOL` | `martini_v3.0_sterols_v1.0.itp` | `CHOL` | sterol | 9 |
+
+Bead lists copy the exact arrays in `resources/martini_ff_node_mapping.json` for each `name`. `insane_keyword` equals `name` for all ten.
+
+### B.5 Internal helpers
+
+- `_ITP_MOLECULETYPE_RE = re.compile(r"^\s*\[\s*moleculetype\s*\]\s*$", re.IGNORECASE)` — anchors the section header.
+- `_parse_moleculetypes(itp_text: str) -> set[str]` — scans an `.itp` text body, collects every name following a `[ moleculetype ]` header (skipping the comment line). Used by `check_resources`.
+- `_load_node_mapping(path) -> dict[str, list[str]]` — `json.load` wrapper.
+
+### B.6 Edge-case matrix
+
+| Input | Expected |
+|---|---|
+| `validate_lipid(LipidEntry("POPC", "POPC", "...itp", "POPC", ("NC3","PO4",...), "phospholipid", "POPC"))` | passes |
+| `validate_lipid(LipidEntry("", ...))` | raises (empty name) |
+| `validate_lipid(LipidEntry("popc", ...))` | raises (lowercase — registry uses upper case, mirrors `composition.py`) |
+| `validate_lipid(LipidEntry("X", ..., family="lipid"))` | raises (unknown family) |
+| `validate_lipid(LipidEntry("X", ..., beads=()))` | raises (no beads) |
+| `validate_lipid(LipidEntry("X", ..., beads=("A","A")))` | raises (duplicate bead) |
+| `validate_lipid(LipidEntry("X", ..., itp_file=""))` | raises (empty itp_file) |
+| `register_lipid(R, entry)` where `entry.name in R` | raises `ValueError("duplicate")` |
+| `register_lipid(R, entry)` where `validate_lipid(entry)` would fail | raises (validation runs first) |
+| `register_lipid(R, entry)` happy path | returns a new mapping equal to `dict(R)` plus `{entry.name: entry}` |
+| `get_lipid("POPC")` | returns the registered entry |
+| `get_lipid("NOPE")` | raises `KeyError` with helpful message listing known names |
+| `check_resources(entry)` (all paths None) | `ok=True`, all check fields None |
+| `check_resources(entry, itp_dir=tmp/with-file-and-moleculetype)` | `itp_present=True`, `moleculetype_declared=True` |
+| `check_resources(entry, itp_dir=tmp/empty)` | `itp_present=False`, `errors` mentions missing file |
+| `check_resources(entry, itp_dir=tmp/file-without-moleculetype)` | `itp_present=True`, `moleculetype_declared=False`, `errors` informative |
+| `check_resources(entry, node_mapping_path=fake_json_with_match)` | `beads_match_node_mapping=True` |
+| `check_resources(entry, node_mapping_path=fake_json_with_mismatch)` | `beads_match_node_mapping=False`, `errors` includes diff |
+| `check_resources(entry, node_mapping_path=fake_json_missing_lipid)` | `beads_match_node_mapping=False`, `errors` says "lipid not in node mapping" |
+| `check_resources(entry, itp_dir=does/not/exist)` | `itp_present=False`, `errors` mentions missing dir |
+
+`ResourceCheck.ok` is `True` iff every non-None check field is `True` and `errors` is empty.
+
+### B.7 Test plan — `tests/martini_pipeline/test_lipid_registry.py`
+
+Seven test groups, all stdlib + pytest:
+
+1. **`test_default_registry_complete`** — asserts `set(lipid_names()) == {"DIPC","DOPC","DPPC","POPC","DOPE","DPPE","POPE","DOPS","POPS","CHOL"}` (exactly these 10).
+2. **`test_default_entries_validate`** — parametrised over the 10 names; calls `validate_lipid(get_lipid(name))`. None should raise.
+3. **`test_default_beads_match_node_mapping`** — loads `resources/martini_ff_node_mapping.json` and asserts each registry entry's `beads` tuple equals (in order) the keys in the JSON for that name. This is the source-of-truth cross-check from Decision B.2.2. Skipped (with explicit reason) if `resources/martini_ff_node_mapping.json` is absent on the host.
+4. **`test_get_lipid_unknown_raises`** — `get_lipid("NOPE")` raises `KeyError`, message includes `"NOPE"` and at least one known name.
+5. **`test_register_lipid_*`** — happy round-trip on a synthetic `"FAKE"` entry; original registry unchanged (immutability); duplicate raises; malformed entry raises; returned object is a plain dict with the new entry.
+6. **`test_validate_lipid_invalid`** — parametrised over the failure rows of the edge-case matrix.
+7. **`test_check_resources_*`** — uses `tmp_path`:
+   - `test_check_resources_skipped_when_paths_none` — `ok=True`, all check fields None.
+   - `test_check_resources_itp_present_and_moleculetype_declared` — write a minimal `.itp` containing `[ moleculetype ]\n; molname nrexcl\nFAKE 1\n` into `tmp_path / "fake.itp"`, point an entry at it, assert green.
+   - `test_check_resources_itp_missing` — `tmp_path` empty.
+   - `test_check_resources_moleculetype_missing` — `.itp` exists but doesn't declare the lipid.
+   - `test_check_resources_node_mapping_match` — write a JSON file mapping `"FAKE": {"A": "...", "B": "..."}`, entry has `beads=("A","B")`, assert green.
+   - `test_check_resources_node_mapping_mismatch` — JSON has different beads/order; assert red with informative error.
+   - `test_check_resources_node_mapping_missing_lipid` — JSON doesn't have the lipid at all.
+8. **`test_check_resources_against_legacy_data`** — `@skipif(not _HAS_LEGACY_DATA)`, parametrised over the 10 default lipids; runs `check_resources(entry, itp_dir=data/membrane_only/POPC100/toppar/, node_mapping_path=resources/martini_ff_node_mapping.json)` and asserts `ok=True`. This is the integration test that proves the registry is internally consistent with the data we already have.
+
+### B.8 Layout & dependencies
+
+- New files:
+  - `lipid_gnn/martini_pipeline/lipid_registry.py`
+  - `tests/martini_pipeline/test_lipid_registry.py`
+- No new entries in `requirements.txt`.
+- No `config.yaml` changes; the `martini_pipeline:` block lands with step 4.
+- No imports from or exports to `composition.py` or any other pipeline module.
+
+### B.9 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_lipid_registry.py -q` passes locally and on HPC (legacy-data and node-mapping tests skip cleanly when those paths are absent on a fresh HPC node).
+- All 10 default entries' bead lists agree with `resources/martini_ff_node_mapping.json` byte-for-byte and order-for-order.
+- Module is < ~250 LOC; no comments unless a non-obvious WHY (per project style).
+- No regressions in the existing test suite (`pytest -q` total count grows by exactly the new test count).
+- Branch `feat/martini-pipeline-step-02-lipid-registry` merged into `main` via `--no-ff`; status table flipped to `[x]` and any divergence from this plan recorded as a one-line note plus a Decision-log entry if a design choice changed.
+
+### B.10 New decisions to log on completion
+
+If implementation matches this plan, append two entries to §9:
+
+- **Decision 9** — `LIPID_REGISTRY` is functional/immutable (`MappingProxyType` + non-mutating `register_lipid`). Rationale: matches `composition.py`; registry is small enough that copy-on-extend is free; eliminates an entire class of test-pollution bugs.
+- **Decision 10** — Bead order is hardcoded in the registry and cross-checked against `resources/martini_ff_node_mapping.json` by a unit test, rather than loaded from JSON at import time. Rationale: explicit code is reviewable in PRs; the cross-check catches drift loudly; keeps the registry usable on hosts without the resource file.
+
+If the implementation diverges, capture the actual decision instead.
