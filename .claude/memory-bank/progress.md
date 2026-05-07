@@ -116,8 +116,12 @@ Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's see
 ## What's Left to Build
 
 - **Tier C complete**: Stage 5d confirmed on 6 seeds {0,1,4,5,6,8}. Report at `docs/stage_5d_analysis_report.md`.
-- **`bending_modulus` (8th property)**: deferred pending an architectural extension; long-wavelength target beyond the 11 Å spatial cutoff. Likely needs the EFA spatial layer (`docs/efa_spatial_layer_future.md`).
-- **Train-coverage augmentation**: more DPPC- and DOPC-rich compositions to address the per-system MAE concentration on chemically extreme mixtures (Stage 5b finding).
+- **`bending_modulus` (8th property)**: dropped permanently. Label is too noisy/unreliable (undulation-spectrum fit) to serve as a trustworthy training signal. The 7-property Tier C set is the final target set.
+- **Martini 3 lipid simulation pipeline (long-term)**: build a general-purpose Martini 3 membrane simulation pipeline — not solely for training data. Newly simulated systems may or may not be used as training data; the pipeline is a separate research deliverable. Subtasks (rough order):
+  1. **Dynamic membrane creation pipeline** — parameterised in number of lipid types, per-lipid mol fractions, and other system parameters (box size, temperature, ions, water level, simulation length). Should compose with the existing `data/membrane_only/` layout so downstream graph-construction code keeps working unchanged.
+  2. **Pipeline goal — entire Martini 3 lipidome**: the pipeline should be capable, in principle, of simulating any lipid in the Martini 3 force field, not just the current 10-lipid pool.
+  3. **Early subgoal — fill composition coverage with the current 10 lipids**: simulate the missing/sparse regions of the 10-lipid composition space (in particular the DPPC- and DOPC-rich corners flagged by Stage 5b per-system MAE concentration). Doubles as a pipeline shake-out and as candidate training-coverage augmentation.
+  4. **Later — extend the lipid pool**: introduce additional Martini 3 lipids beyond the current 10, expanding the composition space (and the `LIPID_TYPES` vocabulary) for future training rounds.
 - **Embedding evaluation, not just property prediction**: the long-term scientific question is the quality of the membrane embedding. Once Tier A/B/C land, probe the embedding directly (clustering, interpretability, transfer to held-out compositions or to protein+membrane systems).
 - Explore transfer to protein+membrane systems (long-term research goal).
 

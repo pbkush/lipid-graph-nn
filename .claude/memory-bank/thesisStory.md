@@ -199,9 +199,9 @@ A new figure (j) — percentage-error box plot `(pred−true)/true×100` — was
 ## 8. Tier C Stage 0d → 1g → 1g' → 5d (2026-05-01 to 2026-05-07)
 
 `active_properties` extended to 7 by adding `compressibility` (area
-compressibility modulus, Å³/kT). `bending_modulus` was deferred — undulation-
-spectrum-derived, label-noisier, and even more strongly long-wavelength than
-`compressibility`. Pre-registration: `compressibility` R² « 0.5,
+compressibility modulus, Å³/kT). `bending_modulus` was dropped from the target
+set — the undulation-spectrum-fit label is too noisy/unreliable to serve as a
+trustworthy training signal. Pre-registration: `compressibility` R² « 0.5,
 architecture-limited because area-fluctuation statistics integrate over scales
 beyond the 11 Å spatial cutoff.
 
@@ -258,8 +258,9 @@ all 6 healthy.
    packing density ≈ local area-fluctuation density, and that correlation
    extends further than the receptive-field upper bound predicted. The
    architectural argument for EFA-style long-wavelength receptive fields is
-   not falsified — `bending_modulus`, the harder undulation-spectrum target,
-   may not benefit from the same shortcut.
+   not falsified — but `bending_modulus`, the analogous undulation-spectrum
+   target, has been dropped on label-quality grounds, so this question will
+   not be tested in this project.
 
 3. **`persistence` is architecture-bound across all three tiers.**
    R² ≈ 0.57 (Tier C) vs 0.58 (Tier B 5c) vs 0.66 (Stage 0c).
@@ -294,8 +295,8 @@ figures and `headline_numbers.json` in `results/figures/stage_5d/`.
 ## 9. Open questions and next phases
 
 - **Tier B Stage 1e (next)** — `lr ∈ {1e-5, 3e-5, 1e-4}` × 2 seeds. Watch `val/loss_persistence` specifically. If `persistence` learns at a lower lr, the 4 → 6 property pivot will replay the Stage 1b lr-saturation discovery.
-- **Tier C (+`compressibility`, +`bending_modulus`)** — these need long-range receptive fields the 11 Å cutoff cannot provide. Likely floor-bound until the spatial channel is extended (`docs/efa_spatial_layer_future.md` proposes Euclidean Fast Attention as the eventual remedy; deferred until simpler levers exhaust).
-- **Train-coverage gap** — Stage 5b per-system MAE concentrates on DPPC- and DOPC-rich mixtures (POPC30_DOPC70 worst, ~19 Å thickness MAE). Augmenting train coverage in the PC1 < 0 region of composition space is the most direct remediation; alternative is to document as a Tier A scope limit.
+- **`bending_modulus`** — permanently dropped from the target set. The undulation-spectrum-fit label is too noisy/unreliable to serve as a trustworthy training signal; the 7-property Tier C set (Tier A/B + `compressibility`) is final.
+- **Martini 3 lipid simulation pipeline (long-term)** — a general-purpose Martini 3 membrane simulation pipeline, parameterised in lipid types and system parameters, capable in principle of simulating the entire Martini 3 lipidome. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. Sequenced subgoals: (1) build the dynamic creation pipeline; (2) fill the existing 10-lipid composition space (in particular the DPPC- and DOPC-rich corners flagged by the Stage 5b MAE concentration — POPC30_DOPC70 worst, ~19 Å thickness MAE); (3) extend the lipid pool beyond the current 10. The Stage 5b train-coverage gap is the most concrete near-term motivation for subgoal (2); if the pipeline is not built, the gap is documented as a Tier A scope limit instead.
 - **Seed fragility** — 20 % init-failure rate is acknowledged in the thesis but not yet remedied. Possible levers: warm-up + cosine schedule; init-conditioned learning rate; gradient clipping at the property head.
 - **Embedding evaluation, not just property prediction** — the long-term scientific question is the quality of the membrane embedding. Once Tier A/B/C land, the embedding should be probed directly (e.g. clustering, interpretability, transfer to held-out compositions or to protein+membrane systems).
 

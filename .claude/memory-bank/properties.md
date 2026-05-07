@@ -41,6 +41,6 @@ variation       : 0.257
 
 ## Notes
 
-- `bending_modulus` was marked "not used in further analysis" in the original calculation notebook but is now exposed as a valid CLI choice in [prepare_colab_subset.py](../../scripts/training/prepare_colab_subset.py); it is fit by regressing the undulation spectrum `⟨|h(q)|²⟩` against `q` — noisier and less reliable than the other properties
+- `bending_modulus` is **permanently dropped** from the target set. It is fit by regressing the undulation spectrum `⟨|h(q)|²⟩` against `q` and was already marked "not used in further analysis" in the original calculation notebook — too noisy/unreliable to serve as a trustworthy training signal. Still computed and stored in the `.h5` files (and exposed as a CLI choice for completeness), but excluded from `active_properties`. The 7-property Tier C set is final.
 - `thickness_std` is intra-trajectory variability, not uncertainty across compositions
 - Currently-trained property pairs: `lipid_packing` + `thickness` (PR #3 sweep default). The multi-target `out_dim` of `MembranePropertyGNN` equals `len(properties)`; any subset of the 8 can be selected via `prepare_colab_subset.py --properties ...`
