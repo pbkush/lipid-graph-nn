@@ -141,7 +141,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 1 | `composition.py` + tests | [x] | Token regex uses `[A-Z]+` (not `[A-Z][A-Z0-9]*`) to avoid greedy digit-consumption ambiguity; all Martini lipid names are letter-only. 203 tests pass. |
 | 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [x] | `_KNOWN_FAMILIES` is a module-level `frozenset` (open for extension); bead cross-check against `node_mapping.json` is a hard assertion. 60 tests pass. |
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [x] | run.mdp: zero deviations (all 70 byte-identical). Equilibration: 7 rlist deviations on CHOL systems (Verlet-buffer auto-tuning, expected). Freeze record committed as `templates/_audit_freeze.json`. |
-| 4 | `mdp_writer.py` + templates derived from audit | [ ] | Add `nsteps_*`, `save_forces` knobs |
+| 4 | `mdp_writer.py` + templates derived from audit (Appendix D) | [x] | Eq diverges from legacy: `compressibility 3e-4`, `nsteps 1e6`, explicit `gen-vel=yes`. Knobs: `nsteps_*`, `save_forces`, `gen_seed`. 32 tests pass. |
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` | [ ] | See Decision 2 |
 | 6 | `system_builder.py` + tests | [ ] | |
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end on POPC100; reproduce existing POPC100 frame count + mean APL as sanity check | [ ] | |
@@ -174,6 +174,9 @@ Append-only. Each entry: date · decision · rationale.
 | 11 | 2026-05-07 | Equilibration/minimization mdps recovered via `gmx dump -s` from `.tpr` (legacy `.mdp` sources not preserved) | `.tpr` is byte-stable and contains the full inputrec; reconstruction is deterministic. |
 | 12 | 2026-05-07 | Random-seed-like keys (`gen-seed`, `ld-seed`, `tinit`, `init-step`, `simulation-part`) excluded from deviation reporting | Per-system variation in these keys is intended; including them drowns out real deviations. |
 | 13 | 2026-05-07 | Step 4 (`mdp_writer.py`) reads `templates/_audit_freeze.json` at template-build time, fails fast if missing | Enforces audit-then-write order; prevents template defaults drifting from legacy values without explicit re-audit. |
+| 14 | 2026-05-07 | Step 4 templates **deliberately diverge from legacy** in equilibration: `compressibility 3e-4 3e-4` (legacy `3e-5`), `nsteps 1_000_000` / 10 ns (legacy 250 000 / 2.5 ns), `nstenergy 1000` (legacy 100), explicit `gen-vel = yes`, `gen-temp = 310`, `gen-seed = -1` | Legacy `3e-5` makes the box relax ~10× slower than τ_p = 5 ps (Berendsen) was tuned for; novel compositions (high-CHOL, DIPC/POPC blends) frequently exit equilibration still drifting at 2.5 ns. The audit captures *what we ran*; the writer captures *what we should run going forward*. Run-stage values are still cloned byte-for-byte from legacy. |
+| 15 | 2026-05-07 | Configurable parameters are marked in template files with inline `; [CONFIG: <knob>]` comments | Makes the surface that `MDPParams` (and later `martini_pipeline.*` config) controls discoverable from the template alone; reviewers can audit knob coverage by grepping `[CONFIG:`. |
+| 16 | 2026-05-07 | Single-stage equilibration in v1; two-stage (eq1 small-dt + eq2 production-dt) deferred | The 10 ns single-stage already absorbs the legacy reliability gap. Two-stage adds pipeline + manifest complexity; revisit only if step 7+ surfaces equilibration failures on exotic compositions. |
 
 ---
 
@@ -644,3 +647,195 @@ If implementation matches this plan, append three entries to §9:
 - **Decision 11** — Equilibration/minimization mdps are recovered via `gmx dump -s` from `.tpr` files (legacy `.mdp` sources were not preserved). Rationale: `.tpr` is byte-stable and contains the full inputrec; reconstruction is deterministic.
 - **Decision 12** — Random-seed-like keys (`gen-seed`, `ld-seed`, `tinit`, `init-step`) are excluded from deviation reporting. Rationale: per-system variation is intended; including them would drown out real findings.
 - **Decision 13** — Step 4 (`mdp_writer.py`) reads `_audit_freeze.json` at template-build time and fails fast if missing. Rationale: enforces the audit-then-write order; prevents template defaults from drifting from the legacy values without an explicit re-audit.
+
+---
+
+## Appendix D — Step 4 detailed plan: `mdp_writer.py`
+
+### D.1 Scope
+
+`lipid_gnn/martini_pipeline/mdp_writer.py` produces the three MDP files required per simulation (`em.mdp`, `eq.mdp`, `run.mdp`) from the frozen audit values plus a small, well-defined set of run-time knobs. Pure stdlib; no imports from `composition.py` / `lipid_registry.py` (independence rule).
+
+#### What's in scope for step 4
+
+- A frozen `MDPParams` dataclass — the run-time knobs (per-stage `nsteps`, `save_forces`, optional `gen_seed`).
+- `write_mdps(out_dir, *, params, freeze_path, templates_dir) -> dict[stage, path]` — emits all three files.
+- Per-stage `render_mdp(stage, params, canonical, template_text) -> str` — pure string substitution.
+- Templates: literal text files under `lipid_gnn/martini_pipeline/templates/{em,eq,run}.mdp.tmpl`, with `${name}` placeholders driven via `string.Template(...).substitute(...)` (strict mode — raises on unknown / missing keys).
+- A `scripts/simulation/write_mdps.py` argparse driver for manual one-off generation.
+- Tests at `tests/martini_pipeline/test_mdp_writer.py`.
+
+#### What's out of scope for step 4
+
+- Calling `gmx grompp` to validate templates (a `@skipif(not which("gmx"))` opt-in test does this; full pipeline grompp lives in step 7).
+- The `martini_pipeline:` block in `config.yaml` — deferred to step 7 (Decision 17). Step 4 takes paths/knobs as arguments with package-relative defaults.
+- Composition-dependent settings (per-lipid `tc-grps`, position restraints) — Martini production uses `System` group everywhere.
+- Any reading of legacy data — step 4 consumes only the freeze record.
+
+### D.2 Locked-in design decisions
+
+1. **Two-source template strategy.**
+   - `run.mdp.tmpl`: byte-exact clone of legacy `data/membrane_only/POPC100/run.mdp` (verified identical across all 70 systems in step 3) with `gen_seed`, `nsteps`, and `nstfout` lines replaced by `${...}` placeholders. Preserves Marrink-lab annotations as documentation.
+   - `em.mdp.tmpl` and `eq.mdp.tmpl`: hand-authored from a curated mdp-key allowlist (D.4) populated from the freeze record. Required because `gmx dump -s` outputs inputrec fields that aren't valid `grompp` inputs (`mass-repartition-factor`, `ensemble-temperature-setting`, `nbfgscorr`, auto-derived fourier-grid dims, etc.). Authored once, reviewable in PR.
+2. **Freeze JSON drives values; the key set per template is hardcoded in `mdp_writer.py`.** Mismatch (template references key, freeze missing it) raises at render time. Catches drift loudly.
+3. **Equilibration deliberately diverges from legacy** (Decision 14):
+   - `compressibility = 3e-4 3e-4` (legacy `3e-5`) — fixes the τ_p = 5 ps Berendsen mismatch that left novel compositions still drifting at 2.5 ns.
+   - `nsteps = 1_000_000` (10 ns at dt = 0.01) — replaces the legacy 250 000 / 2.5 ns. Negligible cost on MI210; removes per-system inspection.
+   - `nstenergy = 1000` (legacy 100) — I/O hygiene only; no stability impact.
+   - `gen-vel = yes`, `gen-temp = 310`, `gen-seed = -1` made explicit so a fresh equilibration is deterministic regardless of what minimization wrote.
+4. **Run stage values are byte-cloned from legacy.** No deliberate divergence — the legacy production setup is what produced existing training data and we keep new systems comparable.
+5. **`save_forces` toggles `nstfout` in `run.mdp` only** (Decision 3). Default `0` (off); when `True`, set to `nstxout-compressed`'s value so position and force frequencies match. Em/eq never write forces.
+6. **Seed strategy: per-call `random.SystemRandom().randint(1, 2**31 - 1)` when `params.gen_seed is None`; verbatim when set.** Two builds with all-defaults give different `run.mdp`s by design — reproducibility tests pass an explicit seed. The seed actually used is recorded by `manifest.py` in step 7.
+7. **Fail-fast on missing freeze record** (Decision 13): `FileNotFoundError("MDP audit freeze record missing — run scripts/simulation/audit_mdps.py first.")`.
+8. **`rlist` omitted from `eq.mdp.tmpl`.** Step 3 found 7 CHOL systems with rlist auto-tuned by GROMACS via `verlet-buffer-tolerance`. Reproducing that requires emitting the tolerance and letting `grompp` derive `rlist` per system. Confirmed safe — rlist is a tuned consequence of the buffer tolerance, not a primary input.
+9. **Single-stage equilibration in v1** (Decision 16). Two-stage (eq1 small-dt + eq2 production-dt) deferred until step 7+ surfaces an actual failure on exotic compositions. The 10 ns single-stage already closes the legacy reliability gap.
+10. **Configurable parameters are marked in template files** with inline `; [CONFIG: <knob>]` comments (Decision 15). Reviewer audits knob coverage by `grep '\[CONFIG:' templates/*.tmpl`. Resulting `.mdp` files preserve these comments — useful at-a-glance documentation in run dirs.
+11. **No Jinja / no YAML.** `string.Template` is sufficient; one extra dependency for a half-dozen substitutions is overkill.
+
+### D.3 Public API
+
+```python
+@dataclass(frozen=True)
+class MDPParams:
+    nsteps_min: int = 20_000           # legacy default
+    nsteps_eq: int = 1_000_000         # 10 ns at dt = 0.01 — diverges from legacy 250 000 (Decision 14)
+    nsteps_prod: int = -1              # -1 = run until walltime; per-run override expected
+    save_forces: bool = False          # Decision 3
+    gen_seed: int | None = None        # None → SystemRandom; explicit value → reproducible
+
+STAGES: tuple[str, ...] = ("minimization", "equilibration", "run")
+
+def write_mdps(
+    out_dir: str | os.PathLike,
+    *,
+    params: MDPParams = MDPParams(),
+    freeze_path: str | os.PathLike = _DEFAULT_FREEZE,
+    templates_dir: str | os.PathLike = _DEFAULT_TEMPLATES,
+) -> dict[str, str]:  # {stage: written_path}
+    ...
+
+def render_mdp(
+    stage: str,
+    params: MDPParams,
+    canonical: Mapping[str, str],
+    template_text: str,
+) -> str: ...
+```
+
+`_DEFAULT_FREEZE` and `_DEFAULT_TEMPLATES` resolve relative to the package, so callers don't need to know the layout.
+
+### D.4 Template key allowlists
+
+**`em.mdp.tmpl`** — derived from `freeze.minimization`. ~15 keys:
+
+`integrator, dt, nsteps, emtol, emstep, nstcomm, nstxout, nstvout, nstfout, nstlog, nstenergy, cutoff-scheme, nstlist, pbc, verlet-buffer-tolerance, coulombtype, coulomb-modifier, rcoulomb, epsilon-r, vdw-type, vdw-modifier, rvdw, tcoupl, pcoupl, constraints`.
+
+Placeholder: `nsteps = ${nsteps_min}`.
+
+**`eq.mdp.tmpl`** — derived from `freeze.equilibration` plus the Decision-14 overrides. ~30 keys:
+
+The em set, plus `ref-t, tau-t, tc-grps, ref-p, tau-p, pcoupl=Berendsen, pcoupltype=semiisotropic, compressibility=3e-4 3e-4, gen-vel=yes, gen-temp=310, gen-seed=${gen_seed_eq}, refcoord-scaling=No, nstxout-compressed`.
+
+Placeholders: `nsteps = ${nsteps_eq}`, `nstenergy = ${nstenergy_eq}` (default 1000), `gen-seed = ${gen_seed_eq}` (`-1` literal by default; an explicit `MDPParams.gen_seed` substitutes a deterministic int).
+
+**`run.mdp.tmpl`** — clone of legacy `run.mdp`. Three lines edited:
+
+- `gen_seed                 = ${gen_seed}`
+- `nsteps                   = ${nsteps_prod}`
+- `nstfout                  = ${nstfout}`
+
+All Marrink-lab comment blocks preserved verbatim.
+
+The exact key list per template is committed; future readers can diff template ↔ allowlist to see what was deliberately included/excluded.
+
+### D.5 `[CONFIG:]` markers (Decision 15)
+
+Every line driven by `MDPParams` gets an inline marker. Example excerpt from `eq.mdp.tmpl`:
+
+```text
+nsteps                   = ${nsteps_eq}            ; [CONFIG: nsteps_eq]
+compressibility          = 3e-4 3e-4               ; [CONFIG: future — currently fixed]
+gen-seed                 = ${gen_seed_eq}          ; [CONFIG: gen_seed]
+nstenergy                = ${nstenergy_eq}         ; [CONFIG: nstenergy_eq]
+```
+
+Markers serve two purposes:
+
+1. **Discoverability** — `grep '\[CONFIG:' templates/*.tmpl` enumerates the live knob surface.
+2. **Future-extension hints** — values that *could* become knobs but currently aren't (e.g. `compressibility`, `ref-t`) are tagged `[CONFIG: future — currently fixed]`. Step 7 / step 11 can flip these to live knobs by adding fields to `MDPParams` without redesigning the template.
+
+The markers survive into the rendered `.mdp` files (they're plain mdp comments). Run directories therefore self-document which lines are pipeline-controlled vs. force-field constants.
+
+### D.6 Edge-case matrix
+
+| Input | Expected |
+| --- | --- |
+| `freeze_path` missing | `FileNotFoundError` with re-run-audit message |
+| Template references `${foo}` not in params | `KeyError` from `Template.substitute` (strict) |
+| Allowlist key missing from freeze record | `KeyError` at render time naming key + stage |
+| `params.save_forces=True` | `run.mdp` `nstfout` = `nstxout-compressed`'s value |
+| `params.save_forces=False` | `run.mdp` `nstfout = 0` |
+| `params.gen_seed=42` | `42` substituted verbatim into run.mdp |
+| `params.gen_seed=None`, called twice | two distinct positive ints (system entropy) |
+| `out_dir` doesn't exist | created (`os.makedirs(exist_ok=True)`) |
+| `nsteps_prod=-1` | written verbatim (legacy default; production driven by walltime) |
+| Re-run with same explicit seed + same out_dir | files byte-identical |
+| Re-run with `gen_seed=None` | run.mdp differs in seed line only |
+
+### D.7 Test plan — `tests/martini_pipeline/test_mdp_writer.py`
+
+1. **`test_freeze_missing_raises`** — pointing `freeze_path` at a nonexistent file → `FileNotFoundError` with the audit-rerun hint in the message.
+2. **`test_render_em_minimal`** — render with the committed freeze + default params; parse with `_parse_mdp_file` from `analysis.py`; assert every allowlist key is present and matches `freeze.minimization` (or the Decision-14 override).
+3. **`test_render_eq_overrides_legacy`** — assert `compressibility == "3e-4 3e-4"`, `nsteps == "1000000"`, `nstenergy == "1000"`, `gen-vel == "yes"`, `gen-temp == "310"`, `pcoupl == "Berendsen"`, `pcoupltype == "semiisotropic"`. These are Decision-14 commitments and a regression here means we silently regressed to legacy.
+4. **`test_render_run_clones_legacy`** — render with default params + a fixed seed; parse; assert resulting dict equals `freeze.run` for every shared key. Diff list must be exactly `{gen-seed, nsteps, nstfout}` plus whatever `${...}` placeholders we introduced.
+5. **`test_save_forces_toggle`** — `False` → `nstfout=0`; `True` → `nstfout=75000` (== `nstxout-compressed`).
+6. **`test_seed_explicit_and_random`** — explicit seed round-trips; `None` produces a positive int in [1, 2**31-1] and two consecutive calls give two different seeds.
+7. **`test_write_mdps_roundtrip`** — `write_mdps(tmp_path, params)` writes 3 files; each re-parses cleanly; returned dict maps every stage to a path that exists.
+8. **`test_template_strict_substitute`** — synthetic template with unsatisfied `${unknown}` → `KeyError` (not silent).
+9. **`test_config_markers_present`** — assert every rendered `.mdp` contains at least one `; [CONFIG:` comment, and that every `MDPParams` field name appears as a `[CONFIG: <field>]` marker somewhere across the three templates. Catches divergence between knob set and template markers.
+10. **`test_grompp_smoke`** (`@skipif(not shutil.which("gmx"))`, opt-in via `RUN_MDP_GROMPP=1`) — write all three files; run `gmx grompp` for each stage against `data/membrane_only/POPC100/{run.gro, topol.top, toppar/}` if present; assert exit 0 and zero notes related to unknown mdp options. Demonstrates that the curated allowlists are grompp-clean.
+
+### D.8 CLI driver — `scripts/simulation/write_mdps.py`
+
+```bash
+python scripts/simulation/write_mdps.py \
+    --out-dir <path> \
+    [--nsteps-min 20000] \
+    [--nsteps-eq 1000000] \
+    [--nsteps-prod -1] \
+    [--save-forces] \
+    [--gen-seed 12345]
+```
+
+Calls `write_mdps`, prints the resulting paths. Exits non-zero on any rendering error.
+
+### D.9 Layout & dependencies
+
+New files:
+
+- `lipid_gnn/martini_pipeline/mdp_writer.py` (~150 LOC)
+- `lipid_gnn/martini_pipeline/templates/em.mdp.tmpl`
+- `lipid_gnn/martini_pipeline/templates/eq.mdp.tmpl`
+- `lipid_gnn/martini_pipeline/templates/run.mdp.tmpl`
+- `tests/martini_pipeline/test_mdp_writer.py`
+- `scripts/simulation/write_mdps.py`
+
+No new entries in `requirements.txt`. No `config.yaml` changes (Decision 17 — deferred to step 7). No imports from `composition.py` / `lipid_registry.py`.
+
+### D.10 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_mdp_writer.py -q` passes locally and on HPC. The grompp smoke test skips cleanly when `gmx` or legacy data are absent.
+- `python scripts/simulation/write_mdps.py --out-dir /tmp/mdptest` produces three files; each parses and contains the expected `[CONFIG: ...]` markers.
+- Rendered `eq.mdp` matches the Decision-14 commitments exactly (compressibility, nsteps, nstenergy, gen-vel, gen-temp, pcoupl).
+- Rendered `run.mdp` is byte-equal to legacy `data/membrane_only/POPC100/run.mdp` modulo the three placeholder lines.
+- Module < ~200 LOC; no comments unless a non-obvious WHY. Templates committed and reviewable.
+- No regressions in existing test suite (`pytest -q` total grows by exactly the new test count).
+- Branch `feat/martini-pipeline-step-04-mdp-writer` merged into `main` via `--no-ff`; status table flipped to `[x]`.
+
+### D.11 New decisions to log on completion
+
+If implementation matches this plan, decisions 14–16 in §9 (already appended at planning time) stand as written. If implementation diverges, capture the actual decision under a fresh entry rather than rewriting these.
+
+A 17th decision is implicit and worth recording on completion if confirmed in practice:
+
+- **Decision 17** — `martini_pipeline:` config block in `config.yaml` is added in step 7 (when `pipeline.py` first reads it), not step 4. Rationale: smaller, more focused PRs; step 4 has no need for a global config since every knob is a function argument with a default.
