@@ -1346,6 +1346,167 @@ def _(mo, np, preds_phys, properties, targets_phys):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### (k) GNN vs baseline scatter — coloured by composition
+
+    Combines figures (b) and (e): each GNN point is coloured by lipid
+    composition (same palette as figure b); the linear-baseline predictions
+    are overlaid as orange diamonds. R² and MAE for the GNN are annotated per
+    panel. The final panel is the MSE bar chart from figure (e).
+
+    This lets the reader see simultaneously *where* the GNN fails relative to
+    the baseline (which compositions are hardest) and *how much* the GNN
+    outperforms composition-only prediction.
+    """)
+    return
+
+
+@app.cell
+def _(
+    COMP_COLORS,
+    N_SEEDS,
+    PAL,
+    PROP_LABELS,
+    baseline,
+    bl_preds_phys,
+    bl_targets_phys,
+    mpatches,
+    np,
+    plt,
+    preds_phys,
+    preds_stack,
+    properties,
+    r2_score,
+    save_fig,
+    targets_phys,
+    targets_stack,
+    test_comps_list,
+):
+    _bl_props_list_k = [str(p) for p in baseline["properties"]] if baseline is not None else []
+    _bl_j_for_p_k    = {p: _bl_props_list_k.index(p) for p in properties if p in _bl_props_list_k}
+
+    _unique_comps_k   = sorted(set(test_comps_list))
+    _comp_color_map_k = {c: COMP_COLORS[i % len(COMP_COLORS)] for i, c in enumerate(_unique_comps_k)}
+
+    _n_panels_k = len(properties) + 1          # one per property + bar chart
+    _n_cols_k   = min(_n_panels_k, 3)
+    _n_rows_k   = int(np.ceil(_n_panels_k / _n_cols_k))
+    _fig_k, _axes_k = plt.subplots(
+        _n_rows_k, _n_cols_k,
+        figsize=(5 * _n_cols_k, 5 * _n_rows_k),
+    )
+    _axes_k = np.asarray(_axes_k).ravel()
+
+    for _j, (_ax, _prop) in enumerate(zip(_axes_k[:len(properties)], properties)):
+        _true_pool = targets_phys[:, :, _j].ravel()
+        _pred_gnn  = preds_phys[:, :, _j].ravel()
+        _comp_pool = test_comps_list * N_SEEDS
+        _colors_k  = [_comp_color_map_k[c] for c in _comp_pool]
+        _bl_j      = _bl_j_for_p_k.get(_prop)
+
+        _lo = min(_true_pool.min(), _pred_gnn.min())
+        _hi = max(_true_pool.max(), _pred_gnn.max())
+        if _bl_j is not None:
+            _lo = min(_lo, bl_targets_phys[:, _bl_j].min(), bl_preds_phys[:, _bl_j].min())
+            _hi = max(_hi, bl_targets_phys[:, _bl_j].max(), bl_preds_phys[:, _bl_j].max())
+
+        # GNN: composition-coloured scatter
+        _ax.scatter(_true_pool, _pred_gnn, c=_colors_k, alpha=0.3, s=14, lw=0, zorder=2)
+        # Baseline: solid orange diamonds on top
+        if _bl_j is not None:
+            _ax.scatter(
+                bl_targets_phys[:, _bl_j], bl_preds_phys[:, _bl_j],
+                s=50, alpha=0.85, color=PAL["baseline"], marker="D",
+                label="Linear baseline", zorder=3,
+            )
+        _ax.plot([_lo, _hi], [_lo, _hi], "--", color=PAL["identity"], lw=1.2, zorder=1)
+
+        _r2  = r2_score(_true_pool, _pred_gnn)
+        _mae = float(np.mean(np.abs(_pred_gnn - _true_pool)))
+        _ax.text(
+            0.05, 0.95, f"R² = {_r2:.3f}\nMAE = {_mae:.3f}",
+            transform=_ax.transAxes, fontsize=9, va="top",
+        )
+        _ax.set_xlabel(f"True — {PROP_LABELS.get(_prop, _prop)}")
+        _ax.set_ylabel("Predicted")
+        _ax.set_title(f"Scatter: true vs predicted {_prop}")
+        if _bl_j is not None:
+            _ax.legend(fontsize=8)
+
+    # Final panel: MSE bar chart (identical to figure e)
+    _ax_bar_k = _axes_k[len(properties)]
+    _xpos_k   = np.arange(len(properties))
+    _gnn_mean_k = [
+        float(np.mean([
+            np.mean((preds_stack[_s, :, _j] - targets_stack[_s, :, _j]) ** 2)
+            for _s in range(N_SEEDS)
+        ]))
+        for _j in range(len(properties))
+    ]
+    _gnn_std_k = [
+        float(np.std([
+            np.mean((preds_stack[_s, :, _j] - targets_stack[_s, :, _j]) ** 2)
+            for _s in range(N_SEEDS)
+        ]))
+        for _j in range(len(properties))
+    ]
+    _bl_mse_k = [
+        float(np.mean((baseline["test_preds"][:, _bl_j_for_p_k[_p]] -
+                       baseline["test_targets"][:, _bl_j_for_p_k[_p]]) ** 2))
+        if _p in _bl_j_for_p_k else float("nan")
+        for _p in properties
+    ]
+    _w_bar_k = 0.35
+    _ax_bar_k.bar(_xpos_k - _w_bar_k / 2, _gnn_mean_k, _w_bar_k, yerr=_gnn_std_k,
+                  capsize=4, color=PAL["gnn"], alpha=0.85, label="GNN")
+    _valid_bl_k = [_j for _j, _v in enumerate(_bl_mse_k) if not np.isnan(_v)]
+    if _valid_bl_k:
+        _ax_bar_k.bar(
+            np.array(_valid_bl_k) + _w_bar_k / 2,
+            [_bl_mse_k[_j] for _j in _valid_bl_k],
+            _w_bar_k, color=PAL["baseline"], alpha=0.85, label="Linear baseline",
+        )
+        for _j in _valid_bl_k:
+            _rel = (_bl_mse_k[_j] - _gnn_mean_k[_j]) / _bl_mse_k[_j] * 100
+            _ax_bar_k.text(
+                _j, max(_gnn_mean_k[_j], _bl_mse_k[_j]) * 1.05,
+                f"−{_rel:.0f}%", ha="center", fontsize=8, color="k",
+            )
+    _ax_bar_k.set_xticks(_xpos_k)
+    _ax_bar_k.set_xticklabels(
+        [p.replace("_", " ") for p in properties], rotation=45, ha="right", fontsize=9,
+    )
+    _ax_bar_k.set_ylabel("Test MSE (normalised)")
+    _ax_bar_k.set_title("GNN vs baseline: MSE per property")
+    _ax_bar_k.legend()
+
+    for _ax in _axes_k[_n_panels_k:]:
+        _ax.set_visible(False)
+
+    # Composition legend below the scatter panels
+    _comp_handles_k = [
+        mpatches.Patch(color=_comp_color_map_k[c], label=c) for c in _unique_comps_k
+    ]
+    _fig_k.legend(
+        _comp_handles_k, _unique_comps_k,
+        title="GNN — composition", loc="lower center",
+        ncol=min(5, len(_unique_comps_k)),
+        bbox_to_anchor=(0.5, -0.12), fontsize=7,
+    )
+
+    _fig_k.suptitle(
+        f"GNN (coloured by composition) vs linear-composition baseline — "
+        f"{N_SEEDS} seeds × 275 test graphs",
+        y=1.01,
+    )
+    _fig_k.tight_layout()
+    save_fig(_fig_k, "fig_k_scatter_comp_vs_baseline")
+    _fig_k
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## 7. Statistical tests
 
     Per-property residual diagnostics: R² with 95 % CI, empirical bias (mean
