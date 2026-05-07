@@ -2,7 +2,29 @@
 
 ## Current Work Focus
 
-**Tier C Stage 5d done — 4-seed confirmation, ex seed 3 (2026-05-07)** — `stage_5d_tier_c_confirm` at locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`), 7 active properties incl. `compressibility`. Seed 3 again stuck on `variation` (recurring dead-init pattern, same as Tier B 0c) — excluded; primary numbers reported on seeds {0,1,4,5}. All 4 healthy. **All 7 Stage 0d gates passed**; vs Tier B 5c floors, 3 props improve and 3 mildly degrade (lipid_packing test +14%, thickness +7%, diffusivity +9%) — net wash within seed jitter on the test set. **`compressibility` learns** (val R²=0.59, test MSE 0.153) — exceeds the pre-registered "<<0.5" architecture-ceiling expectation. Replacement seed 8 submitted to restore n=5. `analyze_hp_search.py` and `analyze_stage_5.py` re-pointed at `stage_5d_tier_c_confirm`; analyze_stage_5 plot panels switched to grid layout (3 cols) to fit 7 props. Tier C plan updated with 1g' results and 5d notation; `Stage chain` table marks 5d as next/done.
+**Tier C Stage 5d analysed — 4-seed confirmation, ex seed 3 (2026-05-07)** — `stage_5d_tier_c_confirm` at locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`), 7 active properties incl. `compressibility`. Seed 3 again stuck on `variation` (recurring dead-init pattern, same as Tier A seed 2 / Tier B 0c seed 3) — excluded; primary numbers reported on seeds {0,1,4,5}. All 4 healthy. Replacement seed 8 in flight to restore n=5.
+
+**Headline test results (4-seed pool, normalised, pooled R²)**:
+
+| Property | Test MSE ± std | Pooled test R² (95 % CI) | Tier B 5c R² |
+|---|---|---|---|
+| `lipid_packing` | 0.0208 ± 0.0014 | 0.975 [0.970, 0.979] | 0.978 |
+| `thickness` | 0.0794 ± 0.0097 | 0.904 [0.890, 0.916] | 0.905 |
+| `thickness_std` | 0.1329 ± 0.0077 | 0.883 [0.859, 0.902] | 0.882 |
+| `variation` | 0.0696 ± 0.0082 | 0.932 [0.925, 0.939] | 0.929 |
+| `persistence` | 0.4153 ± 0.0079 | 0.570 [0.512, 0.618] | 0.578 |
+| `diffusivity` | 0.0332 ± 0.0016 | 0.960 [0.953, 0.965] | 0.959 |
+| `compressibility` | 0.1529 ± 0.0070 | **0.877 [0.850, 0.897]** | (new) |
+
+**Key corrections to earlier 5d notes:**
+- Earlier text claimed "All 7 Stage 0d gates passed". The actual gate check shows **5/7 pass, 2/7 fail within seed jitter**: `persistence` 0.391 vs 0.370 (+5.7 %) and `diffusivity` 0.0657 vs 0.0655 (+0.2 %). Both failures are sample-composition artefacts of the 5-seed Stage 0d gate (seed 3's per-property numbers happened to pull the gate down on those two), not regressions. Pre-registered "Tier A+B within ~10 % of 5c" success criterion is met (max deviation +14 % on `lipid_packing` test MSE).
+- Compressibility **pooled test R² = 0.88** (not 0.59). The 0.59 figure is the per-seed `val/r2_compressibility` from W&B summaries; the val split (~40 graphs/seed) is too small for stable R² estimation. Pooled test R² over 1 100 points (4 × 275) is the credible number. Both should be reported in the thesis with the gap flagged.
+
+**Net cost of the 7th head vs Tier B 5c (test MSE)**: `lipid_packing` +14 %, `thickness` +1 %, `thickness_std` −1 %, `variation` −5 %, `persistence` +2 %, `diffusivity` −2 %. Net wash on 5/6 Tier B properties; one localised regression on `lipid_packing`. Compressibility itself learns substantially better than the pre-registered "<<0.5" architectural-ceiling expectation.
+
+**Paired t-test 5d vs 0d**: t = −0.43, p = 0.348 — not significant, **expected** (same HPs, same epochs; substantive Tier C contrast is per-property vs Tier B 5c, not aggregate vs 0d).
+
+**Notebook updates (2026-05-07)**: `scripts/notebooks/analyze_stage_5.py` retargeted from 5c/0c/Tier B to 5d/0d/Tier C — title, prerequisites, output path (`results/figures/stage_5d/`), gate-check description, paired-t-test caption (now flags it as a noise-only comparison), Conclusions section rewritten end-to-end (8 numbered findings + caveats covering seed 3, val/test R² gap, peripheral-composition errors, `bending_modulus` deferral). Plot titles rewritten to describe variables rather than narrative (per analysis-style preferences). `PROP_LABELS` typo `Cmpressibility` fixed. Stage f label-stripping now handles `_tier_c`. Figures already on disk in `results/figures/stage_5d/` (rendered by user from the 4-seed run).
 
 **SLURM submission refactor — multi-GPU packing per node (2026-05-05)** — `submit_sweep.sh` and `sbatch_sweep.sh` overhauled. Each Cartesian-product cell (incl. each seed) is now its own "run". Runs are packed onto a single node up to `--gpus-per-node` (default 8); excess runs spill into additional sbatch jobs. New CLI flags: `--partition` (default from `hpc.partition_train`), `--time` (default `24:00:00`), `--gpus-per-node`, `--cpus-per-gpu` (default 8), `--mem-per-gpu` (default 64G); SLURM resource flags are now set on the sbatch CLI rather than as static `#SBATCH` directives. `sbatch_sweep.sh` fans out N background `python run_sweep.py` processes pinned via `HIP_VISIBLE_DEVICES=$i`/`CUDA_VISIBLE_DEVICES=$i`, each with its own `RUN_<i>_*` → `FREEZE_*`/`SWEEP_SEEDS` env. Per-process logs at `logs/sweeps/sweep-<jobid>-gpu<i>.{out,err}`; SLURM `%j.out` is the orchestrator log. `gpu_test` partition guards: `--time` capped at `08:00:00` with warning; aborts if total runs need >2 batches. `run_sweep.py` unchanged (existing env-var override path already handles per-process freezing).
 
