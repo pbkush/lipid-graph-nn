@@ -44,39 +44,23 @@ mkdir -p "$WANDB_DIR"
 N_RUNS="${N_RUNS_PER_NODE:-1}"
 echo "Launching $N_RUNS parallel training run(s) on $(hostname)"
 
-DEFAULT_NUM_WORKERS=$(python scripts/python/print_config_var.py training.num_workers)
-
-STAGE="/local/${SLURM_JOB_ID}"
-echo "Staging chunks from $WORK to $STAGE ..."
-mkdir -p "$STAGE"
-rsync -a "$WORK/" "$STAGE/"
-
-if (( N_RUNS > 1 )); then
-    # Multi-run: stage to node-local NVMe, but use num_workers=0 (no DataLoader
-    # worker processes). The previous GPFS-direct + workers approach failed
-    # because worker child processes are the first OOM-kill target when N
-    # concurrent training processes compete for node memory. When a worker is
-    # killed mid-epoch its IPC socket vanishes and the DataLoader crashes with
-    # "FileNotFoundError / Pin memory thread exited unexpectedly" — regardless
-    # of pin_memory or persistent_workers settings.
-    # num_workers=0: DataLoader runs in the main process — no child processes,
-    # no IPC sockets to lose. Reads from /local (RAM-backed tmpfs or NVMe) are
-    # fast enough that the GPU is not significantly starved.
-    # Tmpfs eviction is not a risk here: it was previously caused by IPC shared
-    # memory from worker processes. With num_workers=0 there is no shared-memory
-    # pressure, so /local pages persist for the full job.
-    export CHUNKS_DIR="$STAGE"
-    export FREEZE_NUM_WORKERS=0
-    export FREEZE_PIN_MEMORY=0
-    echo "  Chunks : $STAGE (staged, IPC-free)"
-    echo "  Workers: 0/slot (OOM-safe — no child processes)"
-else
-    # Single-run: full worker prefetching from node-local NVMe.
-    export CHUNKS_DIR="$STAGE"
-    export FREEZE_NUM_WORKERS="$DEFAULT_NUM_WORKERS"
-    echo "  Chunks : $STAGE (staged)"
-    echo "  Workers: ${DEFAULT_NUM_WORKERS}/slot"
-fi
+# All jobs: read chunks directly from GPFS — no staging to /local.
+#
+# Root cause of all prior DataLoader failures: /local ($SLURM_JOB_ID) is a
+# tmpfs. Its pages get evicted under memory pressure (from IPC shared-memory
+# of DataLoader workers, or from competing jobs on shared gpu_test nodes),
+# turning file reads into FileNotFoundError. GPFS files can never be evicted
+# from the filesystem — slow page-cache misses at worst, never a missing file.
+#
+# I/O overlap with GPU compute is recovered by a background thread inside
+# MartiniDiskDataset.__iter__ (num_workers=0 path): while the GPU processes
+# chunk N, the thread reads chunk N+1 from GPFS. Threads share the main
+# process memory — no child processes, no IPC sockets, nothing to OOM-kill.
+export CHUNKS_DIR="$WORK"
+export FREEZE_NUM_WORKERS=0
+export FREEZE_PIN_MEMORY=0
+echo "  Chunks : $WORK (GPFS — no staging, threaded prefetch)"
+echo "  Workers: 0/slot (IPC-free)"
 
 PIDS=()
 for ((i=0; i<N_RUNS; i++)); do

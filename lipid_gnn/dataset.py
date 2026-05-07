@@ -3,6 +3,8 @@ import glob
 import math
 import gc
 import random
+import threading
+from queue import Queue
 import numpy as np
 import torch
 from pathlib import Path
@@ -35,30 +37,63 @@ class MartiniDiskDataset(IterableDataset):
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
-        
+
         if worker_info is None:
             files_to_process = list(self.chunk_files)
         else:
-            # Split chunk files automatically for multi-worker prefetching
             worker_id = worker_info.id
             num_workers = worker_info.num_workers
-            # Calculate exactly how many items each worker gets
-            # Better distribution math:
             per_worker = int(math.ceil(len(self.chunk_files) / float(num_workers)))
-            files_to_process = self.chunk_files[worker_id * per_worker : min((worker_id + 1) * per_worker, len(self.chunk_files))]
-            
+            files_to_process = self.chunk_files[
+                worker_id * per_worker : min((worker_id + 1) * per_worker, len(self.chunk_files))
+            ]
+
         if self.shuffle:
             random.shuffle(files_to_process)
-            
-        for chunk_file in files_to_process:
-            graphs = torch.load(chunk_file, weights_only=False)
-            
-            # Graphs within the chunk should be randomized if shuffle is enabled
-            # so we don't return sequentially homogeneous data chunks
-            if self.shuffle:
-                random.shuffle(graphs)
-                
-            for graph in graphs:
+
+        if worker_info is not None:
+            # Inside a DataLoader worker process: load directly (the worker
+            # itself is the prefetch unit; no extra thread needed).
+            for chunk_file in files_to_process:
+                graphs = torch.load(chunk_file, weights_only=False)
+                if self.shuffle:
+                    random.shuffle(graphs)
+                for graph in graphs:
+                    yield graph
+            return
+
+        # Single-process DataLoader (num_workers=0): prefetch the next chunk
+        # in a background thread while the GPU processes the current one.
+        # Uses only Python threads — no multiprocessing, no shared-memory IPC,
+        # no Unix sockets. The thread reads from GPFS (or any filesystem);
+        # the GIL is released during file I/O so the thread runs concurrently
+        # with GPU compute in the main thread. Exceptions in the thread are
+        # re-raised in the main thread.
+        _sentinel = object()
+        _q: Queue = Queue(maxsize=2)
+        _exc: list = [None]
+
+        def _loader() -> None:
+            try:
+                for chunk_file in files_to_process:
+                    graphs = torch.load(chunk_file, weights_only=False)
+                    if self.shuffle:
+                        random.shuffle(graphs)
+                    _q.put(graphs)
+            except Exception as e:  # noqa: BLE001
+                _exc[0] = e
+            finally:
+                _q.put(_sentinel)
+
+        threading.Thread(target=_loader, daemon=True).start()
+
+        while True:
+            item = _q.get()
+            if item is _sentinel:
+                if _exc[0] is not None:
+                    raise _exc[0]
+                return
+            for graph in item:
                 yield graph
 
 
