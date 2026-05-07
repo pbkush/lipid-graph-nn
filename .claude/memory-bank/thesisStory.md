@@ -302,4 +302,16 @@ figures and `headline_numbers.json` in `results/figures/stage_5d/`.
 
 ---
 
-*Last updated: 2026-05-07, after Tier C Stage 5d complete (6-seed pool {0,1,4,5,6,8}).*
+## 10. Vendored resources
+
+External code or data copied into the repository for reproducibility. Each entry records: what, where, source URL, version, license, and why vendored.
+
+| Resource | Path in repo | Source | Version | License | Rationale |
+|---|---|---|---|---|---|
+| `insane.py` (Martini bilayer builder, Wassenaar) | `resources/martini3/insane.py` | *(to fill on vendoring)* | *(to fill)* | GPL | Used by `lipid_gnn/martini_pipeline/system_builder.py` to construct initial bilayers. Vendored to make the simulation pipeline reproducible independent of the user's environment. |
+
+When adding entries here, also update `lipid_gnn/martini_pipeline/manifest.py` so the per-system JSON manifest records the vendored version actually used. Plan and progress for the simulation pipeline live in [`docs/martini_pipeline_plan.md`](../../docs/martini_pipeline_plan.md).
+
+---
+
+*Last updated: 2026-05-07, after Tier C Stage 5d complete (6-seed pool {0,1,4,5,6,8}); § 10 "Vendored resources" added alongside the Martini pipeline plan.*
