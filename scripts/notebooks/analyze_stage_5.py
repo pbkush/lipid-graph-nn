@@ -1463,7 +1463,7 @@ def _(
         _ax_bar_k.bar(
             np.array(_valid_bl_k) + _w_bar_k / 2,
             [_bl_mse_k[_j] for _j in _valid_bl_k],
-            _w_bar_k, color=PAL["baseline"], alpha=0.85, label="Linear baseline",
+            _w_bar_k, color=PAL["baseline"], alpha=0.85, label="Linear \nbaseline",
         )
         for _j in _valid_bl_k:
             _rel = (_bl_mse_k[_j] - _gnn_mean_k[_j]) / _bl_mse_k[_j] * 100
@@ -1490,7 +1490,7 @@ def _(
         _comp_handles_k, _unique_comps_k,
         title="GNN — composition", loc="lower center",
         ncol=min(5, len(_unique_comps_k)),
-        bbox_to_anchor=(0.5, -0.12), fontsize=7,
+        bbox_to_anchor=(0.5, -0.05), fontsize=7,
     )
 
     _fig_k.suptitle(
@@ -1501,6 +1501,159 @@ def _(
     _fig_k.tight_layout()
     save_fig(_fig_k, "fig_k_scatter_comp_vs_baseline")
     _fig_k
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### (l) Composition coverage — train / val / test split + worst-5 MAE
+
+    Same grid as `analyze_dataset` figure 01: rows = lipid partner, columns =
+    partner mole fraction. Cell colour encodes dataset split (blue = train,
+    orange = val, green = test; white = not simulated). Test compositions with
+    the 5 highest summed normalised MAE are overlaid with a red star (★).
+    Split membership is read from the `chunks_dir` train / val / test
+    subdirectories.
+    """)
+    return
+
+
+@app.cell
+def _(
+    CONFIG,
+    mpatches,
+    np,
+    plt,
+    preds_stack,
+    properties,
+    save_fig,
+    targets_stack,
+    test_comps_list,
+):
+    import re as _re_l
+    import torch as _torch_l
+    from matplotlib.colors import ListedColormap as _ListedColormap_l, BoundaryNorm as _BoundaryNorm_l
+    from matplotlib.lines import Line2D as _Line2D_l
+
+    # ── Parse composition stem → (partner_lipid, partner_frac) ───────────────
+    def _parse_partner(stem):
+        parts = _re_l.findall(r'([A-Za-z]+)(\d+)', stem)
+        if len(parts) == 1:
+            return parts[0][0], int(parts[0][1])
+        a, fa = parts[0][0], int(parts[0][1])
+        b, fb = parts[1][0], int(parts[1][1])
+        if a == "POPC":
+            return b, fb
+        if b == "POPC":
+            return a, fa
+        return a, fa
+
+    # ── Load split membership from chunk directories ──────────────────────────
+    _chunks_dir = CONFIG.paths.chunks_dir
+
+    def _comps_from_split(split):
+        comps = set()
+        for _cp in sorted((_chunks_dir / split).glob("chunk_*.pt")):
+            for _g in _torch_l.load(_cp, weights_only=False):
+                comps.add(_g.composition)
+        return comps
+
+    _train_comps_l = _comps_from_split("train")
+    _val_comps_l   = _comps_from_split("val")
+    _test_comps_l  = _comps_from_split("test")
+
+    def _split_of(comp):
+        if comp in _test_comps_l:  return 3
+        if comp in _val_comps_l:   return 2
+        if comp in _train_comps_l: return 1
+        return 0  # unknown / not in chunks
+
+    _all_comps_l = sorted(_train_comps_l | _val_comps_l | _test_comps_l)
+    _parsed_l    = {c: _parse_partner(c) for c in _all_comps_l}
+
+    # ── Per-composition normalised MAE (test set, sum over properties) ────────
+    _comp_idx_l = {c: i for i, c in enumerate(sorted(set(test_comps_list)))}
+    _sys_abs_l  = np.zeros((preds_stack.shape[0], len(_comp_idx_l), len(properties)))
+    _cnt_l      = np.zeros(len(_comp_idx_l), dtype=int)
+    for _s in range(preds_stack.shape[0]):
+        for _gi, _c in enumerate(test_comps_list):
+            _ci = _comp_idx_l[_c]
+            _sys_abs_l[_s, _ci] += np.abs(preds_stack[_s, _gi] - targets_stack[_s, _gi])
+            if _s == 0:
+                _cnt_l[_ci] += 1
+    _mae_by_comp_l = (_sys_abs_l / _cnt_l[None, :, None]).mean(0).sum(1)
+    _worst5_l      = sorted(_comp_idx_l, key=lambda c: -_mae_by_comp_l[_comp_idx_l[c]])[:5]
+
+    # ── Build the split-coloured coverage grid ────────────────────────────────
+    # 0 = not simulated, 1 = train, 2 = val, 3 = test
+    _partners_l = sorted({p for p, f in _parsed_l.values() if p and p != "POPC"})
+    _fracs_l    = sorted({f for p, f in _parsed_l.values() if f > 0 and f < 100})
+
+    _grid_l = np.zeros((len(_partners_l), len(_fracs_l)), dtype=float)
+    for _comp, (_partner, _frac) in _parsed_l.items():
+        if _partner and _partner != "POPC" and _frac in _fracs_l:
+            _ri = _partners_l.index(_partner)
+            _ci = _fracs_l.index(_frac)
+            _grid_l[_ri, _ci] = _split_of(_comp)
+
+    # ── Worst-5 → grid coordinates ────────────────────────────────────────────
+    _worst5_cells_l = []
+    for _wc in _worst5_l:
+        _p, _f = _parsed_l.get(_wc, (None, 0))
+        if _p and _p != "POPC" and _p in _partners_l and _f in _fracs_l:
+            _worst5_cells_l.append((_partners_l.index(_p), _fracs_l.index(_f), _wc))
+
+    # ── Plot ──────────────────────────────────────────────────────────────────
+    # 0=white, 1=train(blue), 2=val(amber), 3=test(green)
+    _cmap_l = _ListedColormap_l(["white", "#4472C4", "#E69F00", "#70AD47"])
+    _norm_l = _BoundaryNorm_l([-0.5, 0.5, 1.5, 2.5, 3.5], _cmap_l.N)
+
+    _fig_l, _ax_l = plt.subplots(figsize=(12, 5.5))
+    _ax_l.imshow(_grid_l, cmap=_cmap_l, norm=_norm_l, aspect="auto")
+    _ax_l.set_xticks(range(len(_fracs_l)))
+    _ax_l.set_xticklabels(_fracs_l, fontsize=8)
+    _ax_l.set_xlabel("partner mole fraction (%)", labelpad=4)
+    _ax_l.set_yticks(range(len(_partners_l)))
+    _ax_l.set_yticklabels(_partners_l, fontsize=9)
+
+    for _ri in range(len(_partners_l)):
+        for _ci in range(len(_fracs_l)):
+            if _grid_l[_ri, _ci] > 0:
+                _ax_l.text(_ci, _ri, "•", ha="center", va="center", color="white", fontsize=13)
+
+    for _ri, _ci, _comp in _worst5_cells_l:
+        _ax_l.text(_ci, _ri, "★", ha="center", va="center",
+                   color="crimson", fontsize=18, fontweight="bold", zorder=5)
+
+    _ax2_l = _ax_l.twiny()
+    _ax2_l.set_xlim(_ax_l.get_xlim())
+    _ax2_l.set_xticks(range(len(_fracs_l)))
+    _ax2_l.set_xticklabels([f"{100 - _f}" for _f in _fracs_l], fontsize=7, rotation=45, ha="left")
+    _ax2_l.set_xlabel("POPC mol% (top axis: 100 − bottom-axis value)", fontsize=8)
+
+    _n_train = int(((_grid_l == 1).sum()))
+    _n_val   = int(((_grid_l == 2).sum()))
+    _n_test  = int(((_grid_l == 3).sum()))
+    _n_marked = len(_worst5_cells_l)
+    _n_total  = len(_worst5_l)
+    _star_handle = _Line2D_l([0], [0], marker="*", color="crimson", markersize=12,
+                              linestyle="None",
+                              label=f"★ top-5 MAE test compositions ({_n_marked}/{_n_total} in grid)")
+    _ax_l.legend(handles=[
+        mpatches.Patch(facecolor="#4472C4", label=f"train ({_n_train})"),
+        mpatches.Patch(facecolor="#E69F00", label=f"val ({_n_val})"),
+        mpatches.Patch(facecolor="#70AD47", label=f"test ({_n_test})"),
+        mpatches.Patch(facecolor="white", edgecolor="lightgray", label="not simulated"),
+        _star_handle,
+    ], loc="lower right", fontsize=8, framealpha=0.9)
+    _ax_l.set_title(
+        f"Composition coverage by split — {len(_all_comps_l)} systems  "
+        f"(★ = top-5 MAE test: {', '.join(_worst5_l)})"
+    )
+    _fig_l.tight_layout()
+    save_fig(_fig_l, "fig_l_coverage_split_worst5")
+    _fig_l
     return
 
 

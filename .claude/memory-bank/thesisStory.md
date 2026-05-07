@@ -221,21 +221,22 @@ lock confirmed; **a single `lr=3e-5` survives three tiers**. Seed-std at lr=3e-5
 slightly wider than at lr=1e-5 (0.012 vs 0.005), reverse of the Tier B 1e'
 pattern — a flag for 5d.
 
-**Stage 5d (4-seed confirmation, ex seed 3)**: seed 3 reproduced its Tier B 0c
-dead-init on `variation` and was excluded; primary numbers reported on
-{0, 1, 4, 5}. Replacement seed 8 in flight.
+**Stage 5d (6-seed confirmation, ex seed 3)**: seed 3 reproduced its Tier B 0c
+dead-init on `variation` and was excluded; replacement seeds 6 and 8 were
+submitted and completed as healthy runs. Final pool {0, 1, 4, 5, 6, 8},
+all 6 healthy.
 
-**Headline results (test, pooled, normalised)**:
+**Headline results (test, pooled, normalised, 6 seeds × 275 = 1 650 points)**:
 
 | Property | Test MSE ± std | Pooled test R² (95 % CI) | Δ vs Tier B 5c |
 |---|---|---|---|
-| `lipid_packing`   | 0.0208 ± 0.0014 | 0.975 [0.970, 0.979] | +14 % MSE   |
-| `thickness`       | 0.0794 ± 0.0097 | 0.904 [0.890, 0.916] | +1 % (tied) |
-| `thickness_std`   | 0.1329 ± 0.0077 | 0.883 [0.859, 0.902] | −1 % (tied) |
-| `variation`       | 0.0696 ± 0.0082 | 0.932 [0.925, 0.939] | −5 %         |
-| `persistence`     | 0.4153 ± 0.0079 | 0.570 [0.512, 0.618] | +2 % (tied) |
-| `diffusivity`     | 0.0332 ± 0.0016 | 0.960 [0.953, 0.965] | −2 % (tied) |
-| `compressibility` | 0.1529 ± 0.0070 | **0.877 [0.850, 0.897]** | (new)   |
+| `lipid_packing`   | 0.0203 ± 0.0014 | 0.976 [0.972, 0.979] | +12 % MSE   |
+| `thickness`       | 0.0778 ± 0.0089 | 0.906 [0.895, 0.916] | −1 % (tied) |
+| `thickness_std`   | 0.1292 ± 0.0174 | 0.887 [0.867, 0.902] | −4 % (tied) |
+| `variation`       | 0.0683 ± 0.0083 | 0.933 [0.927, 0.939] | −6 %         |
+| `persistence`     | 0.4092 ± 0.0118 | 0.576 [0.532, 0.616] | 0 % (tied)  |
+| `diffusivity`     | 0.0331 ± 0.0020 | 0.960 [0.955, 0.964] | −2 % (tied) |
+| `compressibility` | 0.1480 ± 0.0199 | **0.881 [0.860, 0.898]** | (new)   |
 
 **Five Tier C findings for the thesis**:
 
@@ -249,7 +250,7 @@ dead-init on `variation` and was excluded; primary numbers reported on
    argument predicted.** Pooled test R² ≈ 0.88, far above the «<<0.5» prior.
    Two values worth reporting together:
    - W&B per-seed `val/r2_compressibility` ≈ 0.59 (mean of last-10 epochs)
-   - pooled test R² ≈ 0.88 (over 4 seeds × 275 graphs = 1 100 points)
+   - pooled test R² ≈ 0.88 (over 6 seeds × 275 graphs = 1 650 points)
    The val split (~40 graphs/seed) is too small for stable R² estimation on a
    property whose targets span ~3× their mean; the pooled test number is the
    credible estimate. Interpretation: the local 11 Å lipid-packing geometry
@@ -278,12 +279,12 @@ dead-init on `variation` and was excluded; primary numbers reported on
    confirmed across three independent sweeps. Cross-tier scope limit, not a
    Tier C-specific issue.
 
-**Gate check (val_min10 vs Stage 0d 7-prop floor)**: 5/7 pass. `persistence`
-0.391 vs 0.370 (+5.7 %) and `diffusivity` 0.0657 vs 0.0655 (+0.2 %)
-technically fail within seed jitter — both are sample-composition artefacts of
-seed 3's per-property val numbers having pulled the Stage 0d gate down on those
-two properties. Not regressions; pre-registered "Tier A+B within ~10 % of 5c"
-success criterion is met (max test deviation +14 % on `lipid_packing`).
+**Gate check (val_min10 vs Stage 0d 7-prop floor)**: 6/7 pass. `persistence`
+0.387 vs 0.370 (+4.6 %) technically fails within seed jitter — a
+sample-composition artefact of seed 3's per-property val numbers having pulled
+the Stage 0d gate down. `diffusivity` now passes (0.065 vs gate 0.066) with
+the 6-seed pool. Not regressions; pre-registered "Tier A+B within ~10 % of 5c"
+success criterion is met (max test deviation +12 % on `lipid_packing`).
 
 Full notebook: `scripts/notebooks/analyze_stage_5.py` retargeted for Tier C;
 figures and `headline_numbers.json` in `results/figures/stage_5d/`.
@@ -300,4 +301,4 @@ figures and `headline_numbers.json` in `results/figures/stage_5d/`.
 
 ---
 
-*Last updated: 2026-04-28, after Tier B Stage 0c (6-property floor measured).*
+*Last updated: 2026-05-07, after Tier C Stage 5d complete (6-seed pool {0,1,4,5,6,8}).*

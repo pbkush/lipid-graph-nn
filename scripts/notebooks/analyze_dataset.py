@@ -105,7 +105,7 @@ def _(Path, mo, sys):
         "variation", "persistence", "diffusivity",
         "compressibility"
     ]
-    STAGE5B_WORST = ["OPC65_DPPE35", "POPC30_DOPC70", "POPC60_DPPC40", "POPC30_DPPC70", "POPC80_DPPC20"]
+    STAGE5D_WORST = ["POPC65_DPPE35", "POPC70_POPE30", "POPC30_DOPC70", "POPC40_DIPC60", "POPC60_DPPC40"]
 
     PROPS_DIR = Path(CONFIG.paths.props_dir)
     OUT_DIR = Path(CONFIG.paths.results_dir) / "dataset_analysis"
@@ -128,7 +128,7 @@ def _(Path, mo, sys):
         REFERENCE,
         SPLITS,
         SPLIT_COLORS,
-        STAGE5B_WORST,
+        STAGE5D_WORST,
         TIER_B_PROPS,
     )
 
@@ -249,7 +249,7 @@ def _(density_df, df, mo, top20):
     - **Property outliers**: flagged by MAD (|z| > 3) in §3 — `bending_modulus` has the most outliers (noisiest estimator)
     - **Helfrich proxy**: `compressibility · thickness²` correlates positively with `bending_modulus` (see §4c)
     - **PCA**: first two property-PCs capture the majority of variance; sterol compositions cluster separately
-    - **Coverage gaps**: {_n_gap} compositions in bottom 25% KDE density; Stage 5b worst-MAE systems fall in this region (§9)
+    - **Coverage gaps**: {_n_gap} compositions in bottom 25% KDE density; Stage 5d worst-MAE systems fall in this region (§9)
     - **Top gap candidate**: `{top20.iloc[0]['lipid_a']}{int(top20.iloc[0]['frac_a'])}_{top20.iloc[0]['lipid_b']}{int(top20.iloc[0]['frac_b'])}` (lowest composition-space KDE density, §10)
     """), kind="info")
     return
@@ -1168,7 +1168,7 @@ def _(mo):
 
     Each space shown at 3 KDE bandwidths (0.5×, 1×, 2× Scott's rule) for robustness.
 
-    **Sanity check (§9c)**: Stage 5b worst-MAE compositions (★) should fall in
+    **Sanity check (§9c)**: Stage 5d worst-MAE compositions (★) should fall in
     low-density regions — if they do, the KDE correctly identifies training-coverage gaps.
     """)
     return
@@ -1178,7 +1178,7 @@ def _(mo):
 def _(
     LIPIDS,
     PCA,
-    STAGE5B_WORST,
+    STAGE5D_WORST,
     StandardScaler,
     TIER_B_PROPS,
     df_with_split,
@@ -1217,7 +1217,7 @@ def _(
     mo.md(f"""
     **Composition PCA**: PC1 = {ev_comp[0]*100:.1f}%, PC2 = {ev_comp[1]*100:.1f}%, cumulative = {ev_comp.sum()*100:.1f}%
     **Property PCA (Tier B, 6 props)**: PC1 = {ev_prop[0]*100:.1f}%, PC2 = {ev_prop[1]*100:.1f}%, cumulative = {ev_prop.sum()*100:.1f}%
-    Stage 5b worst-MAE compositions to track: {STAGE5B_WORST}
+    Stage 5d worst-MAE compositions to track: {STAGE5D_WORST}
     """)
     return (
         X_comp,
@@ -1328,7 +1328,7 @@ def _(FIG_DIR, SPLIT_COLORS, Z_prop, df_with_split, ev_prop, plt):
 def _(
     FIG_DIR,
     SPLIT_COLORS,
-    STAGE5B_WORST,
+    STAGE5D_WORST,
     Z_comp,
     df_with_split,
     ev_comp,
@@ -1359,10 +1359,10 @@ def _(
             _m = df_with_split["split"] == _split
             _ax.scatter(Z_comp[_m, 0], Z_comp[_m, 1], c=_color, s=50, edgecolor="k",
                         lw=0.6, alpha=0.9, label=_split, zorder=5)
-        _widx = df_with_split.index[df_with_split["composition"].isin(STAGE5B_WORST)].tolist()
+        _widx = df_with_split.index[df_with_split["composition"].isin(STAGE5D_WORST)].tolist()
         _ax.scatter(Z_comp[_widx, 0], Z_comp[_widx, 1],
                     marker="*", s=220, c="red", edgecolor="darkred", lw=0.7,
-                    zorder=7, label="Stage 5b worst MAE")
+                    zorder=7, label="Stage 5d worst MAE")
         for _i in _widx:
             _ax.annotate(df_with_split.loc[_i, "composition"], (Z_comp[_i, 0], Z_comp[_i, 1]),
                          textcoords="offset points", xytext=(5, 4), fontsize=6.5, color="darkred")
@@ -1384,7 +1384,7 @@ def _(
 def _(
     FIG_DIR,
     SPLIT_COLORS,
-    STAGE5B_WORST,
+    STAGE5D_WORST,
     TIER_B_PROPS,
     Z_prop,
     df_with_split,
@@ -1417,10 +1417,10 @@ def _(
             _m = df_with_split["split"] == _split
             _ax.scatter(Z_prop[_m, 0], Z_prop[_m, 1], c=_color, s=50, edgecolor="k",
                         lw=0.6, alpha=0.9, label=_split, zorder=5)
-        _widx = df_with_split.index[df_with_split["composition"].isin(STAGE5B_WORST)].tolist()
+        _widx = df_with_split.index[df_with_split["composition"].isin(STAGE5D_WORST)].tolist()
         _ax.scatter(Z_prop[_widx, 0], Z_prop[_widx, 1],
                     marker="*", s=220, c="red", edgecolor="darkred", lw=0.7,
-                    zorder=7, label="Stage 5b worst MAE")
+                    zorder=7, label="Stage 5d worst MAE")
         for _i in _widx:
             _ax.annotate(df_with_split.loc[_i, "composition"], (Z_prop[_i, 0], Z_prop[_i, 1]),
                          textcoords="offset points", xytext=(5, 4), fontsize=6.5, color="darkred")
@@ -1444,7 +1444,7 @@ def _(
     OUT_DIR,
     Patch,
     SPLIT_COLORS,
-    STAGE5B_WORST,
+    STAGE5D_WORST,
     Z_comp,
     df_with_split,
     kde_comp_default,
@@ -1468,7 +1468,7 @@ def _(
     density_df.to_csv(OUT_DIR / "existing_densities.csv", index=False)
 
     _threshold_25 = np.percentile(_comp_densities, 25)
-    _worst_dens = density_df[density_df["composition"].isin(STAGE5B_WORST)]
+    _worst_dens = density_df[density_df["composition"].isin(STAGE5D_WORST)]
     _all_below = (_worst_dens["kde_density"] <= _threshold_25).all()
 
     _split_bar_colors = [SPLIT_COLORS.get(_s, "gray") for _s in density_df["split"]]
@@ -1504,7 +1504,7 @@ def _(
         mo.md("**Bottom 10 (lowest density = biggest gaps)**"),
         mo.as_html(density_df.head(10)[["composition", "family", "split", "kde_density", "density_rank"]]),
         mo.callout(mo.md(
-            f"All Stage 5b worst-MAE compositions in bottom 25% KDE density? → "
+            f"All Stage 5d worst-MAE compositions in bottom 25% KDE density? → "
             f"{'✓ YES — KDE gaps align with GNN errors.' if _all_below else '✗ NO — check KDE projection.'}"
         ), kind=_kind),
     ])
@@ -1652,7 +1652,7 @@ def _(
 def _(
     FIG_DIR,
     SPLIT_COLORS,
-    STAGE5B_WORST,
+    STAGE5D_WORST,
     Z_comp,
     df_with_split,
     ev_comp,
@@ -1677,11 +1677,11 @@ def _(
         _ax.scatter(Z_comp[_m, 0], Z_comp[_m, 1], c=_color, s=55, edgecolor="k",
                     lw=0.6, alpha=0.9, label=f"existing ({_split})", zorder=5)
 
-    _worst_mask = df_with_split["composition"].isin(STAGE5B_WORST)
+    _worst_mask = df_with_split["composition"].isin(STAGE5D_WORST)
     _widx = df_with_split.index[_worst_mask].tolist()
     _ax.scatter(Z_comp[_widx, 0], Z_comp[_widx, 1],
                 marker="*", s=230, c="red", edgecolor="darkred", lw=0.7,
-                zorder=7, label="Stage 5b worst MAE")
+                zorder=7, label="Stage 5d worst MAE")
     for _i in _widx:
         _ax.annotate(df_with_split.loc[_i, "composition"], (Z_comp[_i, 0], Z_comp[_i, 1]),
                      textcoords="offset points", xytext=(5, 4), fontsize=7, color="darkred")
@@ -1705,7 +1705,7 @@ def _(
     _ax.set_xlabel(f"PC1 ({ev_comp[0]*100:.1f}%)")
     _ax.set_ylabel(f"PC2 ({ev_comp[1]*100:.1f}%)")
     _ax.set_title("Composition-PCA: existing dataset + top-20 gap candidates\n"
-                  "(◆ = binary, ▲ = ternary, ★ = Stage 5b worst MAE)")
+                  "(◆ = binary, ▲ = ternary, ★ = Stage 5d worst MAE)")
     _ax.legend(fontsize=8, loc="upper right")
     _ax.grid(alpha=0.25)
     _fig.tight_layout()
@@ -1732,8 +1732,8 @@ def _(mo):
        `diffusivity` and `lipid_packing` anti-correlate (denser membranes diffuse more slowly).
        PCA concentrates most variance into 2–3 principal components.
 
-    4. **Coverage gaps and GNN errors**: Stage 5b worst-MAE compositions (POPC30_DOPC70,
-       POPC30_DPPC70, POPC60_DPPC40, POPC40_DIPC60) fall in the bottom 25% of composition-space
+    4. **Coverage gaps and GNN errors**: Stage 5d worst-MAE compositions (POPC65_DPPE35,
+       POPC70_POPE30, POPC30_DOPC70, POPC40_DIPC60) fall in the bottom 25% of composition-space
        KDE density — the KDE metric correctly identifies where training coverage is thin.
 
     5. **Top simulation candidates**: ranked by lowest composition-space KDE density, saved to
