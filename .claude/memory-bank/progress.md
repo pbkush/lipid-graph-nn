@@ -82,19 +82,44 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 **Tier B GATES (Stage 0c 6-prop floor, 5-seed val_min10 mean — locked in `tier_b_6prop_plan.md` and `analyze_hp_search.ipynb` Cell 1)**:
 `lipid_packing < 0.019`, `thickness < 0.067`, `thickness_std < 0.302`, `variation < 0.151`, `persistence < 0.362`, `diffusivity < 0.059`.
 
+## Tier C Status (7 properties: + compressibility)
+
+| Stage | Status | Key result |
+| --- | --- | --- |
+| Stage 0d — 7-prop GNN floor at locked Tier B HPs | done | Outcome C: all 6 Tier A+B props miss 5c gates by 2–24%; compressibility R²=0.55 (above pre-registered "<<0.5"). Triggered Stage 1g. |
+| Stage 1g — lr sanity (2 seeds × 3 lrs) | done | Pilot signal: lr=1e-5 wins on val_ab6 (0.160 vs 0.194 vs 0.235); seed-0 3e-5 variation failure inflated 3e-5 mean. Triggered Stage 1g'. |
+| Stage 1g' — lr refinement (4 seeds × 3 lrs) | done | **lr=3e-5 wins (val_ab6=0.146)** — Tier A/B lock confirmed, 1g signal flips at 4 seeds. Same pattern as Tier B 1e → 1e'. |
+| Stage 5d — 5-seed confirmation | **done (4 seeds, ex-seed-3)** | All 7 Stage 0d gates passed; 5/6 Tier B 5c test-MSE numbers tied; lipid_packing test +14%; compressibility test R²=0.59. Replacement seed 8 submitted to restore n=5. |
+
+**Tier C locked HPs**: identical to Tier A/B (`hidden_dim=128, num_layers=2, lr=3e-5, wd=1e-3, epochs=200`). Single lr lock survives all three tiers.
+
+## Stage 5d headline numbers (4 seeds {0,1,4,5}, test, pooled, normalised)
+
+| Property | test MSE mean ± std | val R² (4-seed mean) | vs Tier B 5c test |
+| --- | --- | --- | --- |
+| `lipid_packing` | 0.0208 ± 0.0016 | 0.94 | +14% |
+| `thickness` | 0.0794 ± 0.0112 | 0.94 | tied |
+| `thickness_std` | 0.1329 ± 0.0089 | 0.65 | tied |
+| `variation` | 0.0696 ± 0.0095 | 0.94 | tied (and tighter std) |
+| `persistence` | 0.4153 ± 0.0092 | 0.63 | tied |
+| `diffusivity` | 0.0332 ± 0.0018 | 0.95 | tied |
+| `compressibility` | 0.1529 ± 0.0080 | 0.59 | new (above pre-reg) |
+
+Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's seed 2 and Tier B 0c's seed 3). Documented as a known seed-fragility limitation, not a Tier C-specific failure. Adding compressibility to the shared head costs ~14% on `lipid_packing` and small amounts elsewhere — net wash on 5/6 Tier A+B properties, with `compressibility` itself learning a real signal.
+
 ## What's Left to Build
 
-- **Tier B remaining stages**: 1e (lr sanity → conditional 1e' refinement) → 5c (5-seed confirm). Plan in `docs/tier_b_6prop_plan.md`. Negative transfer was *not* observed at Stage 0c, so the homoscedastic uncertainty weighting remedy stays deferred.
-- **Tier C (+compressibility, +bending_modulus)**: likely floor-bound until the spatial channel is extended (`docs/efa_spatial_layer_future.md`).
+- **Tier C wrap-up**: complete the 5-seed pool with replacement seed 8, then write the Stage 5d analysis (paired t-test vs Stage 0d, full figures via `analyze_stage_5.py`).
+- **`bending_modulus` (8th property)**: deferred pending an architectural extension; long-wavelength target beyond the 11 Å spatial cutoff. Likely needs the EFA spatial layer (`docs/efa_spatial_layer_future.md`).
 - **Train-coverage augmentation**: more DPPC- and DOPC-rich compositions to address the per-system MAE concentration on chemically extreme mixtures (Stage 5b finding).
 - **Embedding evaluation, not just property prediction**: the long-term scientific question is the quality of the membrane embedding. Once Tier A/B/C land, probe the embedding directly (clustering, interpretability, transfer to held-out compositions or to protein+membrane systems).
 - Explore transfer to protein+membrane systems (long-term research goal).
 
 ## Current Status
 
-### Phase: Tier A complete; Tier B planning next
+### Phase: Tier C 5-seed confirmation (5d) running; Tier A and B complete
 
-`config.yaml` `active_properties` is set to 4-property Tier A. All Stage 0b–5b runs done. Tier B (`+persistence`, `+diffusivity` → 6 active properties) is the next planning task.
+`config.yaml` `active_properties` is set to 7-property Tier C. Stage 5d primary numbers reported on 4 seeds {0,1,4,5} with seed 3 excluded as recurring dead-init; replacement seed 8 submitted to restore n=5.
 
 ## Known Issues
 

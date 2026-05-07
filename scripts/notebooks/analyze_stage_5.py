@@ -104,7 +104,7 @@ def _(Path, sys):
     from lipid_gnn.config import CONFIG
 
     LOGS_DIR     = REPO_ROOT / "logs" / "training"
-    FIGURES_DIR  = REPO_ROOT / "results" / "figures" / "stage_1c"
+    FIGURES_DIR  = REPO_ROOT / "results" / "figures" / "stage_5d"
     BASELINE_NPZ = REPO_ROOT / "results" / "training" / "linear_baseline_stratified.npz"
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -117,32 +117,24 @@ def _(Path, sys):
 @app.cell
 def _():
     # ── User config ───────────────────────────────────────────────────────────
-    GROUP_STAGE5 = "stage_1c_seed_stability_tier_a"
-    GROUP_STAGE0 = "stage_0b_tier_a"
+    GROUP_STAGE5 = "stage_5d_tier_c_confirm"
+    GROUP_STAGE0 = "stage_0d_tier_c"
     GROUPS_PROG  = [
-        "stage_0b_tier_a",
-        "stage_1b_tier_a_lr",
-        "stage_1b_refine_tier_a_lr",
-        "stage_1c_seed_stability_tier_a",
-        "stage_1d_long_train_tier_a",
-        "stage_2b_quick_wd_tier_a",
-        "stage_5b_tier_a_confirm",
+        "stage_0d_tier_c",
+        "stage_1g_tier_c_lr",
+        "stage_1g_refine_tier_c_lr",
+        "stage_5d_tier_c_confirm"
     ]
     # Tier B gates: Stage 0c 6-prop floor (5-seed val_min_last10 mean).
     # Stage 5c must beat all gates to demonstrate HP tuning was worthwhile.
     GATES = {
-        "lipid_packing": 0.019,
-        "thickness":     0.067,
-        "thickness_std": 0.302,
-        "variation":     0.151,
-        "persistence":   0.362,
-        "diffusivity":   0.059,
-    }
-    GATES = {
-        "lipid_packing": 0.0218,
-        "thickness":     0.0741,
-        "thickness_std": 0.3593,
-        "variation":     0.4624
+        "lipid_packing":   0.0236,
+        "thickness":       0.0733,
+        "thickness_std":   0.3241,
+        "variation":       0.1728,
+        "persistence":     0.3701,
+        "diffusivity":     0.0655,
+        "compressibility": 0.3931
     }
     N_BOOTSTRAP = 10_000
     return GATES, GROUPS_PROG, GROUP_STAGE0, GROUP_STAGE5, N_BOOTSTRAP
@@ -160,18 +152,13 @@ def _(FIGURES_DIR, plt):
     })
 
     PROP_LABELS = {
-        "lipid_packing": "Lipid packing (a.u.)",
-        "thickness":     "Bilayer thickness (Å)",
-        "thickness_std": r"$\sigma_\mathrm{thick}$ (Å)",
-        "variation":     "Compositional variation",
-        "persistence":   "Persistence length (µm)",
-        "diffusivity":   "Diffusivity (µm²/s)",
-    }
-    PROP_LABELS = {
-        "lipid_packing": "Lipid packing (a.u.)",
-        "thickness":     "Bilayer thickness (Å)",
-        "thickness_std": r"$\sigma_\mathrm{thick}$ (Å)",
-        "variation":     "Compositional variation"
+        "lipid_packing":   "Lipid packing (a.u.)",
+        "thickness":       "Bilayer thickness (Å)",
+        "thickness_std":   r"$\sigma_\mathrm{thick}$ (Å)",
+        "variation":       "Variation",
+        "persistence":     "Persistence",
+        "diffusivity":     "Diffusivity (Å²)",
+        "compressibility": "Cmpressibility (Å³/kT)"
     }
     PAL = {
         "gnn":      "#0072B2",
@@ -578,13 +565,16 @@ def _(mo):
 @app.cell
 def _(N_SEEDS, PAL, histories, np, plt, properties, save_fig):
     _n_panels = 1 + len(properties)
-    _fig_a, _axes = plt.subplots(1, _n_panels, figsize=(4 * _n_panels, 3.5), sharey=False)
+    _n_cols_a = min(_n_panels, 3)
+    _n_rows_a = int(np.ceil(_n_panels / _n_cols_a))
+    _fig_a, _axes = plt.subplots(_n_rows_a, _n_cols_a, figsize=(4 * _n_cols_a, 4 * _n_rows_a), sharey=False)
+    _axes = np.asarray(_axes).ravel()
 
     _loss_keys  = ["val/loss_total"]  + [f"val/loss_{p}"   for p in properties]
     _train_keys = ["train/loss_total"] + [f"train/loss_{p}" for p in properties]
     _titles     = ["Total"] + [p.replace("_", " ").title() for p in properties]
 
-    for _ax, _vkey, _tkey, _title in zip(_axes, _loss_keys, _train_keys, _titles):
+    for _ax, _vkey, _tkey, _title in zip(_axes[:_n_panels], _loss_keys, _train_keys, _titles):
         _val_curves, _trn_curves = [], []
         for _hist in histories.values():
             if _vkey in _hist.columns:
@@ -612,6 +602,8 @@ def _(N_SEEDS, PAL, histories, np, plt, properties, save_fig):
         _ax.set_title(_title)
         _ax.legend(fontsize=8)
 
+    for _ax in _axes[_n_panels:]:
+        _ax.set_visible(False)
     _fig_a.suptitle(f"Training dynamics — {N_SEEDS} seeds (mean ± 1 SD shaded)", y=1.01)
     _fig_a.tight_layout()
     save_fig(_fig_a, "fig_a_loss_curves")
@@ -651,9 +643,13 @@ def _(
     _unique_comps   = sorted(set(test_comps_list))
     _comp_color_map = {c: COMP_COLORS[i % len(COMP_COLORS)] for i, c in enumerate(_unique_comps)}
 
-    _fig_b, _axes_b = plt.subplots(1, len(properties), figsize=(5 * len(properties), 4.5))
+    _n_props_b = len(properties)
+    _n_cols_b = min(_n_props_b, 3)
+    _n_rows_b = int(np.ceil(_n_props_b / _n_cols_b))
+    _fig_b, _axes_b = plt.subplots(_n_rows_b, _n_cols_b, figsize=(5 * _n_cols_b, 5 * _n_rows_b))
+    _axes_b = np.asarray(_axes_b).ravel()
 
-    for _j, (_ax, _prop) in enumerate(zip(_axes_b, properties)):
+    for _j, (_ax, _prop) in enumerate(zip(_axes_b[:_n_props_b], properties)):
         _true_pool = targets_phys[:, :, _j].ravel()
         _pred_pool = preds_phys[:, :, _j].ravel()
         _comp_pool = test_comps_list * N_SEEDS
@@ -672,6 +668,8 @@ def _(
         _ax.set_ylabel(f"Predicted — {PROP_LABELS.get(_prop, _prop)}")
         _ax.set_title(f"Scatter: true vs predicted {_prop}")
 
+    for _ax in _axes_b[_n_props_b:]:
+        _ax.set_visible(False)
     _handles = [mpatches.Patch(color=_comp_color_map[c], label=c) for c in _unique_comps]
     _fig_b.legend(
         _handles, _unique_comps, title="Composition", loc="lower center",
@@ -805,9 +803,13 @@ def _(
     stats,
     targets_phys,
 ):
-    _fig_d, _axes_d = plt.subplots(1, len(properties), figsize=(4.5 * len(properties), 3.5))
+    _n_props_d = len(properties)
+    _n_cols_d = min(_n_props_d, 3)
+    _n_rows_d = int(np.ceil(_n_props_d / _n_cols_d))
+    _fig_d, _axes_d = plt.subplots(_n_rows_d, _n_cols_d, figsize=(4.5 * _n_cols_d, 4.5 * _n_rows_d))
+    _axes_d = np.asarray(_axes_d).ravel()
 
-    for _j, (_ax, _prop) in enumerate(zip(_axes_d, properties)):
+    for _j, (_ax, _prop) in enumerate(zip(_axes_d[:_n_props_d], properties)):
         _resid = (preds_phys[:, :, _j] - targets_phys[:, :, _j]).ravel()
         _ax.hist(_resid, bins=30, density=True, color=PAL["gnn"], alpha=0.7, edgecolor="white")
         _mu, _sigma = _resid.mean(), _resid.std()
@@ -821,6 +823,8 @@ def _(
         _ax.set_title(f"Residuals: {_prop}")
         _ax.legend(fontsize=8)
 
+    for _ax in _axes_d[_n_props_d:]:
+        _ax.set_visible(False)
     _fig_d.suptitle("Residual distributions (pooled over 5 seeds; dashed = Gaussian fit)")
     _fig_d.tight_layout()
     save_fig(_fig_d, "fig_d_residuals")
@@ -863,7 +867,11 @@ def _(
         _missing = [p for p in properties if p not in _bl_j_for_p]
         print(f"  [INFO] baseline missing for {_missing}")
 
-    _fig_e, _axes_e = plt.subplots(1, len(properties) + 1, figsize=(4.5 * (len(properties) + 1), 4))
+    _n_panels_e = len(properties) + 1
+    _n_cols_e = min(_n_panels_e, 3)
+    _n_rows_e = int(np.ceil(_n_panels_e / _n_cols_e))
+    _fig_e, _axes_e = plt.subplots(_n_rows_e, _n_cols_e, figsize=(4.5 * _n_cols_e, 4.5 * _n_rows_e))
+    _axes_e = np.asarray(_axes_e).ravel()
 
     for _j, (_ax, _prop) in enumerate(zip(_axes_e[:len(properties)], properties)):
         _true_pool = targets_phys[:, :, _j].ravel()
@@ -918,11 +926,13 @@ def _(
             _ax_bar.text(_j, max(_gnn_mean[_j], _bl_mse[_j]) * 1.05, f"−{_rel:.0f}%",
                          ha="center", fontsize=8, color="k")
     _ax_bar.set_xticks(_xpos)
-    _ax_bar.set_xticklabels([p.replace("_", "\n") for p in properties], fontsize=9)
+    _ax_bar.set_xticklabels([p.replace("_", " ") for p in properties], rotation=45, ha="right", fontsize=9)
     _ax_bar.set_ylabel("Test MSE (normalised)")
     _ax_bar.set_title("GNN vs baseline: MSE per property")
     _ax_bar.legend()
 
+    for _ax in _axes_e[_n_panels_e:]:
+        _ax.set_visible(False)
     _fig_e.suptitle("GNN vs linear-composition baseline", y=1.01)
     _fig_e.tight_layout()
     save_fig(_fig_e, "fig_e_vs_baseline")
@@ -1237,9 +1247,16 @@ def _(mo):
 def _(N_SEEDS, np, plt, preds_phys, properties, save_fig, targets_phys):
     # Percentage error per (seed, graph, property): (pred - true) / true * 100.
     # Skip any (graph, property) pair where target is 0 (avoid div-by-zero).
+    _DESIRED_ORDER = [
+        "lipid_packing", "thickness", "thickness_std", "compressibility",
+        "persistence", "diffusivity", "variation",
+    ]
+    _ordered_props = [p for p in _DESIRED_ORDER if p in properties]
+
     _pct_data = []
     _labels   = []
-    for _j, _prop in enumerate(properties):
+    for _prop in _ordered_props:
+        _j    = list(properties).index(_prop)
         _true = targets_phys[:, :, _j].ravel()
         _pred = preds_phys[:, :, _j].ravel()
         _mask = _true != 0
@@ -1247,7 +1264,7 @@ def _(N_SEEDS, np, plt, preds_phys, properties, save_fig, targets_phys):
         _pct_data.append(_pct)
         _labels.append(_prop)
 
-    _fig_j, _ax_j = plt.subplots(figsize=(7, 4))
+    _fig_j, _ax_j = plt.subplots(figsize=(7, max(3, 0.6 * len(_ordered_props))))
     _bp = _ax_j.boxplot(
         _pct_data,
         labels=_labels,

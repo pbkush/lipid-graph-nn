@@ -230,6 +230,39 @@ bash scripts/bash/submit_sweep.sh --group stage_1g_refine_tier_c_lr \
 - If `lr=1e-5` wins → update lock to `1e-5` in `config.yaml`, proceed to Stage 5d.
 - If `lr=3e-6` wins → unexpected; re-examine per-property breakdown before deciding.
 
+### Stage 1g' Results (2026-05-06) — **OUTCOME: lr=3e-5 wins; lock restored**
+
+12/12 runs finished (`stage_1g_refine_tier_c_lr`, `lr ∈ {3e-6, 1e-5, 3e-5}` × seeds {0,1,3,4}).
+
+**Selection metric val_ab6 (mean of 6 Tier A+B properties, 4-seed mean of min-last-10):**
+
+| lr            | val_ab6   | val_total7 | seed std (val_total) |
+|---------------|-----------|------------|----------------------|
+| 3e-6          | 0.1903    | 0.231      | 0.0079               |
+| 1e-5          | 0.1571    | 0.192      | 0.0049               |
+| 3e-5 (lock) ← | **0.1456**| **0.183**  | 0.0123               |
+
+**Per-property val min10 (4-seed mean) at lr=3e-5 vs gates:**
+
+| Property        | lr=3e-5 | Stage 0d gate | Tier B 5c gate |
+|-----------------|---------|---------------|----------------|
+| lipid_packing   | 0.0192  | 0.0236 ✅      | 0.019 ≈ tied   |
+| thickness       | 0.0707  | 0.0733 ✅      | 0.067 ❌ +5%    |
+| thickness_std   | 0.2767  | 0.3241 ✅      | 0.302 ✅ +8%    |
+| variation       | 0.0907  | 0.1728 ✅      | 0.151 ✅ +40%   |
+| persistence     | 0.3500  | 0.3701 ✅      | 0.362 ✅ +3%    |
+| diffusivity     | 0.0665  | 0.0655 ❌ +2%  | 0.059 ❌ +13%   |
+| compressibility | 0.3382  | 0.3931 ✅      | (new)          |
+
+**Key findings**:
+- **lr=3e-5 wins clearly on val_ab6** (0.146 vs 0.157 vs 0.190). Stage 1g's 2-seed lr=1e-5 signal was a single-seed bad-init artefact — same pattern as Tier B 1e → 1e'.
+- Compressibility val MSE is also lowest at lr=3e-5 (0.338 vs 0.372 vs 0.436), even though excluded from the selection metric — no internal trade-off forcing a different lr.
+- All 4 seeds healthy at lr=3e-5 (no variation failures); 5 of 6 Stage 0d gates passed comfortably.
+- Residual loss-dilution cost vs Tier B 5c: `diffusivity` +13%, `thickness` +5%, `lipid_packing` tied. Other three Tier A+B props within or beat Tier B floors. Expected price of the shared compressibility head.
+- Caveat — seed std at lr=3e-5 is wider than at 1e-5 (0.012 vs 0.005), reverse of the Tier B 1e' pattern. Watch in Stage 5d.
+
+**Decision**: keep `lr=3e-5` lock (no change to `config.yaml`); proceed to Stage 5d.
+
 ---
 
 ## Stage 5d — 5-seed confirmation
@@ -264,16 +297,53 @@ bash scripts/bash/submit_sweep.sh --group stage_5d_tier_c_confirm \
 low R² is the expected and interpretable result (architecture-limited, documents a known
 scope limit of the 11 Å spatial cutoff).
 
+### Stage 5d Results (2026-05-07) — **OUTCOME: all gates passed; seed 3 excluded**
+
+4/5 planned seeds healthy. Seed 3 again stuck on `variation` (recurring dead-init pattern,
+same as Tier A's seed 2 and Tier B 0c's seed 3) — excluded from primary numbers.
+Replacement seed 8 submitted to restore the 5-seed pool.
+
+**Per-property val MSE (4-seed mean of min-last-10) and test MSE (4-seed mean):**
+
+| Property        | val MSE          | Stage 0d gate  | test MSE         | Tier B 5c test | Δ vs 5c |
+|-----------------|------------------|---------------|------------------|----------------|---------|
+| lipid_packing   | 0.0200 ± 0.0027  | 0.0236 ✅      | 0.0208 ± 0.0016  | 0.0182         | +14%    |
+| thickness       | 0.0717 ± 0.0063  | 0.0733 ✅      | 0.0794 ± 0.0112  | 0.0789         | tied    |
+| thickness_std   | 0.2781 ± 0.0093  | 0.3241 ✅      | 0.1329 ± 0.0089  | 0.1342         | tied    |
+| variation       | 0.0943 ± 0.0150  | 0.1728 ✅      | 0.0696 ± 0.0095  | 0.0730         | tied    |
+| persistence     | 0.3505 ± 0.0107  | 0.3701 ✅      | 0.4153 ± 0.0092  | 0.4077         | tied    |
+| diffusivity     | 0.0641 ± 0.0078  | 0.0655 ✅      | 0.0332 ± 0.0018  | 0.0337         | tied    |
+| compressibility | 0.3358 ± 0.0138  | 0.3931 ✅      | 0.1529 ± 0.0080  | (new)          | —       |
+
+**Per-property val R²** (4-seed mean): `lipid_packing` 0.94, `thickness` 0.94,
+`thickness_std` 0.65, `variation` 0.94, `persistence` 0.63, `diffusivity` 0.95,
+`compressibility` 0.59.
+
+**Headline findings**:
+- **All 7 Stage 0d gates passed** at the 4-seed level. The Stage 0d "Outcome C" was driven
+  by seed 3's bad init compounded with mild gradient dilution; healthy seeds at locked HPs
+  recover the Tier B baseline.
+- **5/6 Tier B 5c test-MSE numbers indistinguishable** from Stage 5c; only `lipid_packing`
+  shows a meaningful regression (+14%). `variation` test std actually *tightens* in 5d.
+- **`compressibility` learns** (val R²=0.59, test MSE 0.153) — exceeds the pre-registered
+  "<<0.5" architecture-ceiling expectation. Local 11 Å geometry is a partial proxy for
+  whole-bilayer area-fluctuation density. Reportable as a positive surprise.
+- **Seed 3 exclusion**: recurring dead-init across Tier B 0c and Tier C 5d. Treat as a
+  known seed-fragility limitation, not a Tier C-specific failure. Tier A 5b precedent
+  applies — planned-pool primary numbers, dead-init seeds footnoted.
+- Net cost of adding compressibility to the shared trunk: ~14% on `lipid_packing` test
+  MSE, small or zero elsewhere.
+
 ---
 
 ## Stage chain summary
 
 | Stage | W&B group | Status | What it answers |
 |-------|-----------|--------|-----------------|
-| 0d — 7-prop GNN floor | `stage_0d_tier_c` | **done** — Outcome C | Baseline + negative-transfer check |
-| 1g — lr sanity check | `stage_1g_tier_c_lr` | **done** — lr=1e-5 wins pilot | Does lr=3e-5 still protect Tier A+B? |
-| 1g' — lr refinement | `stage_1g_refine_tier_c_lr` | **next** | What is the better lr at 4 seeds? |
-| 5d — 5-seed confirmation | `stage_5d_tier_c_confirm` | pending | Final Tier C result |
+| 0d — 7-prop GNN floor | `stage_0d_tier_c` | done — Outcome C | Baseline + negative-transfer check |
+| 1g — lr sanity check | `stage_1g_tier_c_lr` | done — lr=1e-5 wins pilot | Does lr=3e-5 still protect Tier A+B? |
+| 1g' — lr refinement | `stage_1g_refine_tier_c_lr` | done — lr=3e-5 wins | What is the better lr at 4 seeds? |
+| 5d — 5-seed confirmation | `stage_5d_tier_c_confirm` | **done (4 seeds, ex-seed-3)** | Final Tier C result; replacement seed 8 in flight |
 
 ---
 
