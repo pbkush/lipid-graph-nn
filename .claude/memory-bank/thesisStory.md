@@ -306,12 +306,12 @@ figures and `headline_numbers.json` in `results/figures/stage_5d/`.
 
 External code or data copied into the repository for reproducibility. Each entry records: what, where, source URL, version, license, and why vendored.
 
-| Resource | Path in repo | Source | Version | License | Rationale |
-|---|---|---|---|---|---|
-| `insane.py` (Martini bilayer builder, Wassenaar) | `resources/martini3/insane.py` | *(to fill on vendoring)* | *(to fill)* | GPL | Used by `lipid_gnn/martini_pipeline/system_builder.py` to construct initial bilayers. Vendored to make the simulation pipeline reproducible independent of the user's environment. |
+**`insane.py`** — `resources/martini3/insane.py` (GPLv2). Origin: Tsjerk A. Wassenaar's 2014-06-03 build (`previous = "20140603.11.TAW"`) with Helgi I. Ingolfsson lipid-template additions and Emil customisations; sourced from `lipid_gnn/functions_emil/insane.py` in this repo. Converted from Python 2 to Python 3 via `2to3` on 2026-05-07 (mechanical patch only — see `resources/martini3/INSANE_PROVENANCE.md`). Used by `system_builder.py` via `subprocess`. Vendored to lock the specific build that produced the 70 training systems.
 
 When adding entries here, also update `lipid_gnn/martini_pipeline/manifest.py` so the per-system JSON manifest records the vendored version actually used. Plan and progress for the simulation pipeline live in [`docs/martini_pipeline_plan.md`](../../docs/martini_pipeline_plan.md).
 
+Parity check (2026-05-07): rebuilding POPC100 with the vendored Python-3 insane produces 10162 atoms vs 10125 in the legacy build — a difference of +37 solvent atoms from Python 2→3 RNG / dict-iteration differences. Lipid count (392 POPC × 12 = 4704 membrane beads) is identical. Divergence is accepted and documented in `INSANE_PROVENANCE.md`.
+
 ---
 
-*Last updated: 2026-05-07, after Tier C Stage 5d complete (6-seed pool {0,1,4,5,6,8}); § 10 "Vendored resources" added alongside the Martini pipeline plan.*
+*Last updated: 2026-05-07, after Step 5 (vendor insane.py) complete; § 10 "Vendored resources" populated.*
