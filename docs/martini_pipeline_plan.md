@@ -142,7 +142,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [x] | `_KNOWN_FAMILIES` is a module-level `frozenset` (open for extension); bead cross-check against `node_mapping.json` is a hard assertion. 60 tests pass. |
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [x] | run.mdp: zero deviations (all 70 byte-identical). Equilibration: 7 rlist deviations on CHOL systems (Verlet-buffer auto-tuning, expected). Freeze record committed as `templates/_audit_freeze.json`. |
 | 4 | `mdp_writer.py` + templates derived from audit (Appendix D) | [x] | Eq diverges from legacy: `compressibility 3e-4`, `nsteps 1e6`, explicit `gen-vel=yes`. Knobs: `nsteps_*`, `save_forces`, `gen_seed`. 32 tests pass. |
-| 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` | [ ] | See Decision 2 |
+| 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | Option A: 2to3-converted Helgi/Emil-customised copy of Tsjerk 2014-06-03. Parity: +37 solvent atoms vs legacy (Python 2→3 RNG; accepted). 9 tests pass. |
 | 6 | `system_builder.py` + tests | [ ] | |
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end on POPC100; reproduce existing POPC100 frame count + mean APL as sanity check | [ ] | |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [ ] | Subgoal 2 |
@@ -177,6 +177,7 @@ Append-only. Each entry: date · decision · rationale.
 | 14 | 2026-05-07 | Step 4 templates **deliberately diverge from legacy** in equilibration: `compressibility 3e-4 3e-4` (legacy `3e-5`), `nsteps 1_000_000` / 10 ns (legacy 250 000 / 2.5 ns), `nstenergy 1000` (legacy 100), explicit `gen-vel = yes`, `gen-temp = 310`, `gen-seed = -1` | Legacy `3e-5` makes the box relax ~10× slower than τ_p = 5 ps (Berendsen) was tuned for; novel compositions (high-CHOL, DIPC/POPC blends) frequently exit equilibration still drifting at 2.5 ns. The audit captures *what we ran*; the writer captures *what we should run going forward*. Run-stage values are still cloned byte-for-byte from legacy. |
 | 15 | 2026-05-07 | Configurable parameters are marked in template files with inline `; [CONFIG: <knob>]` comments | Makes the surface that `MDPParams` (and later `martini_pipeline.*` config) controls discoverable from the template alone; reviewers can audit knob coverage by grepping `[CONFIG:`. |
 | 16 | 2026-05-07 | Single-stage equilibration in v1; two-stage (eq1 small-dt + eq2 production-dt) deferred | The 10 ns single-stage already absorbs the legacy reliability gap. Two-stage adds pipeline + manifest complexity; revisit only if step 7+ surfaces equilibration failures on exotic compositions. |
+| 18 | 2026-05-07 | Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised copy of Tsjerk Wassenaar's 2014-06-03 build, not the modern Python-3 fork | Parity with lipid templates that built the 70 training systems. 2to3 patch is mechanical (29 print statements, xrange, zip-to-list; no semantic changes). Option C (both versions side-by-side) explicitly deferred to Step 12 if newer templates are needed. Parity check shows +37 solvent atoms vs legacy (Python 2→3 RNG; accepted and documented in INSANE_PROVENANCE.md). |
 
 ---
 
@@ -839,3 +840,74 @@ If implementation matches this plan, decisions 14–16 in §9 (already appended 
 A 17th decision is implicit and worth recording on completion if confirmed in practice:
 
 - **Decision 17** — `martini_pipeline:` config block in `config.yaml` is added in step 7 (when `pipeline.py` first reads it), not step 4. Rationale: smaller, more focused PRs; step 4 has no need for a global config since every knob is a function argument with a default.
+
+---
+
+## Appendix E — Step 5 detailed plan: vendor `insane.py`
+
+### E.1 Scope
+
+Place a versioned, GPL-clean copy of `insane.py` at `resources/martini3/insane.py`. Establishes the single source-of-truth for membrane construction so step 6 (`system_builder.py`) can call it deterministically across local + HPC + future machines regardless of what is on `PATH`.
+
+#### What's in scope for step 5
+
+- `resources/martini3/insane.py` — 2to3-converted, shebang updated, GPL header prepended.
+- `resources/martini3/INSANE_PROVENANCE.md` — source path, retrieval date, 2to3 unified diff, license, attribution, parity-test outcome.
+- `INSANE_PATH` constant in `lipid_gnn/martini_pipeline/__init__.py`.
+- Smoke tests at `tests/martini_pipeline/test_insane_vendor.py`.
+- "Vendored resources" section in `.claude/memory-bank/thesisStory.md`.
+
+#### What's out of scope for step 5
+
+- `system_builder.py` (step 6).
+- Adding new lipid templates to `insane.py` (step 12 / subgoal 3).
+- Cleanup of `lipid_gnn/functions_emil/insane.py` and other legacy copies — deferred, recorded as a future task.
+- Modifying upstream logic beyond the 2to3 mechanical patch and shebang fix.
+
+### E.2 Locked-in design decisions
+
+1. **Vendor the 2to3-converted legacy copy (Option A)**, not Tsjerk's modern fork. Rationale: bit-parity with the Helgi/Emil-customised lipid templates that built the 70 training systems; 2to3 patch is mechanical and fully auditable. A future migration to Tsjerk's modern Python 3 fork (Option C) is explicitly noted as a deferred option.
+2. **Mechanical 2to3 only** — `print X` → `print(X)`, `xrange` → `range`, `print >>fh, x` → `print(x, file=fh)`. No functional edits. Any edge case where 2to3 would change semantics is flagged in `INSANE_PROVENANCE.md`.
+3. **Shebang** updated from `#!/usr/bin/env python` → `#!/usr/bin/env python3`. This is the only non-2to3 edit; recorded explicitly.
+4. **GPL v2 header prepended** verbatim from Tsjerk Wassenaar's upstream (`github.com/Tsjerk/Insane`) with a credit line for Helgi I. Ingolfsson's lipid-template additions and Emil's customisations.
+5. **Parity divergence is accepted and documented** (E.7.2 answer: option b). If rebuilding POPC100 with the vendored insane produces a different atom count or layout, the outcome is recorded in `INSANE_PROVENANCE.md` and step 7's sanity check is flagged accordingly.
+6. **`INSANE_PATH` constant exposed from `lipid_gnn/martini_pipeline/__init__.py`** so step 6 (`system_builder.py`) does not recompute the path.
+7. **Legacy copies kept as-is.** `lipid_gnn/functions_emil/insane.py`, `colab_lipid_gnn_subset/`, `build/lib/` are untouched. Cleanup relegated to a separate future task recorded in the memory bank.
+8. **`resources/martini3/` is not a Python package.** No `__init__.py`. `system_builder.py` invokes insane via `subprocess.run([sys.executable, INSANE_PATH, ...])`.
+
+### E.3 Procedure
+
+1. Branch `feat/martini-pipeline-step-05-vendor-insane`.
+2. `mkdir -p resources/martini3/`.
+3. Copy `lipid_gnn/functions_emil/insane.py` → `resources/martini3/insane.py`.
+4. Run `2to3 -w resources/martini3/insane.py`; inspect diff; remove the `insane.py.bak` artifact.
+5. Update shebang line. `chmod +x resources/martini3/insane.py`.
+6. Prepend GPLv2 header from upstream with attribution.
+7. Write `resources/martini3/INSANE_PROVENANCE.md` (source, date, diff summary, license, parity outcome).
+8. Smoke test: `python3 resources/martini3/insane.py --help` exits 0.
+9. Parity check (if `gmx` available locally): rebuild POPC100 in `tmp/`, record atom/lipid counts vs. legacy `data/membrane_only/POPC100/run.gro`. Write outcome to `INSANE_PROVENANCE.md`.
+10. Write `tests/martini_pipeline/test_insane_vendor.py` (five tests; one opt-in parity test).
+11. Update `lipid_gnn/martini_pipeline/__init__.py` with `INSANE_PATH`.
+12. Append "Vendored resources" to `.claude/memory-bank/thesisStory.md`.
+13. Flip status table to `[x]`, append Decision 18, merge `--no-ff`, delete branch.
+
+### E.4 Test plan — `tests/martini_pipeline/test_insane_vendor.py`
+
+1. **`test_insane_path_exists`** — `os.path.isfile(INSANE_PATH)` and `os.access(..., os.X_OK)`.
+2. **`test_insane_python3_parseable`** — `ast.parse(open(INSANE_PATH).read())` succeeds.
+3. **`test_insane_help_exits_zero`** — `subprocess.run([sys.executable, INSANE_PATH, "--help"], timeout=20)` exits 0; output mentions `-l` and `-x`.
+4. **`test_insane_version_marker`** — file contains `previous = "20140603.11.TAW"` so upstream drift is caught.
+5. **`test_insane_path_importable`** — `from lipid_gnn.martini_pipeline import INSANE_PATH` works and path resolves to an existing file.
+6. **`test_insane_parity_popc100`** (opt-in `RUN_INSANE_PARITY=1`, `@skipif(not _HAS_LEGACY_DATA)`) — rebuild POPC100 in `tmp_path`; assert lipid count and total atom count match legacy ± 0.
+
+### E.5 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_insane_vendor.py -q` passes locally and on HPC (parity test skips cleanly when data absent).
+- `python3 resources/martini3/insane.py --help` exits 0.
+- `INSANE_PROVENANCE.md` documents source, 2to3 diff, license, parity outcome.
+- `from lipid_gnn.martini_pipeline import INSANE_PATH` works.
+- No regressions.
+
+### E.6 New decisions to log on completion
+
+- **Decision 18** — Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised build of Tsjerk Wassenaar's 2014-06-03 insane (not the modern Python-3 fork). A future migration to Option C (both versions side-by-side) is explicitly possible when Step 12 extends the lipid pool. Rationale: parity with existing 70-system lipid templates; mechanical 2to3 patch is auditable; no functional changes.
