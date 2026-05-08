@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-07.
+Last updated: 2026-05-08.
 
 ---
 
@@ -143,7 +143,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [x] | run.mdp: zero deviations (all 70 byte-identical). Equilibration: 7 rlist deviations on CHOL systems (Verlet-buffer auto-tuning, expected). Freeze record committed as `templates/_audit_freeze.json`. |
 | 4 | `mdp_writer.py` + templates derived from audit (Appendix D) | [x] | Eq diverges from legacy: `compressibility 3e-4`, `nsteps 1e6`, explicit `gen-vel=yes`. Knobs: `nsteps_*`, `save_forces`, `gen_seed`. 32 tests pass. |
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | Option A: 2to3-converted Helgi/Emil-customised copy of Tsjerk 2014-06-03. Parity: +37 solvent atoms vs legacy (Python 2→3 RNG; accepted). 9 tests pass. |
-| 6 | `system_builder.py` + tests | [ ] | |
+| 6 | `system_builder.py` + tests | [x] | Self-contained build dirs; ITPs vendored from legacy POPC100 toppar; topology finalisation replaces single insane `#include "martini.itp"` with 9 Martini 3 includes; index.ndx via `gmx make_ndx` (skipped with warning when gmx absent). 18 tests pass. |
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end on POPC100; reproduce existing POPC100 frame count + mean APL as sanity check | [ ] | |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [ ] | Subgoal 2 |
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [ ] | Single orchestrator with GPU/CPU branch |
@@ -178,6 +178,9 @@ Append-only. Each entry: date · decision · rationale.
 | 15 | 2026-05-07 | Configurable parameters are marked in template files with inline `; [CONFIG: <knob>]` comments | Makes the surface that `MDPParams` (and later `martini_pipeline.*` config) controls discoverable from the template alone; reviewers can audit knob coverage by grepping `[CONFIG:`. |
 | 16 | 2026-05-07 | Single-stage equilibration in v1; two-stage (eq1 small-dt + eq2 production-dt) deferred | The 10 ns single-stage already absorbs the legacy reliability gap. Two-stage adds pipeline + manifest complexity; revisit only if step 7+ surfaces equilibration failures on exotic compositions. |
 | 18 | 2026-05-07 | Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised copy of Tsjerk Wassenaar's 2014-06-03 build, not the modern Python-3 fork | Parity with lipid templates that built the 70 training systems. 2to3 patch is mechanical (29 print statements, xrange, zip-to-list; no semantic changes). Option C (both versions side-by-side) explicitly deferred to Step 12 if newer templates are needed. Parity check shows +37 solvent atoms vs legacy (Python 2→3 RNG; accepted and documented in INSANE_PROVENANCE.md). |
+| 19 | 2026-05-08 | ITP files sourced from `data/membrane_only/POPC100/toppar/` (9 Martini 3 files; yire1 protein ITPs excluded) | Same files that produced the 70 training systems; known-good provenance. Fresh Marrink download (option b) flagged for Step 12 if new lipids require ITPs not covered. |
+| 20 | 2026-05-08 | Build directories are self-contained: each `out_dir` receives its own `toppar/` copy of the 9 ITPs | Avoids relative-path fragility; each build dir can be moved or archived independently. Shared-pool alternative deferred to Step 12. |
+| 21 | 2026-05-08 | `LipidEntry.insane_keyword` (not `.name`) used as the `-l` token in `build_command()` | Allows future lipids whose insane identifier differs from their registry name without special-casing in `system_builder.py`. |
 
 ---
 
@@ -911,3 +914,196 @@ Place a versioned, GPL-clean copy of `insane.py` at `resources/martini3/insane.p
 ### E.6 New decisions to log on completion
 
 - **Decision 18** — Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised build of Tsjerk Wassenaar's 2014-06-03 insane (not the modern Python-3 fork). A future migration to Option C (both versions side-by-side) is explicitly possible when Step 12 extends the lipid pool. Rationale: parity with existing 70-system lipid templates; mechanical 2to3 patch is auditable; no functional changes.
+
+---
+
+## Appendix F — Step 6 detailed plan: `system_builder.py`
+
+### F.1 Scope
+
+Build the initial bilayer `.gro` + finalised `topol.top` for a given composition spec. Wraps `insane.py` (vendored in step 5), stages the 9 Martini 3 ITP files alongside it, and produces a self-contained build directory that `pipeline.py` (step 7) can hand directly to `gmx grompp`. Also generates `index.ndx` via `gmx make_ndx`.
+
+#### What's in scope for step 6
+
+- Sub-step 6a: vendor the 9 Martini 3 ITP files to `resources/martini3/itp/` (copied from `data/membrane_only/POPC100/toppar/`, minus the two yire1 protein ITPs).
+- `MARTINI3_ITP_DIR` constant in `lipid_gnn/martini_pipeline/__init__.py`.
+- `lipid_gnn/martini_pipeline/system_builder.py`:
+  - `BoxParams` frozen dataclass — box geometry + solvent/ion settings.
+  - `BuildResult` frozen dataclass — paths + parsed statistics from the completed build.
+  - `build_command()` — pure function returning the `insane.py` argv list; unit-testable without touching the filesystem.
+  - `build_system()` — runs insane, finalises topology, stages ITPs, generates index.ndx.
+- `tests/martini_pipeline/test_system_builder.py` (≥ 10 tests, insane mocked via a fake script).
+
+#### What's out of scope for step 6
+
+- `pipeline.py` orchestration (step 7).
+- `gmx grompp` / `gmx mdrun` invocations.
+- HPC submission layer (steps 9–10).
+- Adding lipid templates to `insane.py` (step 12).
+
+### F.2 Locked-in design decisions
+
+1. **Self-contained build directories** (F.10 answer 1a). Each `out_dir` contains: `run.gro`, `topol.top`, `toppar/` (9 ITP copies), `insane.log`, `index.ndx`. No symlinks, no shared ITP pool. Note: a shared `toppar/` pool (option b) would be more space-efficient and may be worth revisiting when Step 12 adds many new lipids.
+2. **ITP source: copy from `data/membrane_only/POPC100/toppar/`** (F.10 answer 2a). These 9 files are known-good for the current 10-lipid pool; provenance recorded in F.2 note below. Note: if new lipids require ITPs not covered by these files, a fresh download from the Marrink group (option b) becomes necessary — flagged for Step 12.
+3. **`molecule_counts` parsed from finalised `topol.top`** (F.10 answer 3a). The `[ molecules ]` section is the authoritative count after insane runs; no count is maintained in-memory alongside.
+4. **`index.ndx` is generated** (F.10 answer 4). `gmx make_ndx -f run.gro -o index.ndx` run immediately after insane exits 0. If `gmx` is absent, the step is skipped with a warning (index.ndx is optional for `gmx grompp` but useful for analysis and step 7's sanity checks).
+5. **`LipidEntry.insane_keyword` used as `-l` token** (F.10 answer 5). Allows lipids whose insane identifier differs from their registry name (e.g. future additions) without special-casing.
+6. **Topology finalisation replaces the insane-generated `#include "martini.itp"` line** with the 9 Martini 3 include lines (`#include "toppar/<itp>"` for each of the 9 files). All other lines are preserved verbatim.
+
+### F.3 Public API — `system_builder.py`
+
+```python
+@dataclass(frozen=True)
+class BoxParams:
+    xy_nm: float = 11.0
+    z_nm: float = 10.0
+    salt_M: float = 0.15
+    water_type: str = "W"
+    charge_mode: str = "auto"
+    center: bool = True
+    pbc: str = "rectangular"
+
+@dataclass(frozen=True)
+class BuildResult:
+    out_dir: str
+    gro_path: str          # <out_dir>/run.gro
+    top_path: str          # <out_dir>/topol.top
+    ndx_path: str | None   # <out_dir>/index.ndx  (None if gmx absent)
+    log_path: str          # <out_dir>/insane.log
+    molecule_counts: dict[str, int]   # from [ molecules ] section
+    n_membrane_beads: int  # sum of lipid-residue atom counts (parsed from gro header)
+    n_solvent_atoms: int   # total_atoms - n_membrane_beads
+    total_atoms: int       # second line of .gro file
+    walltime_s: float      # time insane subprocess took
+
+def build_command(
+    composition: dict[str, float],
+    box: BoxParams,
+    out_gro: str,
+    out_top: str,
+) -> list[str]:
+    """Return the argv list for insane.py. Pure function."""
+    ...
+
+def build_system(
+    composition: dict[str, float],
+    out_dir: str,
+    *,
+    box: BoxParams = BoxParams(),
+    insane_path: str = INSANE_PATH,
+    itp_dir: str = MARTINI3_ITP_DIR,
+    gmx_executable: str = "gmx",
+) -> BuildResult:
+    """Build bilayer, finalise topology, stage ITPs, generate index. Raises on non-zero exit."""
+    ...
+```
+
+`composition` maps registry lipid names → mol fractions (need not sum to 1; internally converted to insane integer ratios matching `build_command`'s expected form).
+
+### F.4 `build_system()` procedure
+
+1. `os.makedirs(out_dir, exist_ok=True)`.
+2. Run `build_command()` → `subprocess.run(..., capture_output=True, text=True)`. Write stdout+stderr to `insane.log`. Raise `RuntimeError` on non-zero exit.
+3. **Topology finalisation**: read `topol.top`; replace any line matching `#include "martini*.itp"` with the 9 `#include "toppar/<itp>"` lines; write back in place.
+4. **ITP staging**: `shutil.copy(itp_dir/<itp>, out_dir/toppar/<itp>)` for each of the 9 files.
+5. **index.ndx**: `shutil.which(gmx_executable)` — if found, run `gmx make_ndx -f <gro> -o <ndx> << "q\n"` (stdin `q` exits make_ndx immediately, writing the default index groups). Skip + warn if not found.
+6. **Parse stats**: read `.gro` line 2 for `total_atoms`; parse `[ molecules ]` from `topol.top` for `molecule_counts`; compute `n_membrane_beads` and `n_solvent_atoms` from counts × bead-counts per residue (obtained from lipid registry where possible; otherwise fall back to gro-residue scan).
+7. Return `BuildResult`.
+
+### F.5 Topology finalisation detail
+
+The line to replace is any line of the form (case-insensitive, ignoring surrounding whitespace):
+
+```text
+#include "martini*.itp"
+```
+
+Replace with the 9 ordered lines (matching the legacy topol.top include order):
+
+```text
+#include "toppar/martini_v3.0.0.itp"
+#include "toppar/martini_v3.0.0_ions_v1.itp"
+#include "toppar/martini_v3.0.0_nucleobases_v1.itp"
+#include "toppar/martini_v3.0.0_phospholipids_v1.itp"
+#include "toppar/martini_v3.0.0_phospholipids_v1_matthieu.itp"
+#include "toppar/martini_v3.0.0_small_molecules_v1.itp"
+#include "toppar/martini_v3.0.0_solvents_v1.itp"
+#include "toppar/martini_v3.0.0_sugars_v1.itp"
+#include "toppar/martini_v3.0_sterols_v1.0.itp"
+```
+
+If the pattern matches zero or more than one line, raise `ValueError` with a diagnostic message (zero matches → insane output format changed; > 1 → unexpected multi-include).
+
+### F.6 `build_command()` logic
+
+Mol fractions are converted to insane integer ratios: multiply all fractions by a common scale so ratios are positive integers (e.g. `{POPC: 0.7, DOPC: 0.3}` → `POPC:70 DOPC:30`; use `round()` then check sum is preserved). `-l` flags use `LipidEntry.insane_keyword` from the registry. If a lipid is not in the registry, fall back to the name itself (forward-compat with `register_lipid`).
+
+Full flag list:
+
+```text
+sys.executable  INSANE_PATH
+-o  <gro>  -p  <top>
+-x  <xy>  -y  <xy>  -z  <z>
+-l  <kw1>:<r1>  [-l  <kw2>:<r2>  ...]
+-sol  <water_type>
+-salt  <salt_M>
+-charge  <charge_mode>
+[-center]  (if box.center)
+[-pbc  <pbc>]  (if box.pbc != "rectangular")
+```
+
+### F.7 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| insane exits non-zero | `RuntimeError` with last 500 chars of stderr |
+| `martini.itp` pattern not found in topol.top | `ValueError("topology finalisation: expected exactly 1 martini include …")` |
+| ITP source file missing | `FileNotFoundError` before insane runs (preflight check) |
+| `gmx` absent | index.ndx skipped; `ndx_path = None`; warning logged to stdout |
+| `out_dir` already exists | `exist_ok=True`; existing `run.gro` overwritten |
+| Composition fractions do not sum to 1 | Normalise silently (insane accepts ratios, not absolute fractions) |
+| Single-lipid composition | Works; `-l POPC:100` |
+
+### F.8 Test plan — `tests/martini_pipeline/test_system_builder.py`
+
+All tests use a **fake insane script** (`tmp_path/fake_insane.py`) that writes a minimal `.gro` (5 atoms) and a minimal `topol.top` (with the single `#include "martini.itp"` line + `[ system ]` + `[ molecules ]` section) and exits 0.
+
+1. **`test_build_command_single_lipid`** — `build_command({"POPC": 1.0}, BoxParams(), ...)` → argv contains `"-l", "POPC:100"` and the four box flags.
+2. **`test_build_command_binary_mixture`** — `{"POPC": 0.7, "DOPC": 0.3}` → two `-l` flags with integer ratios summing to 100.
+3. **`test_build_command_center_flag`** — `BoxParams(center=True)` → `"-center"` in argv; `center=False` → not present.
+4. **`test_build_command_pbc_nondefault`** — `BoxParams(pbc="hexagonal")` → `"-pbc", "hexagonal"` in argv.
+5. **`test_build_system_creates_gro`** — full `build_system()` with fake insane + fake ITP dir; assert `BuildResult.gro_path` exists.
+6. **`test_build_system_topology_finalised`** — read written `topol.top`; assert it contains `#include "toppar/martini_v3.0.0.itp"` and does **not** contain `#include "martini.itp"`.
+7. **`test_build_system_itps_staged`** — assert `<out>/toppar/martini_v3.0.0.itp` exists.
+8. **`test_build_system_log_written`** — assert `insane.log` exists and contains fake insane's stdout.
+9. **`test_build_system_molecule_counts`** — fake topol.top has `POPC 196` + `W 5305`; assert `result.molecule_counts == {"POPC": 196, "W": 5305}`.
+10. **`test_build_system_insane_failure`** — fake insane exits 1; assert `RuntimeError` raised.
+11. **`test_build_system_no_martini_include`** — fake topol.top has no `#include "martini.itp"` line; assert `ValueError` raised.
+12. **`test_build_system_no_gmx_skips_ndx`** — pass `gmx_executable="gmx_does_not_exist_XYZ"`; assert `result.ndx_path is None` and no exception.
+
+### F.9 Layout & dependencies
+
+```text
+resources/martini3/itp/           ← 9 Martini 3 ITP files (sub-step 6a)
+lipid_gnn/martini_pipeline/
+    __init__.py                   ← add MARTINI3_ITP_DIR
+    system_builder.py             ← new
+tests/martini_pipeline/
+    test_system_builder.py        ← new
+```
+
+No new external dependencies. Imports: `os`, `re`, `shutil`, `subprocess`, `sys`, `time`, `dataclasses`, `lipid_gnn.martini_pipeline` (`INSANE_PATH`, `MARTINI3_ITP_DIR`), `lipid_gnn.martini_pipeline.lipid_registry` (`LIPID_REGISTRY`).
+
+### F.10 Open questions (answered 2026-05-08)
+
+1. **Build directory strategy** → **a) self-contained**. Note: shared toppar pool (option b) may be worth revisiting at Step 12 when many new lipids are added.
+2. **ITP source** → **a) copy from `data/membrane_only/POPC100/toppar/`**. Note: if new lipids require ITPs not in this set, switch to a fresh Marrink download (option b) at Step 12.
+3. **`molecule_counts` source** → **a) parse finalised `topol.top`**.
+4. **index.ndx** → **YES — generate via `gmx make_ndx`**; skip with warning if `gmx` absent.
+5. **`-l` token** → **`LipidEntry.insane_keyword`** from registry.
+
+### F.11 New decisions to log on completion
+
+- **Decision 19** — ITP files sourced from `data/membrane_only/POPC100/toppar/` (the 9 Martini 3 files, minus the two yire1 protein ITPs). These are the same files that produced the 70 training systems. A future switch to a fresh Marrink download is flagged for Step 12 if new lipids require ITPs not covered by this set.
+- **Decision 20** — Build directories are self-contained: each `out_dir` receives its own `toppar/` copy of the 9 ITPs. Avoids relative-path fragility and allows each build dir to be moved or archived independently. Shared-pool alternative deferred to Step 12.
+- **Decision 21** — `LipidEntry.insane_keyword` (not `.name`) used as the `-l` token. Allows future lipids whose insane identifier differs from their registry name without special-casing in `system_builder.py`.
