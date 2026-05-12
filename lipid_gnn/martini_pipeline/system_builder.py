@@ -141,6 +141,7 @@ def build_system(
         )
 
     _finalise_topology(top_path)
+    _normalise_ion_names(top_path, gro_path)
     _stage_itps(itp_dir, out_dir)
 
     ndx_path = _make_ndx(gro_path, out_dir, gmx_executable, make_ndx_script)
@@ -213,6 +214,63 @@ def _finalise_topology(top_path: str) -> None:
 
     with open(top_path, "w") as fh:
         fh.writelines(lines)
+
+
+_ION_RENAME = {"NA+": "NA", "CL-": "CL"}
+
+
+def _normalise_ion_names(top_path: str, gro_path: str) -> None:
+    """Rewrite charged-suffix ion names (`NA+`, `CL-`) to `NA`, `CL`.
+
+    Some `insane` builds emit `NA+`/`CL-` in topol.top and run.gro, which the
+    v1 ions ITP (defining moleculetypes `NA` and `CL`) does not recognise.
+    Normalising both spellings keeps grompp, make_ndx, and the legacy MDAnalysis
+    selectors (`name NA`, `name CL`) consistent across new and legacy systems.
+    """
+    # ---- topol.top: rewrite [molecules] section only ----
+    with open(top_path) as fh:
+        lines = fh.readlines()
+    in_molecules = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and "molecules" in stripped.lower():
+            in_molecules = True
+            continue
+        if in_molecules and stripped.startswith("["):
+            in_molecules = False
+        if in_molecules and stripped and not stripped.startswith(";"):
+            parts = line.split(None, 1)
+            if len(parts) == 2 and parts[0] in _ION_RENAME:
+                lines[i] = line.replace(parts[0], _ION_RENAME[parts[0]], 1)
+    with open(top_path, "w") as fh:
+        fh.writelines(lines)
+
+    # ---- run.gro: rewrite residue and atom name fields ----
+    if not os.path.isfile(gro_path):
+        return
+    with open(gro_path) as fh:
+        gro_lines = fh.readlines()
+    if len(gro_lines) < 3:
+        return
+    try:
+        n_atoms = int(gro_lines[1].strip())
+    except ValueError:
+        return
+    for i in range(2, min(2 + n_atoms, len(gro_lines))):
+        ln = gro_lines[i]
+        if len(ln) < 15:
+            continue
+        resname = ln[5:10].strip()
+        atomname = ln[10:15].strip()
+        new_res = _ION_RENAME.get(resname)
+        new_atom = _ION_RENAME.get(atomname)
+        if new_res is not None:
+            ln = ln[:5] + new_res.ljust(5) + ln[10:]
+        if new_atom is not None:
+            ln = ln[:10] + new_atom.rjust(5) + ln[15:]
+        gro_lines[i] = ln
+    with open(gro_path, "w") as fh:
+        fh.writelines(gro_lines)
 
 
 def _stage_itps(itp_dir: str, out_dir: str) -> None:

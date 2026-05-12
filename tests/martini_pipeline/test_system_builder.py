@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import sys
+import tempfile
 import textwrap
 import unittest
 
@@ -187,6 +189,7 @@ class TestBuildSystem(unittest.TestCase):
             staged = os.path.join(result.out_dir, "toppar", itp)
             self.assertTrue(os.path.isfile(staged), f"Not staged: {itp}")
 
+
     def test_log_written(self):
         result = self._build()
         self.assertTrue(os.path.isfile(result.log_path))
@@ -258,6 +261,84 @@ class TestBuildSystem(unittest.TestCase):
                 )
         finally:
             shutil.rmtree(empty_itp_dir)
+
+
+class TestNormaliseIonNames(unittest.TestCase):
+    """Direct unit tests for _normalise_ion_names — independent of insane."""
+
+    def _setup(self):
+        from lipid_gnn.martini_pipeline.system_builder import _normalise_ion_names
+        tmpdir = tempfile.mkdtemp()
+        top = os.path.join(tmpdir, "topol.top")
+        gro = os.path.join(tmpdir, "run.gro")
+        return tmpdir, top, gro, _normalise_ion_names
+
+    def test_topol_top_na_plus_to_na(self):
+        tmpdir, top, gro, normalise = self._setup()
+        try:
+            with open(top, "w") as fh:
+                fh.write(
+                    '#include "toppar/martini_v3.0.0.itp"\n'
+                    '[ system ]\n; name\nbilayer\n\n'
+                    '[ molecules ]\n; name  number\n'
+                    'DPPC           100\n'
+                    'W             5000\n'
+                    'NA+             69\n'
+                    'CL-             69\n'
+                )
+            with open(gro, "w") as fh:
+                fh.write("title\n0\n   0.0   0.0   0.0\n")
+            normalise(top, gro)
+            with open(top) as fh:
+                content = fh.read()
+            self.assertNotIn("NA+", content)
+            self.assertNotIn("CL-", content)
+            # Counts preserved on the normalised lines
+            mol_lines = [l for l in content.splitlines() if l.split()[:2] in (["NA", "69"], ["CL", "69"])]
+            self.assertEqual(len(mol_lines), 2)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_topol_top_already_normalised_unchanged(self):
+        tmpdir, top, gro, normalise = self._setup()
+        try:
+            original = (
+                '#include "toppar/martini_v3.0.0.itp"\n'
+                '[ molecules ]\n; name  number\n'
+                'DPPC           100\n'
+                'NA              52\n'
+                'CL              52\n'
+            )
+            with open(top, "w") as fh:
+                fh.write(original)
+            with open(gro, "w") as fh:
+                fh.write("title\n0\n   0.0   0.0   0.0\n")
+            normalise(top, gro)
+            with open(top) as fh:
+                self.assertEqual(fh.read(), original)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_gro_residue_and_atom_renamed(self):
+        tmpdir, top, gro, normalise = self._setup()
+        try:
+            with open(top, "w") as fh:
+                fh.write("[ molecules ]\n")
+            with open(gro, "w") as fh:
+                fh.write("title\n 2\n")
+                fh.write(f"{1:>5d}{'NA+':<5s}{'NA+':>5s}{1:>5d}   0.000   0.000   0.000\n")
+                fh.write(f"{2:>5d}{'CL-':<5s}{'CL-':>5s}{2:>5d}   1.000   1.000   1.000\n")
+                fh.write("   2.000   2.000   2.000\n")
+            normalise(top, gro)
+            with open(gro) as fh:
+                lines = fh.readlines()
+            self.assertEqual(lines[2][5:10].strip(), "NA")
+            self.assertEqual(lines[2][10:15].strip(), "NA")
+            self.assertEqual(lines[3][5:10].strip(), "CL")
+            self.assertEqual(lines[3][10:15].strip(), "CL")
+            self.assertEqual(len(lines[2]), len(lines[3]))
+        finally:
+            shutil.rmtree(tmpdir)
 
 
 if __name__ == "__main__":
