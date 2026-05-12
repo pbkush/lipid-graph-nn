@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-08.
+Last updated: 2026-05-12.
 
 ---
 
@@ -91,7 +91,7 @@ martini_pipeline:
 | `test_analysis.py` | `missing_compositions` against fake output tree; `diff_mdps` against a fixture set; `summarise_systems` | no |
 | `test_system_builder.py` | `insane` mocked via subprocess monkeypatch; verifies command construction; one real-`insane` test guarded by `shutil.which` | optional |
 | `test_pipeline.py` | `gmx` mocked (fake binary in `tmp_path`, prepended to PATH); command construction, idempotency, manifest content, error propagation | no |
-| `test_e2e_smoke.py` | POPC100, ~100 ps prod, asserts `prun.xtc` exists with ≥ N frames | yes, opt-in via `RUN_MARTINI_E2E=1` |
+| `test_e2e_smoke.py` | DIPC100, ~50 ps prod, asserts `prun.xtc` + APL in physical range; no legacy comparison | yes, opt-in via `RUN_MARTINI_E2E=1` |
 
 Mocked `gmx` is what makes local + HPC parity work — neither environment needs a real GROMACS to keep the suite green.
 
@@ -142,9 +142,9 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 2 | `lipid_registry.py` (data + `register_lipid` + `validate_lipid` + `check_resources`) + tests | [x] | `_KNOWN_FAMILIES` is a module-level `frozenset` (open for extension); bead cross-check against `node_mapping.json` is a hard assertion. 60 tests pass. |
 | 3 | **MDP audit** — `analysis.py::diff_mdps()` over the 70 existing systems; freeze templates from dominant settings; document deviations | [x] | run.mdp: zero deviations (all 70 byte-identical). Equilibration: 7 rlist deviations on CHOL systems (Verlet-buffer auto-tuning, expected). Freeze record committed as `templates/_audit_freeze.json`. |
 | 4 | `mdp_writer.py` + templates derived from audit (Appendix D) | [x] | Eq diverges from legacy: `compressibility 3e-4`, `nsteps 1e6`, explicit `gen-vel=yes`. Knobs: `nsteps_*`, `save_forces`, `gen_seed`. 32 tests pass. |
-| 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | Option A: 2to3-converted Helgi/Emil-customised copy of Tsjerk 2014-06-03. Parity: +37 solvent atoms vs legacy (Python 2→3 RNG; accepted). 9 tests pass. |
-| 6 | `system_builder.py` + tests | [x] | Self-contained build dirs; ITPs vendored from legacy POPC100 toppar; topology finalisation replaces single insane `#include "martini.itp"` with 9 Martini 3 includes; index.ndx via `gmx make_ndx` (skipped with warning when gmx absent). 18 tests pass. |
-| 7 | `pipeline.py` + `manifest.py` — local end-to-end on POPC100; reproduce existing POPC100 frame count + mean APL as sanity check | [ ] | |
+| 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | **Reworked 2026-05-08 (Decision 26)**: insane.py vendoring removed; `insane` pip package (v1.2.0) used as command instead. `INSANE_PATH` → `INSANE_CMD = "insane"`. 7 tests pass. |
+| 6 | `system_builder.py` + tests | [x] | **Reworked 2026-05-08 (Decision 27)**: 32 ITPs from M3-Lipid-Parameters (full lipidome) replace the 9 legacy-copied ITPs. `ffbonded_v2.itp` included (required by v2 lipid files). pbc now always passed explicitly. 27 tests pass. |
+| 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [ ] | |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [ ] | Subgoal 2 |
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [ ] | Single orchestrator with GPU/CPU branch |
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | |
@@ -177,10 +177,12 @@ Append-only. Each entry: date · decision · rationale.
 | 14 | 2026-05-07 | Step 4 templates **deliberately diverge from legacy** in equilibration: `compressibility 3e-4 3e-4` (legacy `3e-5`), `nsteps 1_000_000` / 10 ns (legacy 250 000 / 2.5 ns), `nstenergy 1000` (legacy 100), explicit `gen-vel = yes`, `gen-temp = 310`, `gen-seed = -1` | Legacy `3e-5` makes the box relax ~10× slower than τ_p = 5 ps (Berendsen) was tuned for; novel compositions (high-CHOL, DIPC/POPC blends) frequently exit equilibration still drifting at 2.5 ns. The audit captures *what we ran*; the writer captures *what we should run going forward*. Run-stage values are still cloned byte-for-byte from legacy. |
 | 15 | 2026-05-07 | Configurable parameters are marked in template files with inline `; [CONFIG: <knob>]` comments | Makes the surface that `MDPParams` (and later `martini_pipeline.*` config) controls discoverable from the template alone; reviewers can audit knob coverage by grepping `[CONFIG:`. |
 | 16 | 2026-05-07 | Single-stage equilibration in v1; two-stage (eq1 small-dt + eq2 production-dt) deferred | The 10 ns single-stage already absorbs the legacy reliability gap. Two-stage adds pipeline + manifest complexity; revisit only if step 7+ surfaces equilibration failures on exotic compositions. |
-| 18 | 2026-05-07 | Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised copy of Tsjerk Wassenaar's 2014-06-03 build, not the modern Python-3 fork | Parity with lipid templates that built the 70 training systems. 2to3 patch is mechanical (29 print statements, xrange, zip-to-list; no semantic changes). Option C (both versions side-by-side) explicitly deferred to Step 12 if newer templates are needed. Parity check shows +37 solvent atoms vs legacy (Python 2→3 RNG; accepted and documented in INSANE_PROVENANCE.md). |
-| 19 | 2026-05-08 | ITP files sourced from `data/membrane_only/POPC100/toppar/` (9 Martini 3 files; yire1 protein ITPs excluded) | Same files that produced the 70 training systems; known-good provenance. Fresh Marrink download (option b) flagged for Step 12 if new lipids require ITPs not covered. |
-| 20 | 2026-05-08 | Build directories are self-contained: each `out_dir` receives its own `toppar/` copy of the 9 ITPs | Avoids relative-path fragility; each build dir can be moved or archived independently. Shared-pool alternative deferred to Step 12. |
+| 18 | 2026-05-07 | Vendored `insane.py` is the 2to3-converted Helgi/Emil-customised copy of Tsjerk Wassenaar's 2014-06-03 build, not the modern Python-3 fork | Parity with lipid templates that built the 70 training systems. **← Superseded by Decision 26 (2026-05-08).** |
+| 19 | 2026-05-08 | ITP files sourced from `data/membrane_only/POPC100/toppar/` (9 Martini 3 files; yire1 protein ITPs excluded) | Same files that produced the 70 training systems. **← Superseded by Decision 27 (2026-05-08).** |
+| 20 | 2026-05-08 | Build directories are self-contained: each `out_dir` receives its own `toppar/` copy of the ITPs | Avoids relative-path fragility; each build dir can be moved or archived independently. |
 | 21 | 2026-05-08 | `LipidEntry.insane_keyword` (not `.name`) used as the `-l` token in `build_command()` | Allows future lipids whose insane identifier differs from their registry name without special-casing in `system_builder.py`. |
+| 26 | 2026-05-08 | `insane` pip package (v1.2.0) used via command, not vendored single-file script | Modern Python-3 package; installed in `lipid_gnn` conda env. Vendoring a 2to3-converted 2014 script was a workaround; using the package directly is cleaner and upgradeable. `INSANE_PATH` constant replaced by `INSANE_CMD = "insane"`. Added to `requirements.txt`. Supersedes Decision 18. |
+| 27 | 2026-05-08 | 32 ITPs from `github.com/Martini-Force-Field-Initiative/M3-Lipid-Parameters` replace 9 legacy copies | Full lipidome coverage (standard phospholipids, ether phospholipids, plasmalogens, sterols, glycerolipids, ions, solvents, DOTAP) using current upstream parameters. Includes `ffbonded_v2.itp` (required by v2 lipid files). Legacy copies from POPC100 toppar were an old snapshot with 4 unneeded files (nucleobases, sugars, small molecules, matthieu phospholipids). Supersedes Decision 19. |
 
 ---
 
@@ -1107,3 +1109,278 @@ No new external dependencies. Imports: `os`, `re`, `shutil`, `subprocess`, `sys`
 - **Decision 19** — ITP files sourced from `data/membrane_only/POPC100/toppar/` (the 9 Martini 3 files, minus the two yire1 protein ITPs). These are the same files that produced the 70 training systems. A future switch to a fresh Marrink download is flagged for Step 12 if new lipids require ITPs not covered by this set.
 - **Decision 20** — Build directories are self-contained: each `out_dir` receives its own `toppar/` copy of the 9 ITPs. Avoids relative-path fragility and allows each build dir to be moved or archived independently. Shared-pool alternative deferred to Step 12.
 - **Decision 21** — `LipidEntry.insane_keyword` (not `.name`) used as the `-l` token. Allows future lipids whose insane identifier differs from their registry name without special-casing in `system_builder.py`.
+
+---
+
+## Appendix G — Step 7 detailed plan: `pipeline.py` + `manifest.py`
+
+### G.1 Scope
+
+End-to-end orchestration of a single composition: `system_builder` → write mdps → `gmx grompp + mdrun` for minimization → equilibration → production. Idempotent (skips stages whose handoff output exists). Per-system JSON manifest records spec, mdp hashes, gmx version, seeds, durations, status, and the insane invocation. Gated on a DIPC100 sanity check against absolute physical criteria (APL in published Martini 3 range, no blow-up) — not a legacy byte-comparison (insane version and ITP parameters differ from legacy; POPC100 was manually restarted and is an outlier).
+
+#### What's in scope for step 7
+
+- `lipid_gnn/martini_pipeline/pipeline.py`
+- `lipid_gnn/martini_pipeline/manifest.py`
+- `martini_pipeline:` block in `config.yaml` + parser in `lipid_gnn/config.py` (Decision 17)
+- `scripts/simulation/run_martini_pipeline.py` — single-composition CLI driver
+- `scripts/simulation/sanity_check_dipc100.py` — APL physical-criteria comparator
+- `tests/martini_pipeline/test_pipeline.py` — mocked `gmx`
+- `tests/martini_pipeline/test_manifest.py`
+- `tests/martini_pipeline/test_e2e_smoke.py` — opt-in `RUN_MARTINI_E2E=1`
+
+#### What's out of scope for step 7
+
+- HPC submission (step 9), benchmark (step 10), corner-fill production (step 11).
+- `analysis.py::missing_compositions` (step 8).
+- Multi-system orchestration: the pipeline runs one composition; batching is a layer above.
+- New lipids (step 12).
+
+### G.2 Locked-in design decisions
+
+1. **One composition per invocation.** `pipeline.run(composition, out_dir, ...)` builds + simulates a single system. Multi-system batching is the submission layer's job (step 9). Keeps `pipeline.py` linear and testable.
+2. **Per-stage subdirectories**, matching legacy layout exactly: `<out>/{minimization,equilibration,run}/`. Initial bilayer + finalised topology + index.ndx live at `<out>/`; per-stage mdp + tpr + trajectory + log live inside the stage dir. Downstream graph/dataset code keying off this layout (`data/membrane_only/<comp>/run/prun.xtc`) continues to work unchanged when pointed at `data/martini_pipeline/`.
+3. **Stage filename convention matches legacy** (proposed; G.10 Q1): `martini_em.{tpr,gro,trr,edr,log}` + `minimized.gro` handoff in `minimization/`; `martini_eq.{tpr,gro,xtc,edr,log,cpt}` + `equilibrated.gro` handoff in `equilibration/`; `prun.{tpr,gro,xtc,edr,log,cpt}` in `run/`. Rationale: pure parity; downstream code references these names today.
+4. **Idempotency via handoff files.** Stage is skipped iff its handoff file exists: minimization → `minimized.gro`; equilibration → `equilibrated.gro`; production → `prun.gro`. Detect-and-skip is logged in the manifest under `stage_<name>.status = "skipped"`. Rationale: handoff `.gro` is written *after* `gmx mdrun` exits zero, so its presence is a strong success marker.
+5. **`pipeline.py` calls `gmx` directly via `subprocess`** (Decision 1). No wrapper layer.
+6. **Seed strategy: deterministic by default.** `gen_seed` derived from a stable hash of the composition name (e.g. `int(hashlib.sha256(name.encode()).hexdigest()[:8], 16)`); CLI flag `--seed N` overrides; `--seed random` requests a fresh random seed. Same seed re-used across all stages (insane RNG, em, eq, prod) of one composition. Rationale: makes the canonical `<comp>` name reproducible without making seeds part of the directory name. (Closes one of the step-7 open questions in §10.)
+7. **MDP placement: per-stage subdirs.** `<out>/minimization/em.mdp`, `<out>/equilibration/eq.mdp`, `<out>/run/run.mdp`. Each subdir is self-contained (mdp + tpr + outputs). Rationale: cleaner than scattering 3 mdps at the root; legacy had only 1 surviving mdp at root so no precedent is being broken.
+8. **No retry logic.** First failure → write manifest with `status: "failed_at_<stage>"`, raise; user reruns (or HPC step 9 wrapper retries). Decision 1's "reintroduce wrapper only if retry accumulates" still holds.
+9. **`config.yaml` block added now (Decision 17).** Frozen dataclass `MartiniPipelineConfig` with output_root, mdp/insane/itp paths, system defaults (box, salt, temp), run defaults (`nsteps_*`, `save_forces`), seed strategy. CLI flags on `run_martini_pipeline.py` override per-run.
+
+### G.3 Public API — `pipeline.py`
+
+```python
+@dataclass(frozen=True)
+class StageResult:
+    name: str                # "minimization" | "equilibration" | "production"
+    status: str              # "ok" | "skipped" | "failed"
+    walltime_s: float
+    grompp_cmd: list[str]
+    mdrun_cmd: list[str]
+    tpr_path: str
+    final_gro_path: str
+    log_path: str
+    error: str | None = None
+
+@dataclass(frozen=True)
+class PipelineResult:
+    composition: dict[str, float]
+    out_dir: str
+    build: BuildResult                # from system_builder
+    stages: tuple[StageResult, ...]   # in execution order
+    manifest_path: str
+    overall_status: str               # "ok" | "failed_at_<stage>"
+
+def run(
+    composition: dict[str, float],
+    out_dir: str,
+    *,
+    box: BoxParams = BoxParams(),
+    mdp_params: MDPParams = MDPParams(),
+    seed: int | None = None,          # None → derived from composition name hash
+    gmx_executable: str = "gmx",
+    mdrun_extra_args: tuple[str, ...] = (),  # e.g. ("-ntomp", "4")
+    force_rerun: bool = False,        # disables idempotency check
+) -> PipelineResult: ...
+```
+
+Stage helpers (private):
+
+```python
+def _run_grompp(stage_dir, mdp, gro_in, top, ndx, tpr_out, gmx) -> tuple[list[str], float]: ...
+def _run_mdrun(stage_dir, deffnm, gmx, extra_args) -> tuple[list[str], float]: ...
+def _stage_minimize(out_dir, mdp_path, ndx_path, top_path, gro_in, gmx, extra) -> StageResult: ...
+def _stage_equilibrate(...) -> StageResult: ...
+def _stage_produce(...) -> StageResult: ...
+def _derive_seed(composition_name: str) -> int: ...
+```
+
+### G.4 Public API — `manifest.py`
+
+```python
+@dataclass(frozen=True)
+class Manifest:
+    schema_version: str          # "1.0"
+    composition: dict[str, float]
+    canonical_name: str          # from composition.canonicalise
+    out_dir: str
+    created_utc: str             # ISO-8601
+    gmx_version: str | None      # parsed from `gmx --version` (None if absent)
+    insane_version: str          # parsed from INSANE_PATH header ("20140603.11.TAW")
+    insane_cmd: list[str]        # actual argv used
+    seed: int
+    box: dict                    # BoxParams as dict
+    mdp_params: dict             # MDPParams as dict
+    mdp_hashes: dict[str, str]   # {"em.mdp": "sha256:...", "eq.mdp": ..., "run.mdp": ...}
+    stages: list[dict]           # serialised StageResult per stage
+    build_stats: dict            # molecule_counts, total_atoms, n_membrane_beads
+    overall_status: str
+    host: dict                   # {"hostname": ..., "platform": ..., "python": ...}
+
+def write_manifest(path: str, m: Manifest) -> None: ...
+def read_manifest(path: str) -> Manifest: ...
+def hash_file(path: str) -> str: ...          # "sha256:<hex>"
+def detect_gmx_version(gmx_exe: str) -> str | None: ...
+def detect_insane_version(insane_path: str) -> str: ...
+```
+
+### G.5 Per-stage procedure
+
+For each stage, in order, with handoff detection:
+
+| Stage | Input gro | MDP | Output deffnm | Handoff |
+| --- | --- | --- | --- | --- |
+| minimization | `<out>/run.gro` | `minimization/em.mdp` | `martini_em` | `minimization/minimized.gro` |
+| equilibration | `minimization/minimized.gro` | `equilibration/eq.mdp` | `martini_eq` | `equilibration/equilibrated.gro` |
+| production | `equilibration/equilibrated.gro` | `run/run.mdp` | `prun` | `run/prun.gro` |
+
+Per-stage steps:
+
+1. If `handoff` exists and not `force_rerun` → return `StageResult(status="skipped")`.
+2. `gmx grompp -f <mdp> -c <gro_in> -p <top> -n <ndx> -o <stage>/<deffnm>.tpr -maxwarn 1` (capture stdout/stderr → `<stage>/grompp.log`).
+3. `gmx mdrun -deffnm <stage>/<deffnm> [+extra]` (stdout/stderr → `<stage>/mdrun.log`; GROMACS also writes its own `<deffnm>.log`).
+4. `shutil.copy(<stage>/<deffnm>.gro, <stage>/<handoff>)`.
+5. Return `StageResult(status="ok")`.
+
+On any non-zero exit: capture last 500 chars of stderr, write to `error`, return `status="failed"`. `pipeline.run` then writes manifest and raises.
+
+### G.6 Manifest write timing
+
+Written **after every stage transition** (not only at the end), so a crashed/killed run still leaves a manifest reflecting the last completed stage. Use `json.dumps(..., indent=2)` for readability; atomic write via tempfile + rename.
+
+### G.7 `config.yaml` block (Decision 17)
+
+```yaml
+martini_pipeline:
+  output_root: data/martini_pipeline
+  insane_path: resources/martini3/insane.py
+  itp_dir: resources/martini3/itp
+  mdp_templates_dir: lipid_gnn/martini_pipeline/templates
+  mdp_freeze: lipid_gnn/martini_pipeline/templates/_audit_freeze.json
+
+  box:
+    xy_nm: 11.0
+    z_nm: 10.0
+    salt_M: 0.15
+    water_type: W
+    charge_mode: auto
+    center: true
+    pbc: rectangular
+
+  run:
+    nsteps_min: 20000
+    nsteps_eq: 1000000        # 10 ns at dt = 0.01 (Decision 14)
+    nsteps_prod: -1           # -1 → caller must supply via CLI
+    nstenergy_eq: 1000
+    save_forces: false        # Decision 3
+    seed_strategy: deterministic   # "deterministic" | "random" | <int>
+
+  gmx:
+    executable: gmx
+    mdrun_extra_args: []
+```
+
+Parser: `MartiniPipelineConfig` frozen dataclass in `lipid_gnn/config.py`. Backwards compatible: if the block is absent, defaults apply.
+
+### G.8 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| `gmx` absent | `pipeline.run` raises `FileNotFoundError("gmx not found on PATH")` immediately (preflight); test suite still passes because `gmx` is mocked in unit tests |
+| handoff file exists, `force_rerun=False` | Stage status `"skipped"`; subsequent stages still run normally |
+| `force_rerun=True` | All stages re-execute; tpr/gro/etc. overwritten |
+| grompp `-maxwarn` exceeded | grompp returns non-zero → `status="failed"`, manifest written, exception raised |
+| mdrun killed externally (SIGKILL) | Handoff gro absent → on rerun, stage re-executes from scratch (no checkpoint-restart in v1; G.10 Q4 deferred) |
+| `out_dir` already contains a partial run | Same as above: missing handoff → re-execute |
+| Composition not in registry | `KeyError` raised by `system_builder.build_command` (lipid keyword fallback to name still works but ITP-bead check would fail later) |
+| `nsteps_prod = -1` (config sentinel) | CLI driver requires explicit `--prod-ns N`; raises if omitted |
+
+### G.9 Test plan
+
+**`test_pipeline.py`** — `gmx` mocked as a fake binary on PATH (`tmp_path/bin/gmx`) that writes minimal stage outputs and exits 0.
+
+1. `test_run_creates_per_stage_dirs` — invoke `run`; assert `minimization/`, `equilibration/`, `run/` exist.
+2. `test_run_writes_tpr_per_stage` — assert `martini_em.tpr`, `martini_eq.tpr`, `prun.tpr` exist.
+3. `test_run_writes_handoff_files` — `minimized.gro`, `equilibrated.gro`, `prun.gro` exist.
+4. `test_grompp_invocations` — inspect captured argv: each stage calls `gmx grompp -f <mdp> -c <gro_in> -p <top> -n <ndx> -o <tpr>`.
+5. `test_mdrun_invocations` — each stage calls `gmx mdrun -deffnm <...>`; extra args propagate.
+6. `test_idempotency_skips_completed_stage` — pre-touch `minimization/minimized.gro`; assert minimization stage is `"skipped"` and grompp not called for it.
+7. `test_force_rerun_overrides_idempotency` — same setup, `force_rerun=True`; assert minimization re-runs.
+8. `test_failure_at_equilibration_writes_manifest` — fake `gmx` exits non-zero on eq stage; assert manifest written with `overall_status == "failed_at_equilibration"` and exception raised.
+9. `test_seed_deterministic` — same composition → same seed across two `run()` invocations (without seed override).
+10. `test_seed_override` — `seed=12345` → that seed appears in manifest and in mdp `gen_seed`.
+
+**`test_manifest.py`**
+
+1. `test_manifest_round_trip` — write then read, identity preserved.
+2. `test_mdp_hash_changes_with_content` — modify one byte → hash differs.
+3. `test_detect_insane_version` — parses version from `importlib.metadata.version("insane")`.
+4. `test_detect_gmx_version_absent` — non-existent executable → returns `None`, no raise.
+5. `test_manifest_schema_fields` — required fields all present in the JSON output.
+
+**`test_e2e_smoke.py`** — opt-in `RUN_MARTINI_E2E=1`. Runs DIPC100 with `nsteps_prod=5000` (50 ps). Asserts:
+
+1. `prun.xtc` exists, has ≥ 2 frames.
+2. `manifest.json` parses, `overall_status == "ok"`.
+3. Mean area per lipid (computed via MDAnalysis) is within `[0.55, 0.80] nm²` (DIPC Martini 3 literature ~0.68 nm²; wide tolerance for short run).
+4. No NaN in `prun.edr` energy terms (system did not blow up).
+
+**`scripts/simulation/sanity_check_dipc100.py`** (run manually, not in pytest):
+
+- Runs DIPC100 end-to-end with `nsteps_prod = 5_000_000` (50 ns).
+- Computes mean APL from `prun.xtc` (MDAnalysis, last 10 ns averaged).
+- Checks against absolute physical criteria: APL ∈ [0.62, 0.75] nm², bilayer thickness ∈ [3.5, 4.5] nm, no energy blow-up.
+- Writes a one-line PASS/FAIL summary plus a JSON metrics file.
+- **Not a legacy-comparison**: insane version and ITP parameters differ from legacy 70 systems; POPC100 legacy is an outlier (manually restarted, 2× nsteps).
+
+### G.10 Open questions (need user input before implementation)
+
+1. **Stage filename convention.** Match legacy (`martini_em`, `martini_eq`, `prun`) — proposed in G.2.3 — or rationalise to `em`, `eq`, `prod` and update downstream readers? Recommend match-legacy for least churn; rationalise only if downstream code is already being touched.
+2. **`index.ndx` parity.** Legacy `index.ndx` was built with custom groups (`name 18 Membrane`, `name 17 Solute`). Step 6 currently uses default groups only (`q\n`). Options:
+   - (a) Extend `system_builder` to take a `make_ndx_script` argument and pass the legacy script for parity.
+   - (b) Add the custom groups in `pipeline.py` before grompp (separate `_finalise_ndx()` step).
+   - (c) Leave default groups; verify mdps don't reference custom group names. If they don't, the parity gap is cosmetic.
+   Need confirmation that nothing in the equilibration/production mdps (or freeze record) references `Membrane`/`Solute` groups. If so, recommend (a).
+3. **MDP `-maxwarn` value.** Legacy may have used `-maxwarn 1`; some Martini 3 grompp warnings are benign. Use `-maxwarn 1` by default, override via CLI?
+4. **Production checkpoint-restart.** Legacy `prun_prev.cpt` suggests `gmx mdrun -cpi` was used. For step 7 — defer (no checkpoint logic; failed prod restarts from scratch) or implement now? Recommend defer; HPC step 9 is the right place for checkpoint logic.
+5. **`nsteps_prod` default.** `MDPParams.nsteps_prod = -1` (sentinel). Should the pipeline require an explicit value (raise on `-1`) or apply a sensible default (e.g. legacy's 50 ns = 5 000 000 steps)? Recommend require-explicit; the production length is the most consequential knob.
+6. **Sanity check tolerance.** APL ±5 % is suggested; legacy POPC100 mean APL ≈ 0.65 nm². If the +37-atom solvent divergence (Decision 18) shifts pressure coupling slightly, APL may drift > 5 %. Should the tolerance be wider? Recommend start at ±5 %, widen if step 7's first POPC100 run fails it.
+7. **CLI driver argument shape.** `run_martini_pipeline.py POPC:1.0` (insane-style ratio string) vs `--composition '{"POPC": 1.0}'` (JSON) vs `--composition-file composition.yaml`? Recommend insane-style ratio string for ergonomics; JSON/YAML for programmatic callers.
+
+### G.11 Layout & dependencies
+
+```text
+lipid_gnn/martini_pipeline/
+    pipeline.py                  ← new (~250 LOC)
+    manifest.py                  ← new (~120 LOC)
+lipid_gnn/
+    config.py                    ← extend with MartiniPipelineConfig dataclass
+config.yaml                      ← add martini_pipeline: block (Decision 17)
+scripts/simulation/
+    run_martini_pipeline.py      ← new CLI driver
+    sanity_check_popc100.py      ← new manual-run sanity comparator
+tests/martini_pipeline/
+    test_pipeline.py             ← new (≥10 tests, gmx mocked)
+    test_manifest.py             ← new (≥5 tests)
+    test_e2e_smoke.py            ← new (opt-in)
+```
+
+No new external dependencies. Internal imports: `system_builder` (build), `mdp_writer` (write_mdps), `composition` (canonical_name), `lipid_registry` (lipid validation), `lipid_gnn.config` (CONFIG).
+
+### G.12 Acceptance criteria
+
+- `pytest tests/martini_pipeline/ -q` passes locally and on HPC.
+- `run_martini_pipeline.py POPC:1.0 --prod-ns 0.05` (50 ps) completes end-to-end when `gmx` is available, producing `<out>/POPC100/{run.gro, topol.top, index.ndx, toppar/, minimization/, equilibration/, run/, manifest.json}`.
+- Manifest schema validated by `test_manifest.py`.
+- Idempotency: rerunning `run_martini_pipeline.py POPC:1.0 ...` skips all three stages.
+- POPC100 50-ns sanity check (`sanity_check_popc100.py`) reports APL within ±5 % of legacy and frame count == legacy.
+- Step status table row 7 flipped to `[x]`.
+
+### G.13 New decisions to log on completion
+
+- **Decision 22** — `pipeline.py` orchestrates one composition; multi-system batching is the submission layer's job (step 9). Rationale: keeps the orchestrator linear and testable; HPC step 9 already plans to wrap N parallel invocations.
+- **Decision 23** — Stage handoff via per-stage `.gro` copy (`minimized.gro`, `equilibrated.gro`). Idempotency markers are these handoff files. Rationale: handoff `.gro` is written *after* `mdrun` exits zero, so its presence is a strong success marker; no separate `.done` sentinel needed.
+- **Decision 24** — Seed is derived deterministically from composition name by default (`sha256(name)[:8]`); CLI overrides. Same seed used across insane, em, eq, prod for one composition. Rationale: reproducible without making seeds part of the canonical `<comp>` name; closes step-7 open question on seed strategy from §10.
+- **Decision 25** — Manifest is rewritten after every stage transition (not only at the end). Rationale: a killed run still leaves a useful manifest.
+- *Plus any decisions arising from G.10 answers (filenames, ndx parity, maxwarn, checkpoint, nsteps_prod default, tolerance, CLI shape).*
