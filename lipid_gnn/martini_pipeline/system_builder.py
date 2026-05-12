@@ -77,6 +77,7 @@ class BuildResult:
     n_solvent_atoms: int
     total_atoms: int
     walltime_s: float
+    insane_cmd: list
 
 
 def build_command(
@@ -113,6 +114,7 @@ def build_system(
     insane_cmd: str = INSANE_CMD,
     itp_dir: str = MARTINI3_ITP_DIR,
     gmx_executable: str = "gmx",
+    make_ndx_script: str = "q\n",
 ) -> BuildResult:
     """Build bilayer, finalise topology, stage ITPs, generate index.ndx."""
     _preflight_check_itps(itp_dir)
@@ -141,7 +143,7 @@ def build_system(
     _finalise_topology(top_path)
     _stage_itps(itp_dir, out_dir)
 
-    ndx_path = _make_ndx(gro_path, out_dir, gmx_executable)
+    ndx_path = _make_ndx(gro_path, out_dir, gmx_executable, make_ndx_script)
 
     molecule_counts = _parse_molecule_counts(top_path)
     total_atoms = _parse_gro_atom_count(gro_path)
@@ -160,6 +162,7 @@ def build_system(
         n_solvent_atoms=n_solvent_atoms,
         total_atoms=total_atoms,
         walltime_s=walltime_s,
+        insane_cmd=argv,
     )
 
 
@@ -219,14 +222,14 @@ def _stage_itps(itp_dir: str, out_dir: str) -> None:
         shutil.copy(os.path.join(itp_dir, itp), os.path.join(toppar_dir, itp))
 
 
-def _make_ndx(gro_path: str, out_dir: str, gmx_executable: str) -> str | None:
+def _make_ndx(gro_path: str, out_dir: str, gmx_executable: str, make_ndx_input: str = "q\n") -> str | None:
     if not shutil.which(gmx_executable):
         print(f"WARNING: {gmx_executable!r} not found — skipping index.ndx generation")
         return None
     ndx_path = os.path.join(out_dir, "index.ndx")
     result = subprocess.run(
         [gmx_executable, "make_ndx", "-f", gro_path, "-o", ndx_path],
-        input="q\n",
+        input=make_ndx_input,
         capture_output=True,
         text=True,
     )

@@ -84,3 +84,32 @@ hpc:
   partition_train: gpu
   account: cellmembrane
   work_subpath: lipid-data
+
+martini_pipeline:
+  output_root: data/martini_pipeline
+  insane_cmd: insane
+  itp_dir: resources/martini3/itp
+  mdp_templates_dir: lipid_gnn/martini_pipeline/templates
+  mdp_freeze: lipid_gnn/martini_pipeline/templates/_audit_freeze.json
+
+  box:
+    xy_nm: 11.0
+    z_nm: 10.0
+    salt_M: 0.15
+    water_type: W
+    charge_mode: auto
+    center: true
+    pbc: rectangular
+
+  run:
+    nsteps_min: 20000
+    nsteps_eq: 1000000        # 10 ns at dt=0.01 ps (Decision 14)
+    nsteps_prod: -1           # -1 means caller must supply via CLI
+    nstenergy_eq: 1000
+    save_forces: false        # Decision 3
+    seed_strategy: deterministic
+
+  gmx:
+    executable: gmx
+    maxwarn: 2
+    mdrun_extra_args: []
