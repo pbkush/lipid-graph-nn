@@ -52,7 +52,15 @@ def compute_apl(xtc_path: str, tpr_path: str, n_lipids: int, n_skip_ns: float = 
 
 
 def compute_thickness(xtc_path: str, tpr_path: str, n_skip_ns: float = 10.0) -> float:
-    """Return mean bilayer thickness (nm) from PO4 bead z-separation (DIPC uses D2A)."""
+    """Return mean PO4-PO4 bilayer thickness (nm), averaged over the last *n_skip_ns*.
+
+    PO4 is the headgroup phosphate bead and is present in every Martini 3 PC,
+    PE, PG, and PS lipid regardless of tail saturation — so it's the correct
+    universal reference for bilayer thickness.  (Earlier versions of this
+    script selected ``D2A`` for "di-unsaturated lipids", which is wrong:
+    D2A is a tail bead inside the bilayer core, so D2A-D2A is roughly
+    half of the actual headgroup-to-headgroup thickness.)
+    """
     import MDAnalysis as mda
     import numpy as np
 
@@ -62,16 +70,13 @@ def compute_thickness(xtc_path: str, tpr_path: str, n_skip_ns: float = 10.0) -> 
     skip_frames = max(1, int(n_skip_ns / dt_ns)) if dt_ns > 0 else 1
     start_frame = max(0, n_frames - skip_frames)
 
-    # DIPC: use D2A (equivalent of PO4 for di-unsaturated lipids)
-    d2a = u.select_atoms("name D2A")
-    if len(d2a) == 0:
-        d2a = u.select_atoms("name PO4")  # fallback for other lipids
-    if len(d2a) == 0:
+    po4 = u.select_atoms("name PO4")
+    if len(po4) == 0:
         return float("nan")
 
     thick_values = []
     for ts in u.trajectory[start_frame:]:
-        z = d2a.positions[:, 2] / 10.0  # Å → nm
+        z = po4.positions[:, 2] / 10.0  # Å → nm
         z_mid = float(np.mean(z))
         upper = z[z > z_mid]
         lower = z[z <= z_mid]
@@ -82,18 +87,19 @@ def compute_thickness(xtc_path: str, tpr_path: str, n_skip_ns: float = 10.0) -> 
 
 
 def check_energy(edr_path: str) -> tuple[bool, float]:
-    """Return (ok, max_abs_epot). Requires gmx energy or pyedr."""
+    """Return (ok, max_abs_epot). Requires pyedr."""
     try:
         import pyedr
         import numpy as np
-        edr = pyedr.read_edr(edr_path)
-        epot = edr.get("Potential", edr.get("potential", None))
+        # edr_to_dict returns {term_name: numpy_array}; read_edr returns a
+        # 3-tuple (values, names, times) which doesn't have .get().
+        edr = pyedr.edr_to_dict(edr_path)
+        epot = edr.get("Potential", edr.get("potential"))
         if epot is None:
             return True, 0.0
         max_abs = float(np.nanmax(np.abs(epot)))
         return max_abs < _EPOT_ABS_MAX, max_abs
     except ImportError:
-        # pyedr not available — skip energy check
         print("  WARNING: pyedr not installed, skipping energy check")
         return True, 0.0
 
@@ -110,63 +116,76 @@ def main() -> None:
                         help="Override equilibration steps (default: from config, 1000000 = 10 ns)."
                              " Use a small value (e.g. 5000) for a fast login-node smoke test;"
                              " the physical APL check expects a fully equilibrated system.")
+    parser.add_argument("--check-only", action="store_true",
+                        help="Skip the simulation and run only the APL/thickness/energy checks "
+                             "against an existing <out-dir>/DIPC100/ trajectory.")
     args = parser.parse_args()
 
-    from lipid_gnn.config import CONFIG
-    cfg = CONFIG.martini_pipeline
-    insane_cmd = cfg.insane_cmd if cfg else "insane"
-    itp_dir = str(cfg.itp_dir) if cfg else "resources/martini3/itp"
-
-    # Martini 3 production timestep is 0.02 ps; 1 ns = 1000 ps → 50 000 steps/ns.
-    _DT_PS = 0.02
-    nsteps_prod = round(args.prod_ns * 1000.0 / _DT_PS)
-
-    composition = {"DIPC": 1.0}
     out_dir = os.path.join(args.out_dir, "DIPC100")
-
-    from lipid_gnn.martini_pipeline.mdp_writer import MDPParams
-    from lipid_gnn.martini_pipeline.pipeline import run as pipeline_run
-    from lipid_gnn.martini_pipeline.system_builder import BoxParams
-
-    box = BoxParams(
-        xy_nm=cfg.box.xy_nm if cfg else 11.0,
-        z_nm=cfg.box.z_nm if cfg else 10.0,
-        salt_M=cfg.box.salt_M if cfg else 0.15,
-        center=True,
-        pbc="rectangular",
-    )
-    mdp_kwargs = {"nsteps_prod": nsteps_prod}
-    if args.nsteps_min is not None:
-        mdp_kwargs["nsteps_min"] = args.nsteps_min
-    if args.nsteps_eq is not None:
-        mdp_kwargs["nsteps_eq"] = args.nsteps_eq
-    mdp_params = MDPParams(**mdp_kwargs)
-
-    print(f"Running DIPC100 sanity check — {args.prod_ns} ns production")
-    print(f"Output: {out_dir}")
-
-    result = pipeline_run(
-        composition, out_dir,
-        box=box, mdp_params=mdp_params,
-        gmx_executable=args.gmx,
-        insane_cmd=insane_cmd,
-        itp_dir=itp_dir,
-        maxwarn=cfg.gmx.maxwarn if cfg else 2,
-    )
-
-    if result.overall_status != "ok":
-        print(f"FAIL — pipeline status: {result.overall_status}")
-        sys.exit(1)
-
+    manifest_path = os.path.join(out_dir, "manifest.json")
     xtc_path = os.path.join(out_dir, "run", "prun.xtc")
     tpr_path = os.path.join(out_dir, "run", "prun.tpr")
     edr_path = os.path.join(out_dir, "run", "prun.edr")
+
+    if args.check_only:
+        # Skip the simulation; just verify the artifacts exist and analyse them.
+        missing = [p for p in (manifest_path, xtc_path, tpr_path) if not os.path.isfile(p)]
+        if missing:
+            print(f"FAIL — --check-only but missing artifacts: {missing}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Re-checking existing DIPC100 run at {out_dir} (no simulation)")
+    else:
+        from lipid_gnn.config import CONFIG
+        cfg = CONFIG.martini_pipeline
+        insane_cmd = cfg.insane_cmd if cfg else "insane"
+        itp_dir = str(cfg.itp_dir) if cfg else "resources/martini3/itp"
+
+        # Martini 3 production timestep is 0.02 ps; 1 ns = 1000 ps → 50 000 steps/ns.
+        _DT_PS = 0.02
+        nsteps_prod = round(args.prod_ns * 1000.0 / _DT_PS)
+
+        composition = {"DIPC": 1.0}
+
+        from lipid_gnn.martini_pipeline.mdp_writer import MDPParams
+        from lipid_gnn.martini_pipeline.pipeline import run as pipeline_run
+        from lipid_gnn.martini_pipeline.system_builder import BoxParams
+
+        box = BoxParams(
+            xy_nm=cfg.box.xy_nm if cfg else 11.0,
+            z_nm=cfg.box.z_nm if cfg else 10.0,
+            salt_M=cfg.box.salt_M if cfg else 0.15,
+            center=True,
+            pbc="rectangular",
+        )
+        mdp_kwargs = {"nsteps_prod": nsteps_prod}
+        if args.nsteps_min is not None:
+            mdp_kwargs["nsteps_min"] = args.nsteps_min
+        if args.nsteps_eq is not None:
+            mdp_kwargs["nsteps_eq"] = args.nsteps_eq
+        mdp_params = MDPParams(**mdp_kwargs)
+
+        print(f"Running DIPC100 sanity check — {args.prod_ns} ns production")
+        print(f"Output: {out_dir}")
+
+        result = pipeline_run(
+            composition, out_dir,
+            box=box, mdp_params=mdp_params,
+            gmx_executable=args.gmx,
+            insane_cmd=insane_cmd,
+            itp_dir=itp_dir,
+            maxwarn=cfg.gmx.maxwarn if cfg else 2,
+        )
+
+        if result.overall_status != "ok":
+            print(f"FAIL — pipeline status: {result.overall_status}")
+            sys.exit(1)
+        manifest_path = result.manifest_path
 
     # Molecule counts from manifest.  The composition token is "DIPC" but the
     # v2 moleculetype name (what appears in topol.top after Decision 49) is
     # "DLPC".  Look up via the registry to get the right key.
     from lipid_gnn.martini_pipeline.lipid_registry import get_lipid
-    with open(result.manifest_path) as fh:
+    with open(manifest_path) as fh:
         manifest = json.load(fh)
     counts = manifest["build_stats"]["molecule_counts"]
     lipid_resname = get_lipid("DIPC").resname  # "DLPC"
