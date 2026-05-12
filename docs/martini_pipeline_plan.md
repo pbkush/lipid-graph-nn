@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-12 (step 8 complete).
+Last updated: 2026-05-12 (step 9 complete).
 
 ---
 
@@ -146,7 +146,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 6 | `system_builder.py` + tests | [x] | **Reworked 2026-05-08 (Decision 27)**: 32 ITPs from M3-Lipid-Parameters (full lipidome) replace the 9 legacy-copied ITPs. `ffbonded_v2.itp` included (required by v2 lipid files). pbc now always passed explicitly. 27 tests pass. |
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [x] | Decisions 22–25, 28–32. Filenames match legacy (`martini_em`, `martini_eq`, `prun`). `-maxwarn 2` default (CLI flag). Seed deterministic from composition hash. `MartiniPipelineConfig` in `config.py`. CLI `run_martini_pipeline.py` with insane-style ratio args + `--nsteps`/`--prod-ns`. 377 tests pass, 7 skipped. |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [x] | Decisions 33–36. Grid generators: `binary_grid`, `ternary_grid` (full symmetric simplex), `dppc_corner_grid`, `dopc_corner_grid`. CHOL capped at 40%. CLI `print_work_queue.py` with `--grid`, `--format`, `--out`. 451 tests pass (32 new). |
-| 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [ ] | Single orchestrator with GPU/CPU branch |
+| 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [x] | Decisions 37–42. Multi-token `--compositions`, `--queue-file`, `--missing-from-grid`; GPU/CPU branch; `gpu_test` guards; `--dry-run`. 476 tests pass (25 new). |
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | |
 | 11 | Subgoal 2 — fill DPPC/DOPC corners on HPC | [ ] | Production run; not a code task |
 | 12 | Subgoal 3 — extend lipid pool beyond current 10 | [ ] | Future, after subgoal 2 lands |
@@ -1630,3 +1630,260 @@ No new external dependencies. Internal imports: `composition.Composition`, `mani
 - **Decision 35** — CHOL capped at 40 % in all generated grids (Martini 3 sterol guidance + legacy precedent).
 - **Decision 36** — Work-queue ordering/prioritisation lives in step 9, not step 8. The step-8 CLI emits an unsorted (or alphabetically sorted) queue.
 - *Plus any decisions arising from H.10 Q2-Q6.*
+
+---
+
+## Appendix I — Step 9 detailed plan: HPC submission layer
+
+### I.1 Scope
+
+Submit the work queue from step 8 to Goethe-HLR (AMD MI210 / ROCm / SLURM), running N Martini simulations in parallel per node. Mirrors the established `submit_sweep.sh` / `sbatch_sweep.sh` split (which packs N training runs onto one SLURM job) but for the simulation pipeline rather than training.
+
+#### What's in scope for step 9
+
+- `scripts/bash/submit_simulations.sh` — orchestrator (login-node side). Resolves the composition list (explicit `--compositions`, `--missing-from-grid`, or `--queue-file`), packs onto SLURM batches, submits one `sbatch` per batch with per-slot `RUN_<i>_COMP=…` env vars baked in.
+- `scripts/bash/sbatch_simulations.sh` — worker (compute-node side). Activates the conda env, loads the ROCm module, fans out N parallel `python scripts/simulation/run_martini_pipeline.py` processes, each pinned via `HIP_VISIBLE_DEVICES=$i` (GPU mode) or `OMP_NUM_THREADS` carve-out (CPU mode), waits for all, surfaces the worst exit code.
+- `tests/martini_pipeline/test_submit_simulations.py` — bash-level tests via subprocess + `--dry-run` (no real `sbatch`).
+- `docs/martini_pipeline_plan.md` — status table row 9 → `[x]`, decisions 37–N appended.
+
+#### What's out of scope for step 9
+
+- The HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`) — that's step 10. Step 9 ships with **conservative pre-benchmark defaults** (documented in I.2 Decision a) and a `martini_pipeline.hpc_defaults` config stub that step 10 fills in.
+- Production corner-fill execution — step 11 (not a code task).
+- Checkpoint-restart (`gmx mdrun -cpi`). The orchestrator can re-invoke a partial system idempotently via `pipeline.run()`'s stage-skip logic ([Decision 23](#decision-log)); explicit `-cpi` restart-from-checkpoint is deferred.
+- Top-level "submission summary" manifest aggregating per-sim status. Each system's manifest is already authoritative; aggregation can come from `summarise_systems()` re-run on the new root.
+- Retries on transient sim failure. First failure → manifest with `overall_status="failed_at_<stage>"`; user resubmits the queue (which by default skips already-`ok` systems via `--missing-from-grid`).
+
+### I.2 Locked-in design decisions
+
+1. **Two-script split mirrors `submit_sweep.sh` / `sbatch_sweep.sh` exactly.** Login-node orchestrator parses args, queries `print_work_queue.py` / config, builds the per-slot env-var bundle, and issues one `sbatch` per N-sim batch. Compute-node worker reads the env vars and fans out. Same `RUN_<i>_<KEY>=…` indirect-lookup pattern.
+2. **One composition per Python process.** Each backgrounded slot runs `python scripts/simulation/run_martini_pipeline.py <composition> --output-root <root> --nsteps <N>`; multi-system batching lives in the bash worker, not in `pipeline.py` ([Decision 22](#decision-log)).
+3. **Output root lives on `/work`, not on `$HOME`.** Default for HPC runs is `/work/$GROUP/$USER/lipid-data/martini_pipeline/`. Local-run default stays at the repo-relative `data/martini_pipeline/` from `MartiniPipelineConfig.output_root`. The orchestrator flips between them based on `--output-root` (with HPC default sourced from a new config knob `martini_pipeline.hpc_output_subpath`, defaulting to `martini_pipeline/` under `hpc.work_subpath`).
+4. **Composition list sources are exclusive.** Exactly one of `--compositions A B C`, `--missing-from-grid <grid_name>`, or `--queue-file <path>` must be supplied. Rationale: avoid silent precedence bugs.
+5. **GPU/CPU as a single script with a branch ([Decision 4](#decision-log)).** `--gpus-per-node 0` short-circuits the GPU-pinning block; `gmx mdrun -nb cpu -ntomp <K>` is used with thread budget split across the N parallel sims.
+6. **Pre-benchmark defaults are intentionally conservative.** `--sims-per-node 4` (GPU partition) and `--time 24:00:00`. Rationale: corner systems are ≤ 12k atoms, but production length will land at ≥ 100 ns per system; under-packing burns walltime but cannot fail, over-packing risks OOM/contention. Step 10 raises this with data.
+7. **All HPC environment plumbing flows through `config.yaml`.** No hardcoded module names, partitions, accounts, or paths in the bash scripts; everything reads via `python scripts/python/print_config_var.py <dotted.key>` (matching `submit_sweep.sh`). New config keys live under `hpc.*` (existing block) and `martini_pipeline.hpc_defaults.*` (new sub-block, step-10-filled).
+8. **`gpu_test` guard rails mirror `submit_sweep.sh` exactly.** Time cap at 08:00:00; max 2 sbatch jobs; warn-and-cap or error-and-abort with the same messages.
+9. **Per-slot logs land at `logs/simulations/sim-<jobid>-gpu<i>.{out,err}`.** Matches the `logs/sweeps/sweep-<jobid>-gpu<i>.{out,err}` precedent. The orchestrator's own stdout summary is captured by SLURM at `logs/simulations/submit-<jobid>.out` (same convention).
+10. **Worker reads inputs from `/work`, writes outputs to `/work`, no `/local` staging.** Same root-cause analysis as `sbatch_sweep.sh`'s big comment: `/local` is tmpfs, pages get evicted under shared-node memory pressure, file reads turn into `FileNotFoundError`. ITPs and MDP templates are read from the repo on `$HOME` (small, hot, cache-friendly); per-sim outputs go directly to `/work/.../martini_pipeline/<comp>/`.
+11. **Failure isolation: one bad sim cannot kill its node-mates.** Each slot is backgrounded (`&`), all PIDs collected, `wait` runs to completion. Exit code reported is the worst per-slot exit code (same as `sbatch_sweep.sh` lines 113–121). Each system writes its own manifest with `overall_status="failed_at_*"` so the next `--missing-from-grid` rerun picks it up automatically.
+12. **Idempotency is inherited, not re-implemented.** `pipeline.run()` already skips stages whose handoff `.gro` exists ([Decision 23](#decision-log)). Resubmitting an interrupted batch with `--missing-from-grid` returns only the systems whose manifest doesn't have `overall_status="ok"` — and `pipeline.run()` resumes them from the last completed stage. No restart logic needed in the bash layer.
+
+### I.3 Public API — `scripts/bash/submit_simulations.sh`
+
+```text
+usage: submit_simulations.sh
+    (--compositions COMP [COMP ...]
+     | --missing-from-grid {dppc_corner,dopc_corner,binary,ternary,all}
+     | --queue-file PATH)
+    [--lipids LIPID [LIPID ...]]      # required for --missing-from-grid {binary,ternary}
+    [--step N]                        # default 10
+    [--prod-ns FLOAT | --nsteps N]    # exactly one required
+    [--save-forces]
+    [--maxwarn N]                     # default 2
+    [--nsteps-eq N] [--nsteps-min N]
+    [--output-root PATH]              # default: WORK/.../martini_pipeline/
+    [--partition NAME]                # default from CONFIG.hpc.partition_train
+    [--time HH:MM:SS]                 # default 24:00:00
+    [--gpus-per-node N]               # default 8; set 0 for CPU partition
+    [--sims-per-node N]               # default 4 pre-benchmark (Decision 37)
+    [--cpus-per-sim N]                # default 8
+    [--mem-per-sim SIZE]              # default 16G
+    [--ntomp N]                       # default = cpus-per-sim
+    [--max-queue N]                   # cap total sims submitted (alphabetical priority)
+    [--dry-run]                       # print sbatch commands, do not submit
+```
+
+Behaviour:
+
+- **Composition resolution**:
+  - `--compositions` → use the literal list (validated via `python -c "from lipid_gnn.martini_pipeline.composition import parse_name; ..."` round-trip).
+  - `--missing-from-grid` → shell out to `python scripts/simulation/print_work_queue.py --grid <X> --step <step> [--lipids ...] --format lines` and pipe the canonical names back. Inherits the union-of-output-roots logic from step 8 automatically.
+  - `--queue-file` → read one comp name per line (blank lines and `#`-comments skipped).
+- **Packing**: `N_total = len(comp_list)`; `N_batches = ceil(N_total / sims_per_node)`. One `sbatch` per batch. Each batch packs the next `sims-per-node` composition names into `RUN_0_COMP, RUN_1_COMP, …` env vars; the worker reads them via indirect expansion.
+- **Resource calculation** (mirrors `submit_sweep.sh` line 134–137 for `--mem` workaround):
+  - `TOTAL_CPUS = cpus_per_sim × N_sims_in_batch`
+  - `TOTAL_MEM  = mem_per_sim × N_sims_in_batch` (numeric scaling on the suffix)
+  - `--gres=gpu:N_sims_in_batch` when `gpus_per_node > 0`; otherwise `--gres=none`.
+- **Frozen knobs at submission time**: the orchestrator resolves `--prod-ns`/`--nsteps`, `--maxwarn`, `--save-forces`, `--output-root`, plus all HPC defaults (conda env, ROCm module, account, work subpath) and bakes them into the export list. Queue wait cannot cause drift.
+- **`--dry-run`**: prints the exact `sbatch …` invocation for every batch and the per-slot composition assignment, but does not call `sbatch`. Required for tests and for sanity-checking large queues before burning quota.
+- **Summary stdout** (after submission, mirroring `submit_sweep.sh` line 161–179):
+
+  ```text
+  Submitting simulations  (2026-05-13 09:42)
+    partition       : gpu
+    time            : 24:00:00
+    sims-per-node   : 4
+    output-root     : /work/cellmembrane/pberger/lipid-data/martini_pipeline
+    Total comps     : 35
+    Batches         : 9 (up to 4 sims/node)
+
+    Job 8127492  batch 1/9  N_SIMS=4  cpus=32  mem=64G
+      [GPU 0]  DPPC100
+      [GPU 1]  DPPC90_DIPC10
+      …
+  ```
+
+### I.4 Public API — `scripts/bash/sbatch_simulations.sh`
+
+Static SBATCH directives at the top of the file (same pattern as `sbatch_sweep.sh`):
+
+```bash
+#SBATCH --job-name=lipid-sim
+#SBATCH --mail-user=pberger@fias.uni-frankfurt.de
+#SBATCH --account=cellmembrane
+#SBATCH --output=logs/simulations/submit-%j.out
+#SBATCH --error=logs/simulations/submit-%j.err
+```
+
+Dynamic resources (`--partition`, `--time`, `--gres`, `--cpus-per-task`, `--mem`) are passed by the orchestrator on the `sbatch` command line, not via `#SBATCH` directives.
+
+Inside the script:
+
+1. `set -euo pipefail; mkdir -p logs/simulations`.
+2. `source $HOME/miniforge3/etc/profile.d/conda.sh; conda activate "$(python …conda_env)"; module load "$(python …module_rocm)"`.
+3. Set `cd "$HOME/lipid-graph-nn"`.
+4. Resolve `WORK="/work/$GROUP/$USER/$WORK_SUBPATH"` (matches `sbatch_sweep.sh` line 26).
+5. Resolve `OUTPUT_ROOT="${OUTPUT_ROOT:-$WORK/martini_pipeline}"` (set in orchestrator's export list).
+6. Resolve `N_SIMS="${N_SIMS_PER_NODE:-1}"`.
+7. For `i in 0..N_SIMS-1`:
+   - Indirect-lookup `COMP="${!COMP_VAR}"` where `COMP_VAR="RUN_${i}_COMP"`.
+   - Logs at `logs/simulations/sim-${SLURM_JOB_ID}-gpu${i}.{out,err}`.
+   - Subshell:
+     - `export HIP_VISIBLE_DEVICES="$i"; export CUDA_VISIBLE_DEVICES="$i"` (GPU mode; skipped if `GPUS_PER_NODE=0`).
+     - `export OMP_NUM_THREADS="$NTOMP"`.
+     - Run `python scripts/simulation/run_martini_pipeline.py "$COMP" --output-root "$OUTPUT_ROOT" --nsteps "$NSTEPS" --maxwarn "$MAXWARN" [--save-forces] --mdrun-args "-ntomp $NTOMP [-nb cpu]" >"$LOGOUT" 2>"$LOGERR"`.
+   - `&` into background; collect PID.
+8. After the loop, `wait` on every PID; report worst exit code (same pattern as `sbatch_sweep.sh` line 110–124).
+
+### I.5 Internal data flow
+
+```text
+print_work_queue.py --grid X --format lines
+            │
+            ▼
+submit_simulations.sh
+  ├─ validates comps via parse_name round-trip
+  ├─ batches into ceil(N_total / sims_per_node)
+  ├─ per batch:
+  │    EXPORT_VARS = ALL,OUTPUT_ROOT=<root>,N_SIMS_PER_NODE=<k>,NSTEPS=<n>,
+  │                  MAXWARN=<m>,SAVE_FORCES=<bool>,NTOMP=<t>,GPUS_PER_NODE=<g>,
+  │                  RUN_0_COMP=<c0>, RUN_1_COMP=<c1>, …
+  │    sbatch --partition=… --time=… --gres=gpu:k --cpus-per-task=… --mem=… \
+  │           --export=$EXPORT_VARS scripts/bash/sbatch_simulations.sh
+  ▼
+sbatch_simulations.sh  (compute node)
+  ├─ activates env, loads rocm
+  ├─ for i in 0..k-1:
+  │    HIP_VISIBLE_DEVICES=$i  python scripts/simulation/run_martini_pipeline.py "$RUN_${i}_COMP" …  &
+  └─ wait; exit worst_rc
+            │
+            ▼
+For each composition: out_dir/<comp>/{minimization,equilibration,run,manifest.json}
+            │
+            ▼
+Next `submit_simulations.sh --missing-from-grid …` sees the completed manifests
+and produces a shorter queue. Loop until queue is empty.
+```
+
+### I.6 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| Empty queue (all comps already `ok`) | Orchestrator prints `(no missing)`, exits 0 without submitting |
+| Invalid composition name in `--compositions` | Fail fast on the login node before any `sbatch` |
+| `--queue-file` with blank lines / `#` comments | Silently skipped |
+| `--missing-from-grid binary` without `--lipids` | Fail fast with usage; mirrors print_work_queue.py's check |
+| `gpu_test` partition with > 2 batches | Error and exit (same as `submit_sweep.sh` line 142–148) |
+| `gpu_test` partition with `--time > 08:00:00` | Warn, cap to 08:00:00 |
+| Mid-run SLURM kill / preemption | Each slot's pipeline writes its current manifest stage; re-submission with `--missing-from-grid` picks up where it left off |
+| One sim of four fails mid-batch | Other three continue; node exits with the failed slot's rc; failed slot's manifest has `overall_status="failed_at_…"` |
+| `--gpus-per-node 0` (CPU partition) | Skip `HIP_VISIBLE_DEVICES` export; `--mdrun-args "-nb cpu -ntomp $NTOMP"`; `--gres=none` |
+| `--dry-run` | Print `sbatch …` per batch + per-slot comp assignment; do not invoke `sbatch` |
+| `OUTPUT_ROOT` already contains `<comp>/` with completed manifest | `pipeline.run()` skips all stages (idempotent); single GPU minute wasted on the no-op |
+| W&B-style air-gapped node | Pipeline does not use W&B; no special handling |
+| Duplicate `RUN_<i>_COMP` (orchestrator bug) | Worker's `pipeline.run()` is idempotent; second run is a no-op. Still worth a unit test in I.7. |
+
+### I.7 Test plan — `tests/martini_pipeline/test_submit_simulations.py`
+
+All tests invoke `submit_simulations.sh --dry-run` via `subprocess.run([…], capture_output=True)`. No real `sbatch`. Where the script needs to invoke `print_work_queue.py`, the tests can rely on the real (read-only) implementation.
+
+1. `test_explicit_compositions_packed_correctly` — `--compositions A B C D E --sims-per-node 2 --dry-run --prod-ns 100` ⇒ 3 batches (2, 2, 1).
+2. `test_sims_per_node_default_4` — no `--sims-per-node` ⇒ default 4 reflected in batch sizes.
+3. `test_missing_grid_dppc_corner_dry_run` — `--missing-from-grid dppc_corner --output-root <tmp_empty>` ⇒ 35 comps (the full grid, since the tmp root is empty).
+4. `test_missing_grid_dppc_corner_partial_present` — populate tmp_root with one `DPPC100/manifest.json overall_status=ok` ⇒ queue has 34 entries.
+5. `test_queue_file_strips_comments_and_blanks` — `--queue-file <tmp_file>` containing `# header\nDPPC100\n\nDIPC100` ⇒ 2 comps queued.
+6. `test_exclusive_source_modes` — passing both `--compositions` and `--queue-file` ⇒ exit non-zero with usage message.
+7. `test_invalid_comp_name_fails_fast` — `--compositions NOTALIPID99` ⇒ non-zero exit, error mentions parse failure.
+8. `test_missing_prod_length_required` — neither `--prod-ns` nor `--nsteps` ⇒ usage error.
+9. `test_mutually_exclusive_prod_length` — both `--prod-ns 50` and `--nsteps 1000000` ⇒ usage error.
+10. `test_gpu_test_max_two_batches_enforced` — 12 comps × `--sims-per-node 4 --partition gpu_test` ⇒ 3 batches ⇒ error and exit 1.
+11. `test_gpu_test_time_cap_warning` — `--partition gpu_test --time 12:00:00` ⇒ warning + capped to `08:00:00` in dry-run output.
+12. `test_dry_run_does_not_invoke_sbatch` — `--dry-run` prints `sbatch …` lines but never runs the binary (PATH stubbed sbatch records invocation; should remain empty).
+13. `test_resource_scaling` — `--sims-per-node 4 --cpus-per-sim 8 --mem-per-sim 16G` ⇒ dry-run shows `--cpus-per-task=32` and `--mem=64G`.
+14. `test_cpu_branch` — `--gpus-per-node 0` ⇒ dry-run output contains `--gres=none` and `-nb cpu` in the mdrun args.
+15. `test_output_root_override` — `--output-root /custom/path` ⇒ dry-run shows `OUTPUT_ROOT=/custom/path` in the export list.
+16. `test_max_queue_caps_total` — 35-entry queue, `--max-queue 5` ⇒ 5 comps submitted; remainder logged to stderr.
+17. `test_sbatch_script_parses_run_i_comp` — directly invoke `sbatch_simulations.sh` under a stubbed-`python` / stubbed-`module` / stubbed-`conda` environment with `RUN_0_COMP=DPPC100 RUN_1_COMP=DOPC100 N_SIMS_PER_NODE=2 SLURM_JOB_ID=test`; check stub-python receives the right `argv[1]` per slot. (Hardest test; may be skipped if the bash stubbing is too brittle — covered by I.9 acceptance criterion E2E instead.)
+
+Tests 1–16 are deterministic and run locally without SLURM. Test 17 is allowed to be `skipUnless(shutil.which("bash"))` or similar.
+
+### I.8 Layout & dependencies
+
+```text
+scripts/bash/
+    submit_simulations.sh                ← new (orchestrator)
+    sbatch_simulations.sh                ← new (worker)
+tests/martini_pipeline/
+    test_submit_simulations.py           ← new
+logs/simulations/                        ← created on first submission (.gitkeep)
+docs/
+    martini_pipeline_plan.md             ← status row 9 → [x] + Decisions 37–N
+config.yaml                              ← add martini_pipeline.hpc_defaults stub
+lipid_gnn/config.py                      ← parse hpc_defaults sub-block
+```
+
+New config block (step-10 fills in real values):
+
+```yaml
+martini_pipeline:
+  hpc_defaults:                # pre-benchmark conservative values; step 10 overwrites
+    sims_per_node: 4
+    cpus_per_sim: 8
+    mem_per_sim: 16G
+    ntomp: 8
+    gpus_per_node: 8
+```
+
+No new Python dependencies. Bash dependencies: `python scripts/python/print_config_var.py` (already used by `submit_sweep.sh`), `sbatch`/`squeue` (HPC only; tests stub them out).
+
+### I.9 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_submit_simulations.py -q` passes locally (no `sbatch` needed).
+- `bash scripts/bash/submit_simulations.sh --missing-from-grid dppc_corner --prod-ns 100 --dry-run` prints a coherent batch plan with 9 batches × ≤ 4 sims/batch for the current 35-entry queue.
+- `bash scripts/bash/submit_simulations.sh --compositions DIPC100 --prod-ns 10 --dry-run` prints a single 1-sim batch with the correct `sbatch …` line.
+- On HPC: a real submission of `--compositions DIPC100 --prod-ns 0.5` (smoke) lands one job, exits cleanly, leaves a `manifest.json overall_status=ok` under `$OUTPUT_ROOT/DIPC100/`. *(Manual; not in CI.)*
+- After the smoke job lands, re-running `submit_simulations.sh --missing-from-grid all --prod-ns 100 --dry-run` correctly omits `DIPC100` from the queue.
+- Step status table row 9 flipped to `[x]`.
+
+### I.10 Open questions (need user input before implementation)
+
+1. **Default `--sims-per-node` before step 10's benchmark.** Recommend `4`. Rationale: 8-GPU node, 8 MI210s, but each `gmx mdrun` slot is bounded by ITP-init + per-step memory writes; halving the GPU count leaves room for the CPU side. Step 10 may raise to 8 if benchmark says so. Override?
+2. **Output root on HPC: `/work/.../martini_pipeline/` vs `/work/.../lipid-data/martini_pipeline/`?** The existing legacy layout puts simulations under `/work/.../lipid-data/data/membrane_only/`; matching means new sims land at `/work/.../lipid-data/martini_pipeline/`. Recommend the latter (single root for all simulation data; mirrors the `lipid-data/` umbrella). Override?
+3. **Composition prioritisation for `--missing-from-grid` and `--max-queue`.** Right now the planner emits alphabetically grouped output. Options for step 9: (a) keep alphabetical, (b) interleave corners (DPPC, DOPC) round-robin, (c) put pure singletons first (they're the cheapest), (d) put the systems flagged by Stage 5b MAE first. Recommend (a) — alphabetical is simplest and step 11 can resort if needed.
+4. **Per-sim mdrun thread count when `--ntomp` is unset.** Default to `--cpus-per-sim` (1:1). Override?
+5. **CPU-only fallback path.** When `--gpus-per-node 0`, do we want a separate default `--partition` (e.g. `cpu`)? Or require the user to pass `--partition cpu` explicitly? Recommend explicit — keeps the GPU/CPU branch in the script trivial.
+6. **Retry-once mode for transient failures.** Some HPC failures are flaky (node memory pressure, ROCm init race). Recommend defer to a later step; first-failure → manifest with `failed_at_*` is fine. Worth implementing now if the user expects frequent flake.
+7. **Email notifications on job failure.** `sbatch --mail-type=FAIL` is cheap and useful for long queues. Add? Recommend yes (consistent with the existing `submit_sweep.sh` pattern which already wires `--mail-user`).
+8. **`logs/simulations/` retention.** Per-sim logs grow with the queue. Recommend no auto-cleanup in step 9; surface a `.gitkeep` so the directory exists but the contents are gitignored.
+9. **Smoke test acceptance.** Should the I.9 manual smoke test be a separate `bash scripts/simulation/sanity_check_hpc.sh` driver (mirroring `sanity_check_dipc100.py`)? Recommend skip — `sanity_check_dipc100.py` already works locally; HPC parity is verified by the dry-run tests + a one-time manual job.
+
+### I.11 New decisions to log on completion
+
+- **Decision 37** — Two-script split for the HPC submission layer, mirroring `submit_sweep.sh` / `sbatch_sweep.sh` line-for-line in structure. Rationale: convention parity, easy review.
+- **Decision 38** — Pre-benchmark defaults: `sims-per-node 4`, `cpus-per-sim 8`, `mem-per-sim 16G`, `time 24:00:00`. Conservative; step 10 promotes to data-driven values.
+- **Decision 39** — Read inputs from `/work`, write outputs to `/work`; no `/local` staging. Rationale: same tmpfs-eviction story as `sbatch_sweep.sh` lines 41–57.
+- **Decision 40** — Each backgrounded slot is a separate `python scripts/simulation/run_martini_pipeline.py` invocation. Failures of one slot do not abort node-mates; worst exit code is surfaced (mirror of `sbatch_sweep.sh` lines 113–121).
+- **Decision 41** — Idempotency is inherited from `pipeline.run()` (Decision 23); no separate restart / checkpoint logic at the bash layer. Resubmission with `--missing-from-grid` is the canonical retry mechanism.
+- **Decision 42** — `--dry-run` is a first-class testing affordance; all unit tests use it.
+- *Plus any decisions arising from I.10 Q1–Q9.*
