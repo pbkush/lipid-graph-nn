@@ -245,3 +245,8 @@ mem_issue_prompt.md
 build/
 lipid_gnn.egg-info/
 scripts/bash/gc_copy_files.sh
+
+# benchmark run outputs (commit only summary.md and summary.csv via force-add)
+results/benchmarks/martini_pipeline/*/points/
+results/benchmarks/martini_pipeline/*/summary.json
+results/benchmarks/martini_pipeline/latest

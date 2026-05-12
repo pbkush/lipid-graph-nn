@@ -1887,3 +1887,237 @@ No new Python dependencies. Bash dependencies: `python scripts/python/print_conf
 - **Decision 41** — Idempotency is inherited from `pipeline.run()` (Decision 23); no separate restart / checkpoint logic at the bash layer. Resubmission with `--missing-from-grid` is the canonical retry mechanism.
 - **Decision 42** — `--dry-run` is a first-class testing affordance; all unit tests use it.
 - *Plus any decisions arising from I.10 Q1–Q9.*
+
+---
+
+## Appendix J — Step 10 detailed plan: HPC benchmark & `hpc_defaults` calibration
+
+### J.1 Scope
+
+Run a structured throughput sweep on Goethe-HLR (AMD MI210 / ROCm) using the step-9 submission layer, parse `gmx mdrun` performance, and produce data-backed values for `martini_pipeline.hpc_defaults` in `config.yaml`. The sweep must be small enough to finish in a single wallclock day (< 16 GPU-hours total) and large enough to land defaults that survive corner-fill production (step 11) without re-benchmarking.
+
+#### What's in scope for step 10
+
+- `scripts/simulation/benchmark_hpc.sh` — orchestrator: submits one SLURM job per `(sims_per_node, cpus_per_sim, gpus_per_node)` config point, all running the same reference system for a short, fixed length.
+- `scripts/simulation/sbatch_benchmark_hpc.sh` — worker: identical structure to `sbatch_simulations.sh`, but runs a stripped-down "production-only" pipeline (no insane / minimization / equilibration on every point — those are amortised once and reused).
+- `scripts/python/analyze_benchmark.py` — Python CLI: ingests the per-point logs, parses `Performance: <ns/day>` from `prun.log`, samples `rocm-smi` snapshots, writes `results/benchmarks/martini_pipeline/<date>/summary.csv` + `summary.json` + `summary.md`, and prints a recommended `hpc_defaults` block.
+- `tests/martini_pipeline/test_analyze_benchmark.py` — unit tests for the log parser, ns/day aggregation, and recommendation logic (no SLURM).
+- `docs/martini_pipeline_plan.md` — status table row 10 → `[x]`, decisions 43–N appended, recommended defaults pasted into the decision log.
+- `config.yaml` — `martini_pipeline.hpc_defaults` overwritten with benchmark-derived values; pre-benchmark values moved to a comment for traceability.
+
+#### What's out of scope for step 10
+
+- Re-benchmarking after every code change. The benchmark is a one-shot calibration; only re-run if GROMACS, ROCm, or the lipid pool changes materially.
+- Benchmarking the CPU partition (`general1`). MI210 nodes are the production target; CPU defaults remain at the conservative step-9 fallback. Add a CPU-only benchmark row if step 11 ever overflows to CPU.
+- Benchmarking `nstlist` / Verlet-buffer tuning. The current MDP templates ([Step 3 audit](#step-3-mdp-audit)) are frozen; tuning them belongs in a separate MDP-revision step.
+- Tuning per-system (e.g. CHOL-heavy systems may scale differently). The benchmark recommends one set of defaults; per-system overrides land via CLI flags if step 11 reveals outliers.
+- Auto-rewriting `config.yaml` programmatically. `analyze_benchmark.py` prints the recommended block; user inspects and pastes (same flow as the [Step 3 audit](#step-3-mdp-audit)).
+
+### J.2 Locked-in design decisions
+
+1. **One reference system, one production length.** POPC100 at 100k nsteps (1 ns at dt=0.01 ps). Rationale: POPC is mid-pool in atom count, single-component, no charged groups, no CHOL ring strain — closest to "typical" of the 70-system corpus. 100k nsteps gives `gmx mdrun` enough work to amortise startup (load-balancing settles after ~5k steps) while keeping each point ≤ 5 min on the fastest config.
+2. **Re-use a single pre-built `prun.tpr`.** Step 10 does *not* re-run insane / minimization / equilibration for every config point. The benchmark orchestrator (a) runs the pipeline once locally to produce `prun.tpr`, (b) stages that single `.tpr` on `/work/.../benchmark/POPC100/`, (c) every benchmark point launches `gmx mdrun -s prun.tpr -deffnm prun-bench-<i>` directly. Rationale: insane + min + eq are config-independent and dominate wallclock; benchmarking them is wasted quota.
+3. **Sweep is a curated subset, not a Cartesian product.** Cartesian over `sims_per_node ∈ {1,2,4,8} × cpus_per_sim ∈ {4,8,16} × gpus_per_node ∈ {1,2,4,8}` = 48 points. We test 9 points covering the realistic operating region (see J.3 sweep table). Rationale: most Cartesian cells are infeasible (e.g. `sims_per_node=8` with `cpus_per_sim=16` ⇒ 128 CPUs, > node capacity).
+4. **Each benchmark point runs the *full* `sims_per_node` simultaneously.** Pack-induced contention (PCIe, memory bandwidth, ROCm context switching) is the variable we're actually measuring; benchmarking a lone slot misses it. ns/day is summed across slots; the headline metric is **aggregate ns/day per node-hour**.
+5. **rocm-smi sampling is optional but on by default.** A 5 s polling loop runs in the background and dumps GPU utilisation / power / VRAM to `rocm-smi.tsv`. Adds zero overhead; helpful for the thesis figure but not required by the recommendation logic.
+6. **Reproducibility: each point uses the same `-seed`.** mdrun's `gen-vel` seed is fixed via the existing pipeline's deterministic-seed strategy ([Decision 22](#decision-log)). Two runs of the same config point should produce identical trajectories byte-for-byte (modulo `nstlog` ordering); ns/day variance comes from system noise only.
+7. **Output convention**: `results/benchmarks/martini_pipeline/<ISO date>/{summary.csv, summary.json, summary.md, points/<i>/prun.log, points/<i>/rocm-smi.tsv}`. Versioned by date so re-benchmarks don't overwrite history. Symlink `results/benchmarks/martini_pipeline/latest -> <date>` for tooling.
+8. **Recommendation logic is mechanical, not heuristic.** `analyze_benchmark.py` ranks points by `aggregate_ns_per_day / node_hours` (higher = better) and picks the top-scoring point whose `mem_per_sim × sims_per_node ≤ 0.7 × node_mem` (memory headroom). Tie-break: prefer smaller `gpus_per_node` (leaves room for other jobs). Output is auditable: the CSV shows the score for every point.
+9. **Single-job vs many-job submission.** Each benchmark point is a separate `sbatch`. Rationale: SLURM accounting (`sacct -j <id> --format=JobID,Elapsed,MaxRSS`) is per-job; bundling points into one job loses per-config memory data. Cost: ≤ 9 jobs queued, easy for `gpu_test` quota.
+10. **`gpu_test` is the default partition.** The headline production partition is `gpu` (24-hour time limit), but the benchmark itself fits comfortably in `gpu_test` (8-hour cap, faster scheduling). Each point ≤ 10 min; full sweep ≤ 90 wallclock min if serialised, ≤ 15 min if all 9 jobs run in parallel.
+
+### J.3 Sweep table
+
+`gpu_test` caps a single job at **≤ 4 GPUs in parallel** (in addition to the 8 h walltime and 2-job-per-user limits). Points must stay within that envelope; this still covers the realistic operating region for ≤ 12k-atom corner systems, which never need 8 GPUs.
+
+The 7 curated points:
+
+| # | sims_per_node | gpus_per_node | cpus_per_sim | total CPU | total GPU | mem | note |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 1 | 16 | 16 | 1 | 16 G | dedicated GPU, max CPU per slot |
+| 2 | 2 | 2 | 8  | 16 | 2 | 32 G | 1 sim per GPU baseline |
+| 3 | 4 | 4 | 4  | 16 | 4 | 64 G | 1 sim per GPU, CPU-starved |
+| 4 | 4 | 4 | 8  | 32 | 4 | 64 G | 1 sim per GPU, balanced — **expected winner** |
+| 5 | 4 | 4 | 16 | 64 | 4 | 64 G | 1 sim per GPU, CPU-rich |
+| 6 | 2 | 1 | 8  | 16 | 1 | 32 G | 2 sims share 1 GPU — PCIe contention probe |
+| 7 | 8 | 4 | 4  | 32 | 4 | 128 G | 2 sims per GPU, max packing within gpu_test cap |
+
+Points 6–7 probe whether one MI210 can timeshare multiple `gmx mdrun` slots — relevant if POPC100 is GPU-underutilised. Drop them if step 9 reveals `--gres=gpu:N` is enforced strictly per slot (cannot allocate fewer GPUs than sims). Note that `gpu_test` allows GPU sharing across *different* jobs from different users on the same node, but within a single job `HIP_VISIBLE_DEVICES` masking is what creates the over-subscription tested here.
+
+Point 8 adds a CPU baseline (J.12 Q8 answer: yes, add one CPU point for the GPU-vs-CPU thesis figure):
+
+| 8 | 8 | 0 | 4  | 32 | 0 | 128 G | CPU-only; `general1` partition |
+
+Total quota: 7 GPU jobs + 1 CPU job; GPU jobs ≤ 10 min each ≤ 70 GPU-min serialised, ≤ 30 wallclock min if scheduled in parallel.
+
+### J.4 Public API — `scripts/simulation/benchmark_hpc.sh`
+
+```text
+usage: benchmark_hpc.sh
+    [--reference-comp NAME]      # default: POPC100
+    [--nsteps N]                 # default: 100000
+    [--points PATH]              # default: scripts/simulation/benchmark_points.tsv
+    [--output-root PATH]         # default: results/benchmarks/martini_pipeline/<ISO date>
+    [--partition NAME]           # default: gpu_test
+    [--time HH:MM:SS]            # default: 00:30:00 per point
+    [--build-tpr-only]           # rebuild prun.tpr from scratch, exit
+    [--dry-run]                  # print sbatch commands, do not submit
+```
+
+Behaviour:
+
+1. **Prereq check**: confirm `--reference-comp` system has a fully-built `prun.tpr` under `<output-root>/<comp>/`. If missing, run `python scripts/simulation/run_martini_pipeline.py --stop-after equilibration` locally (or on a single `sbatch` if local quota tight), then exit (user re-runs the benchmark proper).
+2. **Read sweep points** from a TSV: `sims_per_node\tgpus_per_node\tcpus_per_sim\tmem_per_sim\tlabel`.
+3. **Per point**, submit one `sbatch scripts/simulation/sbatch_benchmark_hpc.sh` with `--export=ALL,POINT_INDEX=<i>,REFERENCE_TPR=<path>,SIMS_PER_NODE=…,…`. Resource line mirrors step 9: `--cpus-per-task=$((CPUS * SIMS))`, `--mem=$((MEM * SIMS))G`, `--gres=gpu:GPUS_PER_NODE`.
+4. **Print summary** to stdout: one line per submitted job, with the recommended `analyze_benchmark.py` invocation at the bottom.
+
+### J.5 Public API — `scripts/simulation/sbatch_benchmark_hpc.sh`
+
+Per-point worker. Identical preamble to `sbatch_simulations.sh` (conda + module load) plus:
+
+1. `cd "$OUTPUT_ROOT/points/$POINT_INDEX"` (created by orchestrator).
+2. Stage `REFERENCE_TPR` via symlink (no copy — `/work` is durable).
+3. **Background `rocm-smi` sampler** (5 s interval, into `rocm-smi.tsv`).
+4. For `i in 0..SIMS_PER_NODE-1`: subshell that exports `HIP_VISIBLE_DEVICES=$((i % GPUS_PER_NODE))`, launches `gmx mdrun -s prun.tpr -deffnm prun-bench-$i -ntomp $CPUS_PER_SIM -nsteps $NSTEPS -resethway` in background. The `-resethway` flag tells GROMACS to reset performance counters at the halfway mark, excluding startup (load-balancing) overhead from the ns/day measurement.
+5. `wait` all PIDs; kill the `rocm-smi` sampler; exit with worst rc.
+
+`prun.log` (per slot) is left in place; `analyze_benchmark.py` parses each.
+
+### J.6 Public API — `scripts/python/analyze_benchmark.py`
+
+```text
+usage: analyze_benchmark.py
+    [--root PATH]                # default: results/benchmarks/martini_pipeline/latest
+    [--format {csv,json,md,all}] # default: all
+    [--mem-headroom-frac FLOAT]  # default: 0.70 (J.2 Decision 8)
+    [--node-mem GB]              # default: 256 (MI210 node spec)
+    [--recommend]                # print recommended config.yaml block to stdout
+```
+
+Steps:
+
+1. Walk `<root>/points/*/prun-bench-*.log`; for each slot, regex `^Performance:\s+(\S+)\s+(ns/day)`.
+2. Aggregate per point: `aggregate_ns_per_day = sum(per-slot)`; `node_hours = (elapsed_s / 3600) * 1` (one node always).
+3. Compute `score = aggregate_ns_per_day / node_hours`.
+4. Read each point's `rocm-smi.tsv` and add columns `gpu_util_mean`, `gpu_power_W_mean`, `vram_used_MB_max`.
+5. Write `summary.csv` (one row per point), `summary.json` (same data, machine-readable), `summary.md` (markdown table, plus the recommendation block).
+6. With `--recommend`: filter points where `mem_per_sim × sims_per_node ≤ mem_headroom_frac × node_mem`, sort by score desc, tie-break by `gpus_per_node` asc, print the top point's `hpc_defaults` YAML block to stdout.
+
+### J.7 Internal data flow
+
+```text
+benchmark_hpc.sh
+    │   reads scripts/simulation/benchmark_points.tsv
+    │
+    ├─ ensures REFERENCE_TPR exists under results/benchmarks/.../<comp>/
+    │
+    └─ per point i: sbatch sbatch_benchmark_hpc.sh
+            │   --export=POINT_INDEX=i,SIMS_PER_NODE=k,…,REFERENCE_TPR=…
+            ▼
+        sbatch_benchmark_hpc.sh  (compute node)
+            ├─ rocm-smi → rocm-smi.tsv (background)
+            ├─ for i in 0..k-1:
+            │      gmx mdrun -s prun.tpr -deffnm prun-bench-$i -ntomp K -resethway &
+            └─ wait
+                    │
+                    ▼
+              points/<i>/prun-bench-{0..k-1}.{log,edr,xtc}
+                    │
+                    ▼
+   analyze_benchmark.py
+            ├─ parse all prun-bench-*.log → ns/day per slot
+            ├─ aggregate + rocm-smi join → summary.csv
+            └─ --recommend → YAML block to stdout
+                    │
+                    ▼
+            user pastes into config.yaml; status row 10 flipped to [x]
+```
+
+### J.8 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| `REFERENCE_TPR` missing | `benchmark_hpc.sh` errors with a one-line "run `--build-tpr-only` first" message |
+| One benchmark point times out | Its `prun.log` lacks the `Performance:` line; `analyze_benchmark.py` flags it as `status=incomplete`, omits from ranking |
+| `gpu_test` quota exceeded (> 2 jobs simultaneous) | Orchestrator detects via `--partition gpu_test` and submits sequentially with `--dependency=afterany:<prev_jobid>` |
+| `--gres=gpu:N` with `gpus_per_node < sims_per_node` (points 8–9) | `HIP_VISIBLE_DEVICES=$((i % gpus_per_node))` round-robins; flag in summary as `oversubscribed_gpu=True` |
+| `rocm-smi` not on PATH | Sampler logs a one-line warning, continues without it; `analyze_benchmark.py` populates GPU columns with `NaN` |
+| Cosmic ray: one slot crashes mid-run | Same as timeout case; report partial points, score the rest |
+| Re-run on the same date | Outputs go under `<date>__<run-index>/`; `latest` symlink updated atomically |
+| `analyze_benchmark.py` finds two points within 5 % score | Tie-break by `gpus_per_node` asc, then by `sims_per_node` asc; print both in `summary.md` for the user |
+| `--recommend` on an incomplete sweep | Refuse with non-zero exit unless `--allow-partial` is passed |
+| User wants to add a 10th point post-hoc | Edit `benchmark_points.tsv`, run `benchmark_hpc.sh --only-new`; new point sbatched, re-run `analyze_benchmark.py` |
+
+### J.9 Test plan — `tests/martini_pipeline/test_analyze_benchmark.py`
+
+Unit tests around `analyze_benchmark.py` only (the bash drivers are integration-only and exercised manually on HPC; mirrors the step-9 split where `submit_simulations.sh` has dry-run tests but `sbatch_simulations.sh` is HPC-only).
+
+1. `test_parse_perf_line` — single `Performance: 542.3 ns/day` line extracted correctly from a fixture log.
+2. `test_parse_perf_missing_returns_none` — log without a `Performance:` line returns `None`, point marked incomplete.
+3. `test_aggregate_two_slots` — two slot logs (300 + 320 ns/day) → aggregate 620 ns/day.
+4. `test_score_calculation` — 620 ns/day in 0.5 node-hours → score 1240; matches expected within 1e-6.
+5. `test_rocm_smi_join` — synthetic `rocm-smi.tsv` joined; `gpu_util_mean` computed correctly.
+6. `test_recommendation_picks_top_score_under_mem_cap` — three synthetic points; one disqualified by mem headroom; recommendation is the top-scoring of the remaining two.
+7. `test_recommendation_tie_break_by_gpu_count` — two points within 5 %; one uses 4 GPUs, one uses 8; 4-GPU point wins.
+8. `test_recommend_refuses_partial_sweep` — one of three points incomplete; `--recommend` exits non-zero without `--allow-partial`.
+9. `test_summary_md_renders` — sanity check that the markdown table renders with the right column headers.
+10. `test_yaml_block_round_trips` — recommended YAML block parses back into a `MartiniPipelineHpcDefaultsConfig` cleanly.
+
+Plus one bash-level dry-run test for `benchmark_hpc.sh`:
+
+11. `test_benchmark_dry_run_emits_one_sbatch_per_point` — `--dry-run` against the canonical 9-point TSV → 9 `[DRY RUN] sbatch …` lines.
+
+### J.10 Layout & dependencies
+
+```text
+scripts/simulation/
+    benchmark_hpc.sh                       ← new (orchestrator)
+    sbatch_benchmark_hpc.sh                ← new (worker)
+    benchmark_points.tsv                   ← new (default sweep table)
+scripts/python/
+    analyze_benchmark.py                   ← new
+tests/martini_pipeline/
+    test_analyze_benchmark.py              ← new
+    fixtures/benchmark/                    ← new (sample prun.log, rocm-smi.tsv)
+results/benchmarks/martini_pipeline/
+    <ISO date>/{points/,summary.{csv,json,md}}   ← runtime output
+    latest -> <date>                       ← symlink
+docs/
+    martini_pipeline_plan.md               ← status row 10 → [x] + Decisions 43–N
+config.yaml                                ← hpc_defaults overwritten with data-derived values
+```
+
+Python deps: `pandas` (CSV → markdown), already in `lipid_gnn` env. No new bash deps; `rocm-smi` is part of the loaded ROCm module.
+
+### J.11 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_analyze_benchmark.py -q` passes locally.
+- `bash scripts/simulation/benchmark_hpc.sh --dry-run` prints 9 coherent `sbatch …` invocations.
+- On HPC: real sweep completes in < 90 wallclock min; `summary.csv` has 9 rows; `summary.md` includes the recommendation block. *(Manual; not in CI.)*
+- `python scripts/python/analyze_benchmark.py --recommend` prints a YAML block syntactically compatible with `config.yaml`'s `martini_pipeline.hpc_defaults`.
+- Pasting the block into `config.yaml` and running the existing pipeline tests (`pytest tests/martini_pipeline/ -q`) still passes (sanity check on schema).
+- `docs/martini_pipeline_plan.md` row 10 flipped to `[x]`; thesis story updated with the recommendation rationale.
+- `thesisStory.md` gains a one-paragraph note linking to `results/benchmarks/.../<date>/summary.md` as the sizing justification (per §7 of this plan).
+
+### J.12 Open questions (need user input before implementation)
+
+1. **Reference system.** Recommend POPC100 (rationale in J.2 Decision 1). Alternative: a 3-system average (POPC100, DPPC100, CHOL40_DPPC60) to capture lipid-class spread. Cost: 3× sweep, 3× quota. Accept POPC100-only, or expand?
+2. **Production length per point.** Recommend 100k nsteps (1 ns at dt=0.01 ps). For very fast configs this is ~30 s of GPU time, possibly too short to amortise the `-resethway` reset window. Bump to 200k? Or detect dynamically (run until `nsteps >= 100k AND elapsed >= 60 s`)?
+3. **Sweep size — 9 points or finer?** 9 points is the recommended curated set (J.3). Finer (20+ points sweeping `cpus_per_sim` at half-step granularity) would land a better fit but cost ~3× quota and 3× analysis-figure complexity. Recommend 9 for step 10 and a single follow-up "fine sweep" only if step 11 reveals a regime where the recommendation is dominated by `cpus_per_sim` sensitivity.
+4. **Re-use eq trajectories from existing systems?** The 70 legacy systems already have `prun.tpr` under `data/membrane_only/POPC100/run/`. Symlinking that file as the benchmark reference saves the ~10 min eq run. Caveat: legacy `prun.tpr` was built with a slightly different MDP (per [Step 3 audit](#step-3-mdp-audit)); strictly speaking, the benchmark should use the frozen step-4 templates. Recommend: re-run eq once via `--build-tpr-only` for cleanliness.
+5. **`rocm-smi` integration depth.** Recommend background sampler + simple aggregation (mean util, mean power, peak VRAM). Anything fancier (per-step util, temperature curves) is thesis-figure-only, not recommendation-driving. Accept simple aggregation, or want the richer profile?
+6. **Auto-edit `config.yaml`?** Recommend no — print the YAML block, user pastes (audit-friendly, matches the existing audit-freeze pattern). Override with a `--apply` flag?
+7. **Where to store benchmark artifacts.** Recommend `results/benchmarks/martini_pipeline/<date>/` (gitignored, results-dir). Alternative: commit `summary.{csv,md}` so future contributors can read the rationale without HPC access. Recommend committing `summary.md` + `summary.csv` only (small; thesis-cited); ignoring `prun.log` and `rocm-smi.tsv` (large).
+8. **CPU partition (`general1`) coverage.** Recommend defer to a separate sub-step. Worth adding a single CPU point (8 sims/node, no GPU) to ground the GPU vs CPU speedup figure in the thesis? Cost: 1 extra `sbatch`, no extra code (existing `sbatch_benchmark_hpc.sh` handles `gpus_per_node=0`).
+9. **Memory headroom fraction.** Recommend 0.70 (J.2 Decision 8). Alternatives: 0.50 (very conservative, leaves room for memory spikes on cholesterol-rich systems) or 0.85 (squeezes throughput). Pick one before implementation; affects the recommendation but not the data collection.
+10. **Variance estimate — single run or three?** Recommend single per point. Goethe-HLR's MI210 nodes have shown ≤ 2 % run-to-run variance in prior projects; benchmark precision is dominated by the curated-point coverage, not by sampling. Triple-replicate balloons the sweep to 27 jobs.
+
+### J.13 New decisions to log on completion
+
+- **Decision 43** — Step 10 benchmarks POPC100 only (J.12 Q1 answer pending) at 100k nsteps, using `-resethway` to exclude load-balancing startup from the ns/day measurement.
+- **Decision 44** — Sweep is a 9-point curated subset of the `sims_per_node × cpus_per_sim × gpus_per_node` space (J.3), not a Cartesian product; rationale is throughput per node-hour, not exhaustive scaling laws.
+- **Decision 45** — Benchmark TPR is built once via `--build-tpr-only` and re-used across all sweep points; insane + minimization + equilibration are config-independent and pre-amortised.
+- **Decision 46** — Recommendation logic is mechanical: top score under a memory-headroom filter (default 70 %), tie-break by smaller `gpus_per_node` for queue friendliness. Auditable via the per-point CSV.
+- **Decision 47** — `analyze_benchmark.py --recommend` prints the YAML block; user pastes manually into `config.yaml`. Matches the audit-freeze flow of [Step 3](#step-3-mdp-audit).
+- **Decision 48** — `summary.md` and `summary.csv` are committed under `results/benchmarks/martini_pipeline/<date>/` for thesis traceability; raw per-point logs are gitignored.
+- *Plus any decisions arising from J.12 Q1–Q10.*
