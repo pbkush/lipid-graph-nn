@@ -13,6 +13,7 @@ sys.path.insert(0, _REPO_ROOT)
 from lipid_gnn.martini_pipeline.system_builder import (
     BoxParams,
     BuildResult,
+    _MARTINI3_ITPS,
     build_command,
     build_system,
 )
@@ -51,22 +52,20 @@ _FAKE_TOP = textwrap.dedent("""\
 
 
 def _write_fake_insane(path: str) -> None:
-    """Write a fake insane.py that emits a minimal gro + top then exits 0."""
+    """Write a fake insane script that emits minimal gro + top and exits 0."""
     script = textwrap.dedent(f"""\
         #!/usr/bin/env python3
         import argparse, os, sys
         p = argparse.ArgumentParser()
         p.add_argument("-o"); p.add_argument("-p")
         p.add_argument("-x"); p.add_argument("-y"); p.add_argument("-z")
+        p.add_argument("-pbc")
         p.add_argument("-l", action="append", dest="lipids")
         p.add_argument("-sol"); p.add_argument("-salt"); p.add_argument("-charge")
         p.add_argument("-center", action="store_true")
-        p.add_argument("-pbc")
         args = p.parse_args()
-        gro = {_FAKE_GRO!r}
-        top = {_FAKE_TOP!r}
-        with open(args.o, "w") as fh: fh.write(gro)
-        with open(args.p, "w") as fh: fh.write(top)
+        with open(args.o, "w") as fh: fh.write({_FAKE_GRO!r})
+        with open(args.p, "w") as fh: fh.write({_FAKE_TOP!r})
         print("fake insane done")
     """)
     with open(path, "w") as fh:
@@ -76,17 +75,7 @@ def _write_fake_insane(path: str) -> None:
 
 def _write_fake_itp_dir(itp_dir: str) -> None:
     os.makedirs(itp_dir, exist_ok=True)
-    for name in (
-        "martini_v3.0.0.itp",
-        "martini_v3.0.0_ions_v1.itp",
-        "martini_v3.0.0_nucleobases_v1.itp",
-        "martini_v3.0.0_phospholipids_v1.itp",
-        "martini_v3.0.0_phospholipids_v1_matthieu.itp",
-        "martini_v3.0.0_small_molecules_v1.itp",
-        "martini_v3.0.0_solvents_v1.itp",
-        "martini_v3.0.0_sugars_v1.itp",
-        "martini_v3.0_sterols_v1.0.itp",
-    ):
+    for name in _MARTINI3_ITPS:
         with open(os.path.join(itp_dir, name), "w") as fh:
             fh.write(f"; fake {name}\n")
 
@@ -109,6 +98,16 @@ class TestBuildCommand(unittest.TestCase):
         total = sum(int(a.split(":")[1]) for a in l_args)
         self.assertEqual(total, 100)
 
+    def test_pbc_always_present(self):
+        # pbc must always be explicit — insane defaults to hexagonal, not rectangular
+        argv = build_command({"POPC": 1.0}, BoxParams(pbc="rectangular"), "/tmp/a.gro", "/tmp/a.top")
+        self.assertIn("-pbc", argv)
+        self.assertEqual(argv[argv.index("-pbc") + 1], "rectangular")
+
+    def test_pbc_nondefault(self):
+        argv = build_command({"POPC": 1.0}, BoxParams(pbc="hexagonal"), "/tmp/a.gro", "/tmp/a.top")
+        self.assertEqual(argv[argv.index("-pbc") + 1], "hexagonal")
+
     def test_center_flag_true(self):
         argv = build_command({"POPC": 1.0}, BoxParams(center=True), "/tmp/a.gro", "/tmp/a.top")
         self.assertIn("-center", argv)
@@ -117,23 +116,19 @@ class TestBuildCommand(unittest.TestCase):
         argv = build_command({"POPC": 1.0}, BoxParams(center=False), "/tmp/a.gro", "/tmp/a.top")
         self.assertNotIn("-center", argv)
 
-    def test_pbc_nondefault(self):
-        argv = build_command({"POPC": 1.0}, BoxParams(pbc="hexagonal"), "/tmp/a.gro", "/tmp/a.top")
-        self.assertIn("-pbc", argv)
-        self.assertEqual(argv[argv.index("-pbc") + 1], "hexagonal")
-
-    def test_pbc_default_not_in_argv(self):
-        argv = build_command({"POPC": 1.0}, BoxParams(pbc="rectangular"), "/tmp/a.gro", "/tmp/a.top")
-        self.assertNotIn("-pbc", argv)
-
     def test_box_dims(self):
         argv = build_command({"POPC": 1.0}, BoxParams(xy_nm=9.0, z_nm=8.0), "/tmp/a.gro", "/tmp/a.top")
         self.assertIn("9.0", argv)
         self.assertIn("8.0", argv)
 
+    def test_insane_cmd_is_first_token(self):
+        argv = build_command({"POPC": 1.0}, BoxParams(), "/tmp/a.gro", "/tmp/a.top",
+                             insane_cmd="myinsane")
+        self.assertEqual(argv[0], "myinsane")
+
 
 # ---------------------------------------------------------------------------
-# build_system tests (use fake insane + fake itp dir)
+# build_system tests (use fake insane executable + fake itp dir)
 # ---------------------------------------------------------------------------
 
 class TestBuildSystem(unittest.TestCase):
@@ -154,7 +149,7 @@ class TestBuildSystem(unittest.TestCase):
         return build_system(
             {"POPC": 1.0},
             self._out_dir,
-            insane_path=self._insane,
+            insane_cmd=self._insane,
             itp_dir=self._itp_dir,
             gmx_executable="gmx_does_not_exist_XYZ",
             **kwargs,
@@ -171,20 +166,26 @@ class TestBuildSystem(unittest.TestCase):
         self.assertIn('#include "toppar/martini_v3.0.0.itp"', content)
         self.assertNotIn('#include "martini.itp"', content)
 
-    def test_all_nine_includes_present(self):
+    def test_all_32_includes_present(self):
         result = self._build()
         with open(result.top_path) as fh:
             content = fh.read()
-        for itp in (
-            "martini_v3.0.0.itp", "martini_v3.0.0_ions_v1.itp",
-            "martini_v3.0.0_solvents_v1.itp", "martini_v3.0_sterols_v1.0.itp",
-        ):
+        for itp in _MARTINI3_ITPS:
             self.assertIn(f'toppar/{itp}', content, f"Missing include for {itp}")
+
+    def test_ffbonded_before_lipids(self):
+        result = self._build()
+        with open(result.top_path) as fh:
+            content = fh.read()
+        ffbonded_pos = content.index("martini_v3.0.0_ffbonded_v2.itp")
+        pc_pos = content.index("martini_v3.0.0_phospholipids_PC_v2.itp")
+        self.assertLess(ffbonded_pos, pc_pos)
 
     def test_itps_staged(self):
         result = self._build()
-        staged = os.path.join(result.out_dir, "toppar", "martini_v3.0.0.itp")
-        self.assertTrue(os.path.isfile(staged))
+        for itp in _MARTINI3_ITPS:
+            staged = os.path.join(result.out_dir, "toppar", itp)
+            self.assertTrue(os.path.isfile(staged), f"Not staged: {itp}")
 
     def test_log_written(self):
         result = self._build()
@@ -204,26 +205,28 @@ class TestBuildSystem(unittest.TestCase):
     def test_insane_failure_raises(self):
         bad_insane = os.path.join(self._tmpdir, "bad_insane.py")
         with open(bad_insane, "w") as fh:
-            fh.write("import sys; sys.exit(1)\n")
+            fh.write("#!/usr/bin/env python3\nimport sys; sys.exit(1)\n")
         os.chmod(bad_insane, os.stat(bad_insane).st_mode | stat.S_IEXEC)
         with self.assertRaises(RuntimeError):
             build_system(
                 {"POPC": 1.0}, self._out_dir,
-                insane_path=bad_insane, itp_dir=self._itp_dir,
+                insane_cmd=bad_insane, itp_dir=self._itp_dir,
                 gmx_executable="gmx_does_not_exist_XYZ",
             )
 
     def test_no_martini_include_raises(self):
-        bad_insane = os.path.join(self._tmpdir, "bad_top_insane.py")
         no_include_top = _FAKE_TOP.replace('#include "martini.itp"', '; removed include')
+        bad_insane = os.path.join(self._tmpdir, "bad_top_insane.py")
         script = textwrap.dedent(f"""\
-            import argparse, sys
+            #!/usr/bin/env python3
+            import argparse
             p = argparse.ArgumentParser()
             p.add_argument("-o"); p.add_argument("-p")
             p.add_argument("-x"); p.add_argument("-y"); p.add_argument("-z")
+            p.add_argument("-pbc")
             p.add_argument("-l", action="append"); p.add_argument("-sol")
             p.add_argument("-salt"); p.add_argument("-charge")
-            p.add_argument("-center", action="store_true"); p.add_argument("-pbc")
+            p.add_argument("-center", action="store_true")
             args = p.parse_args()
             with open(args.o, "w") as fh: fh.write({_FAKE_GRO!r})
             with open(args.p, "w") as fh: fh.write({no_include_top!r})
@@ -235,7 +238,7 @@ class TestBuildSystem(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_system(
                 {"POPC": 1.0}, self._out_dir,
-                insane_path=bad_insane, itp_dir=self._itp_dir,
+                insane_cmd=bad_insane, itp_dir=self._itp_dir,
                 gmx_executable="gmx_does_not_exist_XYZ",
             )
 
@@ -250,7 +253,7 @@ class TestBuildSystem(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 build_system(
                     {"POPC": 1.0}, self._out_dir,
-                    insane_path=self._insane, itp_dir=empty_itp_dir,
+                    insane_cmd=self._insane, itp_dir=empty_itp_dir,
                     gmx_executable="gmx_does_not_exist_XYZ",
                 )
         finally:

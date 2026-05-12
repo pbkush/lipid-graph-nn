@@ -1,26 +1,54 @@
-"""Build an initial Martini 3 bilayer using vendored insane.py."""
+"""Build an initial Martini 3 bilayer using the insane membrane builder."""
 from __future__ import annotations
 
 import os
 import re
 import shutil
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 
-from lipid_gnn.martini_pipeline import INSANE_PATH, MARTINI3_ITP_DIR
+from lipid_gnn.martini_pipeline import INSANE_CMD, MARTINI3_ITP_DIR
 
 _MARTINI3_ITPS = (
+    # Core force field — must come first
     "martini_v3.0.0.itp",
+    "martini_v3.0.0_ffbonded_v2.itp",
+    # Standard phospholipids (v2, by headgroup)
+    "martini_v3.0.0_phospholipids_PC_v2.itp",
+    "martini_v3.0.0_phospholipids_PE_v2.itp",
+    "martini_v3.0.0_phospholipids_PS_v2.itp",
+    "martini_v3.0.0_phospholipids_PA_v2.itp",
+    "martini_v3.0.0_phospholipids_PG_v2.itp",
+    "martini_v3.0.0_phospholipids_PI_v2.itp",
+    "martini_v3.0.0_phospholipids_CL_v2.itp",
+    "martini_v3.0.0_phospholipids_SM_v2.itp",
+    "martini_v3.0.0_phospholipids_2,2-BMP_v2.itp",
+    "martini_v3.0.0_phospholipids_3,3-BMP_v2.itp",
+    # Ether phospholipids (v2)
+    "martini_v3.0.0_etherphospholipids_PC_v2.itp",
+    "martini_v3.0.0_etherphospholipids_PE_v2.itp",
+    "martini_v3.0.0_etherphospholipids_PS_v2.itp",
+    "martini_v3.0.0_etherphospholipids_PA_v2.itp",
+    "martini_v3.0.0_etherphospholipids_PG_v2.itp",
+    # Plasmalogens (v2)
+    "martini_v3.0.0_plasmalogens_PC_v2.itp",
+    "martini_v3.0.0_plasmalogens_PE_v2.itp",
+    "martini_v3.0.0_plasmalogens_PS_v2.itp",
+    "martini_v3.0.0_plasmalogens_PA_v2.itp",
+    "martini_v3.0.0_plasmalogens_PG_v2.itp",
+    # Sterols, glycerolipids, other
+    "martini_v3.0.0_sterols_v1.itp",
+    "martini_v3.0.0_ceramides_v2.itp",
+    "martini_v3.0.0_monoglycerides_v2.itp",
+    "martini_v3.0.0_diglycerides_v2.itp",
+    "martini_v3.0.0_triglycerides_v2.itp",
+    "martini_v3.0.0_fattyacids_v2.itp",
+    "martini_v3.0.0_hydrocarbons_v2.itp",
+    "martini_v3.0.0_DOTAP_v2.itp",
+    # Ions and solvents — last
     "martini_v3.0.0_ions_v1.itp",
-    "martini_v3.0.0_nucleobases_v1.itp",
-    "martini_v3.0.0_phospholipids_v1.itp",
-    "martini_v3.0.0_phospholipids_v1_matthieu.itp",
-    "martini_v3.0.0_small_molecules_v1.itp",
     "martini_v3.0.0_solvents_v1.itp",
-    "martini_v3.0.0_sugars_v1.itp",
-    "martini_v3.0_sterols_v1.0.itp",
 )
 
 _MARTINI_INCLUDE_RE = re.compile(r'^\s*#include\s+"martini[^"]*\.itp"\s*$', re.IGNORECASE)
@@ -57,24 +85,23 @@ def build_command(
     out_gro: str,
     out_top: str,
     *,
-    insane_path: str = INSANE_PATH,
+    insane_cmd: str = INSANE_CMD,
 ) -> list:
-    """Return the argv list for insane.py. Pure function, no I/O."""
+    """Return the argv list for insane. Pure function, no I/O."""
     ratios = _fractions_to_ratios(composition)
-    argv = [sys.executable, insane_path,
+    argv = [insane_cmd,
             "-o", out_gro,
             "-p", out_top,
             "-x", str(box.xy_nm),
             "-y", str(box.xy_nm),
-            "-z", str(box.z_nm)]
+            "-z", str(box.z_nm),
+            "-pbc", box.pbc]   # always explicit — insane defaults to hexagonal
     for name, ratio in ratios.items():
         keyword = _insane_keyword(name)
         argv += ["-l", f"{keyword}:{ratio}"]
     argv += ["-sol", box.water_type, "-salt", str(box.salt_M), "-charge", box.charge_mode]
     if box.center:
         argv.append("-center")
-    if box.pbc != "rectangular":
-        argv += ["-pbc", box.pbc]
     return argv
 
 
@@ -83,7 +110,7 @@ def build_system(
     out_dir: str,
     *,
     box: BoxParams = BoxParams(),
-    insane_path: str = INSANE_PATH,
+    insane_cmd: str = INSANE_CMD,
     itp_dir: str = MARTINI3_ITP_DIR,
     gmx_executable: str = "gmx",
 ) -> BuildResult:
@@ -95,7 +122,7 @@ def build_system(
     top_path = os.path.join(out_dir, "topol.top")
     log_path = os.path.join(out_dir, "insane.log")
 
-    argv = build_command(composition, box, gro_path, top_path, insane_path=insane_path)
+    argv = build_command(composition, box, gro_path, top_path, insane_cmd=insane_cmd)
     t0 = time.monotonic()
     result = subprocess.run(argv, capture_output=True, text=True)
     walltime_s = time.monotonic() - t0
@@ -108,7 +135,7 @@ def build_system(
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"insane.py exited {result.returncode}:\n{result.stderr[-500:]}"
+            f"insane exited {result.returncode}:\n{result.stderr[-500:]}"
         )
 
     _finalise_topology(top_path)
@@ -141,7 +168,6 @@ def build_system(
 # ---------------------------------------------------------------------------
 
 def _fractions_to_ratios(composition: dict) -> dict:
-    """Convert mol fractions to insane integer ratios (sum → 100)."""
     total = sum(composition.values())
     if total == 0:
         raise ValueError("composition must have non-zero total")
@@ -240,12 +266,9 @@ _SOLVENT_RESIDUES = frozenset({"W", "WF", "NA", "CL", "NA+", "CL-", "ION"})
 
 
 def _split_membrane_solvent(molecule_counts: dict, total_atoms: int) -> tuple:
-    """Estimate membrane bead count; solvent = total - membrane."""
     from lipid_gnn.martini_pipeline.lipid_registry import LIPID_REGISTRY
-
     membrane = 0
     for name, count in molecule_counts.items():
         if name in LIPID_REGISTRY:
-            beads_per_molecule = len(LIPID_REGISTRY[name].beads)
-            membrane += count * beads_per_molecule
+            membrane += count * len(LIPID_REGISTRY[name].beads)
     return membrane, total_atoms - membrane
