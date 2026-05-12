@@ -1,0 +1,4 @@
+timestamp	gpu_id	utilization_pct	power_W	vram_used_MB
+1715000000	0	85.5	280.0	4096
+1715000005	0	88.0	282.5	4100
+1715000010	0	90.0	285.0	4096

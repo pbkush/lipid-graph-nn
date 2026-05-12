@@ -1,0 +1,6 @@
+GROMACS:      gmx mdrun, version 2025.4-dev
+
+Input Parameters:
+   nsteps                         = 100000
+
+Simulation interrupted before completion — no Performance line.

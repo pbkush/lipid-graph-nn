@@ -1,0 +1,10 @@
+GROMACS:      gmx mdrun, version 2025.4-dev
+
+Input Parameters:
+   nsteps                         = 100000
+
+               Core t (s)   Wall t (s)        (%)
+Time:          12000.000    1500.000        800.0
+
+Performance:       57.6       0.417
+             ns/day   hours/ns
