@@ -80,6 +80,8 @@ hpc:
   group: cellmembrane
   conda_env: lipid_gnn
   module_rocm: rocm/7.2.0
+  modulefiles_path: /cluster/labs/modulefiles
+  module_gromacs: gromacs/v2025.4/rocm-6.2.4_acpp-25.10.0
   partition_preprocess: gpu_test
   partition_train: gpu
   account: cellmembrane
@@ -113,3 +115,11 @@ martini_pipeline:
     executable: gmx
     maxwarn: 2
     mdrun_extra_args: []
+
+  hpc_output_subpath: martini_pipeline   # appended to /work/$GROUP/$USER/$work_subpath/
+
+  hpc_defaults:                          # conservative pre-benchmark values; step 10 overwrites
+    sims_per_node: 4
+    cpus_per_sim: 8
+    mem_per_sim: "16G"
+    gpus_per_node: 8

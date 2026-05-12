@@ -116,6 +116,8 @@ class HpcConfig:
     group: str
     conda_env: str
     module_rocm: str
+    modulefiles_path: str
+    module_gromacs: str
     partition_preprocess: str
     partition_train: str
     account: str
@@ -151,6 +153,14 @@ class MartiniPipelineGmxConfig:
 
 
 @dataclass(frozen=True)
+class MartiniPipelineHpcDefaultsConfig:
+    sims_per_node: int
+    cpus_per_sim: int
+    mem_per_sim: str
+    gpus_per_node: int
+
+
+@dataclass(frozen=True)
 class MartiniPipelineConfig:
     output_root: Path
     insane_cmd: str
@@ -160,6 +170,8 @@ class MartiniPipelineConfig:
     box: MartiniPipelineBoxConfig
     run: MartiniPipelineRunConfig
     gmx: MartiniPipelineGmxConfig
+    hpc_output_subpath: str = "martini_pipeline"
+    hpc_defaults: Optional[MartiniPipelineHpcDefaultsConfig] = None
 
 
 @dataclass(frozen=True)
@@ -226,6 +238,21 @@ def _build_martini_pipeline(raw: dict) -> MartiniPipelineConfig:
             maxwarn=int(gmx_raw.get("maxwarn", 2)),
             mdrun_extra_args=list(gmx_raw.get("mdrun_extra_args", [])),
         ),
+        hpc_output_subpath=str(raw.get("hpc_output_subpath", "martini_pipeline")),
+        hpc_defaults=_build_martini_pipeline_hpc_defaults(raw.get("hpc_defaults")),
+    )
+
+
+def _build_martini_pipeline_hpc_defaults(
+    raw: Optional[dict],
+) -> Optional[MartiniPipelineHpcDefaultsConfig]:
+    if raw is None:
+        return None
+    return MartiniPipelineHpcDefaultsConfig(
+        sims_per_node=int(raw.get("sims_per_node", 4)),
+        cpus_per_sim=int(raw.get("cpus_per_sim", 8)),
+        mem_per_sim=str(raw.get("mem_per_sim", "16G")),
+        gpus_per_node=int(raw.get("gpus_per_node", 8)),
     )
 
 
