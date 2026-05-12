@@ -8,7 +8,7 @@ import subprocess
 from collections import Counter
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, Optional, Sequence
 
 _DEFAULT_SKIP_KEYS: frozenset[str] = frozenset({
     "gen-seed", "ld-seed", "tinit", "init-step", "simulation-part",
@@ -336,3 +336,229 @@ def diff_mdps(
         stage_audits[stage] = _audit_stage(stage, by_system, missing, skip_keys)
 
     return MDPAuditReport(stages=MappingProxyType(stage_audits))
+
+
+# ---------------------------------------------------------------------------
+# Composition coverage: SystemStatus, summarise_systems, missing_compositions
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SystemStatus:
+    canonical_name: str
+    output_root: str
+    out_dir: str
+    has_manifest: bool
+    overall_status: Optional[str]    # None if no manifest; "invalid_manifest" if corrupt
+    has_prun_xtc: bool
+    walltime_s: Optional[float]      # sum of stage walltimes from manifest; None if absent
+
+
+def summarise_systems(
+    output_root: str | os.PathLike,
+    *,
+    legacy_fallback: bool = False,
+) -> list[SystemStatus]:
+    """Walk *output_root* and return one SystemStatus per system subdirectory.
+
+    Manifest is parsed for status and walltime; run/prun.xtc existence provides
+    the legacy-fallback signal even when no manifest is present.
+    """
+    output_root = str(output_root)
+    results: list[SystemStatus] = []
+
+    if not os.path.isdir(output_root):
+        return results
+
+    for entry in sorted(os.listdir(output_root)):
+        out_dir = os.path.join(output_root, entry)
+        if not os.path.isdir(out_dir):
+            continue
+
+        manifest_path = os.path.join(out_dir, "manifest.json")
+        prun_xtc = os.path.join(out_dir, "run", "prun.xtc")
+        has_prun_xtc = os.path.isfile(prun_xtc) and os.path.getsize(prun_xtc) > 0
+
+        has_manifest = os.path.isfile(manifest_path)
+        overall_status: Optional[str] = None
+        walltime_s: Optional[float] = None
+
+        if has_manifest:
+            try:
+                with open(manifest_path) as fh:
+                    data = json.load(fh)
+                overall_status = data.get("overall_status")
+                stages = data.get("stages", [])
+                total_wall = sum(s.get("walltime_s", 0.0) for s in stages if isinstance(s, dict))
+                walltime_s = total_wall if stages else None
+            except (json.JSONDecodeError, OSError):
+                overall_status = "invalid_manifest"
+
+        if not has_manifest and not legacy_fallback:
+            continue
+
+        results.append(SystemStatus(
+            canonical_name=entry,
+            output_root=output_root,
+            out_dir=out_dir,
+            has_manifest=has_manifest,
+            overall_status=overall_status,
+            has_prun_xtc=has_prun_xtc,
+            walltime_s=walltime_s,
+        ))
+
+    return results
+
+
+def missing_compositions(
+    target_grid: Sequence["Composition"],
+    output_roots: Sequence[str | os.PathLike],
+    *,
+    require_status: str | tuple[str, ...] = "ok",
+    legacy_fallback: bool = True,
+) -> list["Composition"]:
+    """Return the subset of *target_grid* not yet successfully simulated.
+
+    A composition is considered present iff any *output_root* contains a
+    subdir matching its canonical name AND either:
+      - a manifest.json with overall_status in *require_status*, or
+      - *legacy_fallback* is True and a non-empty run/prun.xtc exists.
+    """
+    from lipid_gnn.martini_pipeline.composition import Composition as _Composition  # noqa: F401
+
+    if isinstance(require_status, str):
+        require_status = (require_status,)
+
+    # Deduplicate target by canonical name, preserving order
+    seen: set[str] = set()
+    deduped: list[_Composition] = []
+    for comp in target_grid:
+        if comp.name not in seen:
+            seen.add(comp.name)
+            deduped.append(comp)
+
+    if not deduped:
+        return []
+
+    # Build present-name set across all roots
+    present: set[str] = set()
+    for root in output_roots:
+        for status in summarise_systems(root, legacy_fallback=legacy_fallback):
+            if status.has_manifest and status.overall_status in require_status:
+                present.add(status.canonical_name)
+            elif not status.has_manifest and legacy_fallback and status.has_prun_xtc:
+                present.add(status.canonical_name)
+
+    return [comp for comp in deduped if comp.name not in present]
+
+
+# ---------------------------------------------------------------------------
+# Grid generators
+# ---------------------------------------------------------------------------
+
+def binary_grid(
+    lipid_a: str,
+    lipid_b: str,
+    *,
+    step: int = 10,
+    include_pure: bool = True,
+) -> list["Composition"]:
+    """Return binary compositions from *step*% to (100-*step*)% for lipid_a.
+
+    With include_pure=True (default), also includes the two pure endpoints.
+    """
+    from lipid_gnn.martini_pipeline.composition import Composition
+
+    if step <= 0 or step > 100:
+        raise ValueError(f"step must be in (0, 100], got {step}")
+
+    result: list[Composition] = []
+    if include_pure:
+        result.append(Composition({lipid_a: 1.0}))
+
+    for pct_a in range(step, 100, step):
+        pct_b = 100 - pct_a
+        result.append(Composition({lipid_a: pct_a / 100.0, lipid_b: pct_b / 100.0}))
+
+    if include_pure:
+        result.append(Composition({lipid_b: 1.0}))
+
+    return result
+
+
+def ternary_grid(
+    lipids: Sequence[str],
+    *,
+    step: int = 10,
+    include_edges: bool = True,
+) -> list["Composition"]:
+    """Return all simplex grid points for exactly 3 lipids.
+
+    With include_edges=True (default), includes points where one or two
+    fractions are zero (binary and pure compositions).  With include_edges=False,
+    only strictly interior points (all fractions > 0) are returned.
+    """
+    from lipid_gnn.martini_pipeline.composition import Composition
+
+    lipids = list(lipids)
+    if len(lipids) != 3:
+        raise ValueError(f"ternary_grid requires exactly 3 lipids, got {len(lipids)}")
+    if step <= 0 or step > 100:
+        raise ValueError(f"step must be in (0, 100], got {step}")
+
+    result: list[Composition] = []
+    for pct_a in range(0, 101, step):
+        for pct_b in range(0, 101 - pct_a, step):
+            pct_c = 100 - pct_a - pct_b
+            if pct_c < 0:
+                continue
+            if not include_edges and (pct_a == 0 or pct_b == 0 or pct_c == 0):
+                continue
+            fracs: dict[str, float] = {}
+            for lipid, pct in zip(lipids, [pct_a, pct_b, pct_c]):
+                if pct > 0:
+                    fracs[lipid] = pct / 100.0
+            result.append(Composition(fracs))
+
+    return result
+
+
+_DPPC_CORNER_PARTNERS = ("CHOL", "DIPC", "DOPC", "DOPE", "DPPE", "POPC", "POPE")
+_DOPC_CORNER_PARTNERS = ("CHOL", "DIPC", "DPPC", "DOPE", "DPPE", "POPC", "POPE")
+_CHOL_MAX_PCT = 40
+
+
+def _corner_grid(anchor: str, partners: tuple[str, ...], step: int) -> list["Composition"]:
+    """Internal helper: anchor-rich binary grid with anchor >= 50%."""
+    from lipid_gnn.martini_pipeline.composition import Composition
+
+    result: list[Composition] = []
+    seen: set[str] = set()
+
+    for partner in partners:
+        max_partner = _CHOL_MAX_PCT if partner == "CHOL" else 100 - step
+        for pct_partner in range(step, max_partner + 1, step):
+            pct_anchor = 100 - pct_partner
+            if pct_anchor < 50:
+                continue
+            comp = Composition({anchor: pct_anchor / 100.0, partner: pct_partner / 100.0})
+            if comp.name not in seen:
+                seen.add(comp.name)
+                result.append(comp)
+
+    # Pure anchor singleton
+    pure = Composition({anchor: 1.0})
+    if pure.name not in seen:
+        seen.add(pure.name)
+        result.append(pure)
+
+    return result
+
+
+def dppc_corner_grid(step: int = 10) -> list["Composition"]:
+    """DPPC-rich binary grid: DPPC >= 50%, paired with standard partners."""
+    return _corner_grid("DPPC", _DPPC_CORNER_PARTNERS, step)
+
+
+def dopc_corner_grid(step: int = 10) -> list["Composition"]:
+    """DOPC-rich binary grid: DOPC >= 50%, paired with standard partners."""
+    return _corner_grid("DOPC", _DOPC_CORNER_PARTNERS, step)
