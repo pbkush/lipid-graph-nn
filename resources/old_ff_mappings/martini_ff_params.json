@@ -1,0 +1,5066 @@
+{
+    "P6": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.99
+    },
+    "P5": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P4": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P3": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P2": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P1": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N6": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N5": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N4": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N3": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N2": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N1": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C6": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C5": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C4": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C3": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C2": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C1": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X4": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X3": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X2": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X1": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P6d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P5d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P4d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P3d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P2d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P1d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N6d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N5d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N4d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N3d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N2d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N1d": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "P6a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P5a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P4a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P3a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P2a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P1a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N6a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N5a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N4a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N3a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N2a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N1a": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C6v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C5v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C4v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C3v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C2v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C1v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X4v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X3v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X2v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X1v": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C6e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C5e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C4e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C3e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C2e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C1e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X3e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X4e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X2e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X1e": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "D": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.5,
+        "epsilon": 4.09
+    },
+    "Q5": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 6.45
+    },
+    "Q4": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.95
+    },
+    "Q3": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.45
+    },
+    "Q2": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.7
+    },
+    "Q1": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.98
+    },
+    "Q5p": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.7
+    },
+    "Q4p": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.2
+    },
+    "Q3p": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.7
+    },
+    "Q2p": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.0
+    },
+    "Q1p": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.6
+    },
+    "Q5n": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.7
+    },
+    "Q4n": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.2
+    },
+    "Q3n": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.7
+    },
+    "Q2n": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.0
+    },
+    "Q1n": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.6
+    },
+    "P6q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.79
+    },
+    "P5q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.24
+    },
+    "P4q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.99
+    },
+    "P3q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P2q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P1q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "N6q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "N5q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "N4q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "N3q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "N2q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "N1q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "C6q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "C5q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C4q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C3q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C2q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C1q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "X4q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "X3q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "X2q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "X1q": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P6dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.99
+    },
+    "P5dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P4dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P3dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P2dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P1dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N6dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N5dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N4dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N3dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N2dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N1dq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P6aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.99
+    },
+    "P5aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P4aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P3aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P2aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P1aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N6aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N5aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N4aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N3aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N2aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N1aq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C6vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C5vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C4vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C3vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C2vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C1vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X4vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X3vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X2vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "X1vq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "C6eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "C5eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C4eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C3eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C2eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C1eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X4eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X3eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X2eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "X1eq": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P6h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 5.24
+    },
+    "P5h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P4h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.48
+    },
+    "P3h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P2h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P1h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "N6h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "N5h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N4h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "N3h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N2h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N1h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C6h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C5h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C4h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C3h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C2h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C1h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X4h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X3h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X2h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "X1h": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P6dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P5dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P4dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P3dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P2dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P1dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N6dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N5dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N4dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N3dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N2dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N1dh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "P6ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P5ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P4ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P3ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P2ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P1ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N6ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N5ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N4ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N3ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N2ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N1ah": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C6vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C5vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C4vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C3vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C2vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C1vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X4vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X3vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X2vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X1vh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "C6eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "C5eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C4eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C3eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C2eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C1eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X4eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X3eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X2eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "X1eh": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P6r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.73
+    },
+    "P5r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P4r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.06
+    },
+    "P3r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P2r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P1r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N6r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "N5r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N4r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "N3r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N2r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N1r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C6r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C5r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C4r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C3r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C2r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C1r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X4r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X3r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X2r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "X1r": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P6dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P5dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P4dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P3dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P2dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P1dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N6dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N5dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N4dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N3dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N2dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N1dr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "P6ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.25
+    },
+    "P5ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.88
+    },
+    "P4ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.69
+    },
+    "P3ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P2ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.52
+    },
+    "P1ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N6ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "N5ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N4ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N3ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N2ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "N1ar": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C6vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C5vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C4vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C3vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C2vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C1vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X4vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X3vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X2vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X1vr": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "C6er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "C5er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C4er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C3er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C2er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "C1er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X4er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X3er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.07
+    },
+    "X2er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.24
+    },
+    "X1er": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 3.39
+    },
+    "SP6": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.29
+    },
+    "SP5": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP4": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP3": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP2": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP1": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN6": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN5": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN4": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN3": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN2": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN1": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC6": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC5": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC4": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC3": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC2": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC1": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX4": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX3": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX2": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX1": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP6d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP5d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP4d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP3d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP2d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP1d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN6d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN5d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN4d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN3d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN2d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN1d": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SP6a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP5a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP4a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP3a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP2a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP1a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN6a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN5a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN4a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN3a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN2a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN1a": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC6v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC5v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC4v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC3v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC2v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC1v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX4v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX3v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX2v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX1v": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC6e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC5e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC4e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC3e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC2e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC1e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX4e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX3e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX2e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX1e": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SD": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.475,
+        "epsilon": 1.98
+    },
+    "SQ5": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.62
+    },
+    "SQ4": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.08
+    },
+    "SQ3": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.69
+    },
+    "SQ2": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.1
+    },
+    "SQ1": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.411,
+        "epsilon": 2.24
+    },
+    "SQ5p": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.08
+    },
+    "SQ4p": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.69
+    },
+    "SQ3p": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SQ2p": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.52
+    },
+    "SQ1p": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.414,
+        "epsilon": 1.67
+    },
+    "SQ5n": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.08
+    },
+    "SQ4n": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.69
+    },
+    "SQ3n": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SQ2n": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.52
+    },
+    "SQ1n": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.414,
+        "epsilon": 1.67
+    },
+    "SP6q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.84
+    },
+    "SP5q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.29
+    },
+    "SP4q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP3q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP2q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP1q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SN6q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SN5q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN4q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN3q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN2q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN1q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SC6q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SC5q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC4q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC3q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC2q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC1q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX4q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX3q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX2q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SX1q": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP6dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.55
+    },
+    "SP5dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP4dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP3dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP2dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP1dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN6dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN5dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN4dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN3dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN2dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN1dq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP6aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.55
+    },
+    "SP5aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP4aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP3aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP2aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP1aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN6aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN5aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN4aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN3aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN2aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN1aq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC6vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC5vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC4vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC3vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC2vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC1vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX4vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX3vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX2vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX1vq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SC6eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC5eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC4eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC3eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC2eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC1eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX4eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX3eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX2eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX1eq": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP6h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.55
+    },
+    "SP5h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP4h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP3h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP2h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP1h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN6h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SN5h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN4h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN3h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN2h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN1h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC6h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC5h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC4h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC3h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC2h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC1h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX4h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX3h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX2h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SX1h": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP6dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.29
+    },
+    "SP5dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP4dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP3dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP2dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP1dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN6dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN5dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN4dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN3dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN2dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN1dh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SP6ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.29
+    },
+    "SP5ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP4ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP3ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP2ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP1ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN6ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SN5ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN4ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN3ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN2ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN1ah": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC6vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC5vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC4vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC3vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC2vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC1vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX4vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX3vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX2vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX1vh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SC6eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SC5eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC4eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC3eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC2eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC1eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX4eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX3eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX2eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SX1eh": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP6r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 4.04
+    },
+    "SP5r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.55
+    },
+    "SP4r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP3r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP2r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP1r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN6r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SN5r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN4r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN3r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN2r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN1r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC6r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC5r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC4r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC3r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC2r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC1r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX4r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX3r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX2r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SX1r": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SP6dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP5dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP4dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP3dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP2dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP1dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN6dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN5dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN4dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN3dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SN2dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SN1dr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SP6ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.82
+    },
+    "SP5ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.31
+    },
+    "SP4ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.07
+    },
+    "SP3ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP2ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.84
+    },
+    "SP1ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN6ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.6
+    },
+    "SN5ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN4ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SN3ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SN2ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SN1ar": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC6vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC5vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC4vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC3vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC2vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC1vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX4vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX3vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX2vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX1vr": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "SC6er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SC5er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC4er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC3er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC2er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SC1er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX4er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX3er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.04
+    },
+    "SX2er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.2
+    },
+    "SX1er": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 2.35
+    },
+    "TP6": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.47
+    },
+    "TP5": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP4": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP3": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP2": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP1": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN6": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN5": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN4": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN3": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN2": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN1": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC6": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC5": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC4": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC3": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC2": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC1": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX4": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX3": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX2": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX1": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP6d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.22
+    },
+    "TP5d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP4d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP3d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP2d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP1d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN6d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN5d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN4d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN3d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN2d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN1d": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TP6a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.22
+    },
+    "TP5a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP4a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP3a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP2a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP1a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN6a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN5a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN4a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN3a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN2a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN1a": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC6v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC5v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC4v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC3v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC2v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC1v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX4v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX3v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX2v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX1v": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC6e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC5e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC4e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC3e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC2e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC1e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX4e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX3e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX2e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX1e": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TD": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.438,
+        "epsilon": 1.1
+    },
+    "TQ5": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.354,
+        "epsilon": 1.18
+    },
+    "TQ4": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.361,
+        "epsilon": 0.95
+    },
+    "TQ3": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.364,
+        "epsilon": 0.85
+    },
+    "TQ2": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3705,
+        "epsilon": 0.748
+    },
+    "TQ1": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.383,
+        "epsilon": 0.525
+    },
+    "TQ5p": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.357,
+        "epsilon": 1.1
+    },
+    "TQ4p": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.362,
+        "epsilon": 0.9
+    },
+    "TQ3p": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3658,
+        "epsilon": 0.818
+    },
+    "TQ2p": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3725,
+        "epsilon": 0.725
+    },
+    "TQ1p": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3845,
+        "epsilon": 0.5
+    },
+    "TQ5n": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.357,
+        "epsilon": 1.1
+    },
+    "TQ4n": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.362,
+        "epsilon": 0.9
+    },
+    "TQ3n": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3658,
+        "epsilon": 0.818
+    },
+    "TQ2n": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3725,
+        "epsilon": 0.725
+    },
+    "TQ1n": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.3845,
+        "epsilon": 0.5
+    },
+    "TP6q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.75
+    },
+    "TP5q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.22
+    },
+    "TP4q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP3q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP2q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP1q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TN6q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TN5q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN4q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN3q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN2q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN1q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC6q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC5q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC4q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC3q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC2q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC1q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX4q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX3q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX2q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TX1q": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP6dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.47
+    },
+    "TP5dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP4dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP3dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP2dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP1dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN6dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN5dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN4dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN3dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN2dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN1dq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TP6aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.47
+    },
+    "TP5aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP4aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP3aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP2aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP1aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN6aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN5aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN4aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN3aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN2aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN1aq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC6vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC5vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC4vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC3vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC2vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC1vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX4vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX3vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX2vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TX1vq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TC6eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC5eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC4eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC3eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC2eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC1eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX4eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX3eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX2eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TX1eq": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP6h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.75
+    },
+    "TP5h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.22
+    },
+    "TP4h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP3h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP2h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP1h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TN6h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TN5h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN4h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN3h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN2h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN1h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC6h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC5h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC4h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC3h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC2h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC1h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX4h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX3h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX2h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TX1h": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP6dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.47
+    },
+    "TP5dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP4dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP3dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP2dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP1dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN6dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN5dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN4dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN3dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN2dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN1dh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TP6ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.47
+    },
+    "TP5ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP4ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP3ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP2ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP1ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN6ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TN5ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN4ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN3ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN2ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN1ah": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC6vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC5vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC4vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC3vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC2vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC1vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX4vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX3vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX2vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX1vh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TC6eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TC5eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC4eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC3eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC2eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC1eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX4eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX3eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX2eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TX1eh": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP6r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 3.22
+    },
+    "TP5r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.74
+    },
+    "TP4r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP3r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP2r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP1r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN6r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TN5r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN4r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN3r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN2r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN1r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC6r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC5r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC4r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC3r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC2r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC1r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX4r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX3r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX2r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TX1r": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TP6dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP5dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP4dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP3dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP2dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP1dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN6dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN5dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN4dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN3dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TN2dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TN1dr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TP6ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.99
+    },
+    "TP5ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.5
+    },
+    "TP4ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.28
+    },
+    "TP3ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP2ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 2.02
+    },
+    "TP1ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN6ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.77
+    },
+    "TN5ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN4ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TN3ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TN2ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TN1ar": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC6vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC5vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC4vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC3vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC2vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC1vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX4vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX3vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX2vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX1vr": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "TC6er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TC5er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC4er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC3er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC2er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TC1er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX4er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX3er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.352,
+        "epsilon": 1.05
+    },
+    "TX2er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.23
+    },
+    "TX1er": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.34,
+        "epsilon": 1.51
+    },
+    "W": {
+        "mass": 72.0,
+        "charge": 0.0,
+        "sigma": 0.47,
+        "epsilon": 4.65
+    },
+    "SW": {
+        "mass": 54.0,
+        "charge": 0.0,
+        "sigma": 0.41,
+        "epsilon": 3.2
+    },
+    "TW": {
+        "mass": 36.0,
+        "charge": 0.0,
+        "sigma": 0.35,
+        "epsilon": 2.8
+    },
+    "U": {
+        "mass": 24.0,
+        "charge": 0.0,
+        "sigma": 0.0,
+        "epsilon": 0.0
+    }
+}
