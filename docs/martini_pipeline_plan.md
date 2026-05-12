@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-12 (step 7 complete).
+Last updated: 2026-05-12 (step 8 complete).
 
 ---
 
@@ -145,7 +145,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | **Reworked 2026-05-08 (Decision 26)**: insane.py vendoring removed; `insane` pip package (v1.2.0) used as command instead. `INSANE_PATH` → `INSANE_CMD = "insane"`. 7 tests pass. |
 | 6 | `system_builder.py` + tests | [x] | **Reworked 2026-05-08 (Decision 27)**: 32 ITPs from M3-Lipid-Parameters (full lipidome) replace the 9 legacy-copied ITPs. `ffbonded_v2.itp` included (required by v2 lipid files). pbc now always passed explicitly. 27 tests pass. |
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [x] | Decisions 22–25, 28–32. Filenames match legacy (`martini_em`, `martini_eq`, `prun`). `-maxwarn 2` default (CLI flag). Seed deterministic from composition hash. `MartiniPipelineConfig` in `config.py`. CLI `run_martini_pipeline.py` with insane-style ratio args + `--nsteps`/`--prod-ns`. 377 tests pass, 7 skipped. |
-| 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [ ] | Subgoal 2 |
+| 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [x] | Decisions 33–36. Grid generators: `binary_grid`, `ternary_grid` (full symmetric simplex), `dppc_corner_grid`, `dopc_corner_grid`. CHOL capped at 40%. CLI `print_work_queue.py` with `--grid`, `--format`, `--out`. 451 tests pass (32 new). |
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [ ] | Single orchestrator with GPU/CPU branch |
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | |
 | 11 | Subgoal 2 — fill DPPC/DOPC corners on HPC | [ ] | Production run; not a code task |
@@ -192,6 +192,10 @@ Append-only. Each entry: date · decision · rationale.
 | 30 | 2026-05-12 | `-maxwarn` defaults to 2; configurable via CLI flag `--maxwarn` | Legacy used -maxwarn 5 for em/eq steps. Value 2 is a conservative default; CLI allows override on a per-run basis. |
 | 31 | 2026-05-12 | `nsteps_prod = -1` in config; CLI requires `--nsteps N` or `--prod-ns N` (mutually exclusive, one required) | Production run length is the most consequential knob; forcing an explicit value prevents accidental zero-length runs. |
 | 32 | 2026-05-12 | CLI `run_martini_pipeline.py` uses insane-style ratio strings (`POPC:1.0 DOPC:0.3`) | Ergonomic for single-system invocations; fractions are normalised so raw counts (e.g. `POPC:7 DOPC:3`) also work. |
+| 33 | 2026-05-12 | Legacy `data/membrane_only/` systems counted as present via filesystem fallback (`run/prun.xtc` exists), not via manifest | Legacy systems pre-date the manifest format; re-simulating them just to mint manifests is wasteful. Opt-out via `legacy_fallback=False`. |
+| 34 | 2026-05-12 | `dppc_corner_grid` and `dopc_corner_grid` use a ≥ 50 % cutoff for the named lipid | Natural split point; matches the binary midpoint. Revisit if the resulting queue is too large for HPC step 11. |
+| 35 | 2026-05-12 | CHOL capped at 40 % in all generated corner grids | Martini 3 sterol-content guidance + legacy precedent (`POPC60_CHOL40` is the max-CHOL system in the training set). |
+| 36 | 2026-05-12 | Work-queue ordering/prioritisation lives in step 9, not step 8; step-8 CLI emits alphabetically-sorted-by-partner groups | Scoring logic belongs in the submission layer; the planner is read-only. |
 
 ---
 
@@ -1393,3 +1397,236 @@ No new external dependencies. Internal imports: `system_builder` (build), `mdp_w
 - **Decision 24** — Seed is derived deterministically from composition name by default (`sha256(name)[:8]`); CLI overrides. Same seed used across insane, em, eq, prod for one composition. Rationale: reproducible without making seeds part of the canonical `<comp>` name; closes step-7 open question on seed strategy from §10.
 - **Decision 25** — Manifest is rewritten after every stage transition (not only at the end). Rationale: a killed run still leaves a useful manifest.
 - *Plus any decisions arising from G.10 answers (filenames, ndx parity, maxwarn, checkpoint, nsteps_prod default, tolerance, CLI shape).*
+
+---
+
+## Appendix H — Step 8 detailed plan: `analysis.py::missing_compositions()` + work-queue CLI
+
+### H.1 Scope
+
+Identify which compositions in a target grid have not yet been simulated and emit a work queue the HPC submission layer (step 9) can consume. Specifically: close the DPPC- and DOPC-rich corner gaps flagged by the Stage 5b per-system MAE analysis ([`results/figures/stage_5b/fig_c_per_system_mae.png`](../results/figures/stage_5b/fig_c_per_system_mae.png) — POPC30_DOPC70 is the worst legacy system; the 70 legacy systems are POPC-anchored and provide near-zero coverage when POPC fraction falls below ~30 %).
+
+#### What's in scope for step 8
+
+- `lipid_gnn/martini_pipeline/analysis.py::missing_compositions(target_grid, output_root, *, require_status="ok")` — pure function returning the subset of `target_grid` not yet present (or not yet successfully simulated) under `output_root`.
+- `lipid_gnn/martini_pipeline/analysis.py::summarise_systems(output_root)` — companion read-only function that produces a per-system status table (canonical name, build status, walltime, manifest path, missing-handoff list). Lands together because it shares the directory-walking logic.
+- Grid generators in `analysis.py`: `dppc_corner_grid()`, `dopc_corner_grid()`, `binary_grid(lipid_a, lipid_b, step=10)`, `ternary_grid(lipids, step=10)`. Pure functions returning lists of `Composition`.
+- `scripts/simulation/print_work_queue.py` — CLI driver. Prints / writes a work queue with filters; emits JSON or a one-composition-per-line text format consumable by `scripts/bash/submit_simulations.sh` in step 9.
+- `tests/martini_pipeline/test_missing_compositions.py` — coverage of grid generators, missing-set detection, status filters, fake-tree fixtures.
+
+#### What's out of scope for step 8
+
+- Actually submitting simulations to SLURM — step 9.
+- Benchmarking and HPC defaults — step 10.
+- Running the queued simulations to fill the corners — step 11 (production run, not a code task).
+- Extending the lipid pool beyond the current 10 — step 12.
+- New analytics (e.g. APL distributions over the new systems): out-of-scope until simulations exist; revisit after step 11.
+
+### H.2 Locked-in design decisions
+
+1. **Detection of "already simulated" is manifest-driven, not directory-existence.** A composition counts as built only if `<output_root>/<canonical_name>/manifest.json` exists AND its `overall_status` field matches the filter (default `"ok"`). Half-built or failed runs are reported as missing, not as present. Rationale: directory existence is a weak signal; the manifest is the single source of truth for "did this simulation actually finish".
+2. **Both legacy `data/membrane_only/` and new `data/martini_pipeline/` are searched.** `missing_compositions` accepts a list of output roots, deduplicates by canonical name across them. Rationale: subgoal 2 is to *fill gaps*, so any legacy system that already covers a target point counts. Legacy systems lack our manifest, so a fallback "directory exists + has run/prun.xtc" check is used for them — documented as Decision 33 below.
+3. **Canonical name is the only join key.** `composition.Composition(...).name` resolves alias issues (e.g. legacy `POPC10_DIPC90` vs canonical `DIPC90_POPC10`). Rationale: keeps the join clean and forces every comparison through the canonicaliser already tested in step 1.
+4. **Grid generators return `Composition` objects, not raw dicts.** Validates fractions on construction and ensures the join key is always available. Rationale: catches bad grids at generation time, not at submission time.
+5. **Step granularity is configurable but defaults to 10 %.** All legacy multi-lipid systems use 10 % increments except the DOPS-rich edge (2/4/6/8 %). Default 10 grid is dense enough for the corner-fill but the function takes a `step` parameter for future refinement. Rationale: matches existing data density; finer grids can be requested explicitly without rewriting.
+6. **CLI emits two outputs side by side**: a human-readable table on stdout AND an optional machine-readable file (`--out path.json`). Rationale: same workflow supports interactive auditing and pipeline plumbing without two scripts.
+7. **No mutation of disk state.** `missing_compositions` and the CLI are strictly read-only. The CLI never creates output directories or stub manifests; that responsibility belongs to step 9. Rationale: same independence rule as analysis.py's existing functions (`diff_mdps`, `summarise_systems`).
+
+### H.3 Public API — `analysis.py` additions
+
+```python
+@dataclass(frozen=True)
+class SystemStatus:
+    canonical_name: str
+    output_root: str
+    out_dir: str                       # absolute
+    has_manifest: bool
+    overall_status: str | None         # None if no manifest
+    has_prun_xtc: bool                 # legacy-fallback signal
+    walltime_s: float | None           # sum of stage walltimes from manifest
+
+def summarise_systems(
+    output_root: str | os.PathLike,
+    *,
+    legacy_fallback: bool = False,
+) -> list[SystemStatus]: ...
+
+def missing_compositions(
+    target_grid: Sequence[Composition],
+    output_roots: Sequence[str | os.PathLike],
+    *,
+    require_status: str | tuple[str, ...] = "ok",
+    legacy_fallback: bool = True,
+) -> list[Composition]:
+    """Return the subset of *target_grid* not yet successfully simulated.
+
+    A composition is considered present iff any *output_root* contains a
+    subdir matching its canonical name AND either:
+      - a manifest.json with overall_status ∈ require_status, or
+      - legacy_fallback=True and a non-empty run/prun.xtc exists.
+    """
+
+def binary_grid(
+    lipid_a: str,
+    lipid_b: str,
+    *,
+    step: int = 10,
+    include_pure: bool = True,
+) -> list[Composition]: ...
+
+def ternary_grid(
+    lipids: Sequence[str],
+    *,
+    step: int = 10,
+    include_edges: bool = True,
+) -> list[Composition]: ...
+
+def dppc_corner_grid(step: int = 10) -> list[Composition]: ...
+def dopc_corner_grid(step: int = 10) -> list[Composition]: ...
+```
+
+`dppc_corner_grid` and `dopc_corner_grid` are concrete subsets chosen to match the gap pattern from Stage 5b:
+
+- **DPPC corner**: all binaries `DPPC_X` with `DPPC ≥ 50 %` for `X ∈ {DOPC, DIPC, DOPE, DPPE, POPE, CHOL, POPC}` plus pure `DPPC100` if not already present.
+- **DOPC corner**: all binaries `DOPC_X` with `DOPC ≥ 50 %` for `X ∈ {DPPC, DIPC, DOPE, DPPE, POPE, CHOL, POPC}` plus pure `DOPC100`.
+
+Pure singletons are included once globally (idempotent: `missing_compositions` will dedupe by canonical name).
+
+### H.4 Public API — `scripts/simulation/print_work_queue.py`
+
+```text
+usage: print_work_queue.py [-h]
+                           [--grid {dppc_corner,dopc_corner,binary,ternary,all}]
+                           [--lipids LIPIDS [LIPIDS ...]]
+                           [--step STEP]
+                           [--output-roots ROOT [ROOT ...]]
+                           [--require-status STATUS [STATUS ...]]
+                           [--no-legacy-fallback]
+                           [--out PATH]
+                           [--format {table,json,lines}]
+```
+
+Behaviour:
+
+- `--grid dppc_corner` / `dopc_corner` → uses the named helper.
+- `--grid binary --lipids DPPC DOPC --step 10` → binary grid for that pair.
+- `--grid ternary --lipids POPC DOPC DPPC --step 20` → ternary simplex.
+- `--grid all` → union of `dppc_corner_grid()` and `dopc_corner_grid()`.
+- Default `--output-roots`: `[CONFIG.paths.data_dir, CONFIG.martini_pipeline.output_root]` (covers legacy and new trees).
+- `--format table` (default) prints aligned text to stdout; `--format json` emits a JSON array of `{canonical_name, fractions}` objects; `--format lines` emits one canonical name per line.
+- Exit code: 0 if any work queued, 0 also if queue is empty (prints `(no missing)` to stderr); reserve non-zero for IO/parse failure only — empty is a valid result.
+
+Example:
+
+```bash
+$ python scripts/simulation/print_work_queue.py --grid dppc_corner
+canonical_name          step  fractions
+----------------------  ----  -------------------------
+DPPC100                 pure  DPPC=1.00
+DPPC90_DIPC10           bin   DPPC=0.90 DIPC=0.10
+DPPC90_DOPC10           bin   DPPC=0.90 DOPC=0.10
+…
+DPPC50_POPE50           bin   DPPC=0.50 POPE=0.50
+
+42 compositions queued, 0 already simulated.
+```
+
+### H.5 Internal data flow
+
+```text
+target_grid (List[Composition])  ──┐
+                                    │
+output_roots (Sequence[Path])  ─────┼──►  missing_compositions()
+                                    │            │
+                                    │            ▼
+                            for each root:  walk root/<name>/
+                                            │     │
+                                            │     ├─ manifest.json present?  → SystemStatus
+                                            │     └─ legacy fallback: run/prun.xtc present?
+                                            ▼
+                                  Union of present canonical_names
+                                            │
+                                            ▼
+                              target_grid − present  →  list[Composition]
+```
+
+Implementation notes:
+
+- `summarise_systems` walks `output_root` exactly once per call; `missing_compositions` calls it per root and unions the canonical-name set. O(N_systems) on the filesystem; no per-comp re-walk.
+- Manifest parsing is best-effort: a corrupt `manifest.json` is logged as `overall_status="invalid_manifest"` and the system is treated as missing (so the work queue conservatively re-runs it).
+- Legacy fallback gate: opt-out via `--no-legacy-fallback` for users who only want to count manifest-validated systems.
+
+### H.6 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| Empty `target_grid` | `missing_compositions` returns `[]`; CLI prints `(no missing)`; exit 0 |
+| `output_roots` empty / non-existent | Treat as zero present systems; entire grid is missing; CLI warns once on stderr |
+| Manifest exists but `overall_status="failed_at_equilibration"` | System counted as missing (default filter is `"ok"` only) |
+| Manifest exists with `overall_status="ok"` but no `run/prun.xtc` on disk | Still counted as present (manifest is authoritative; missing xtc is a separate problem surfaced by `summarise_systems`) |
+| Legacy system with `run/prun.xtc` and no manifest | Counted as present iff `legacy_fallback=True` |
+| Duplicate target compositions (e.g. `DOPC50_DPPC50` and `DPPC50_DOPC50`) | Deduplicated by canonical name before the missing-set computation |
+| Non-integer percentages in the grid (e.g. `step=7`) | Each generated comp is validated by `Composition.__post_init__`; bad ones raise at grid generation, not at the missing-set step |
+| Target lipid not in `LIPID_REGISTRY` | Grid generators warn and proceed (registry membership isn't required to *name* a composition); simulation-time failure is the registry's concern, not the planner's |
+
+### H.7 Test plan — `tests/martini_pipeline/test_missing_compositions.py`
+
+1. `test_binary_grid_count` — `binary_grid("POPC", "DOPC", step=10)` returns 9 mixtures (10 %–90 %) plus 2 pures = 11 entries.
+2. `test_binary_grid_step_5` — `step=5` returns 19 mixtures + 2 pures = 21.
+3. `test_ternary_grid_simplex_count` — `ternary_grid(["POPC", "DOPC", "DPPC"], step=20)` returns the correct number of simplex points (15 for 20 %).
+4. `test_dppc_corner_grid_includes_pure_dppc` — `DPPC100` is in the result.
+5. `test_dopc_corner_grid_includes_pure_dopc` — `DOPC100` is in the result.
+6. `test_corner_grids_use_canonical_names` — every entry's `.name` round-trips via `parse_name`.
+7. `test_missing_compositions_empty_grid` — empty input → empty output.
+8. `test_missing_compositions_empty_root` — non-existent root → entire grid returned.
+9. `test_missing_compositions_with_manifest_ok` — fake tree with one valid manifest → that comp removed from the missing set.
+10. `test_missing_compositions_with_manifest_failed` — fake tree with `overall_status="failed_at_equilibration"` → comp stays in the missing set.
+11. `test_missing_compositions_legacy_fallback_on` — fake legacy tree with `run/prun.xtc` but no manifest → comp counted as present.
+12. `test_missing_compositions_legacy_fallback_off` — same tree with `legacy_fallback=False` → comp counted as missing.
+13. `test_missing_compositions_union_across_roots` — same comp present in root A, target queries roots [A, B] → not missing.
+14. `test_missing_compositions_canonical_aliasing` — present-name `POPC10_DOPC90` and target `DOPC90_POPC10` resolve as the same; comp removed.
+15. `test_summarise_systems_returns_status_per_dir` — fake tree with 3 systems → 3 `SystemStatus` entries with correct fields.
+16. `test_invalid_manifest_counted_missing` — corrupt JSON → treated as missing by `missing_compositions`.
+
+Fakes: each test builds a tiny `tmp_path/<comp>/{manifest.json,run/prun.xtc}` skeleton inline (no real GROMACS). The manifest skeleton uses `Manifest(schema_version="1.0", ..., overall_status="ok")` serialised via `manifest.write_manifest`.
+
+### H.8 Layout & dependencies
+
+```text
+lipid_gnn/martini_pipeline/
+    analysis.py                          ← extend (add 5 functions + SystemStatus)
+scripts/simulation/
+    print_work_queue.py                  ← new CLI
+tests/martini_pipeline/
+    test_missing_compositions.py         ← new
+docs/
+    martini_pipeline_plan.md             ← status table row 8 → [x] + Decision 33
+```
+
+No new external dependencies. Internal imports: `composition.Composition`, `manifest.read_manifest`, `lipid_gnn.config.CONFIG`.
+
+### H.9 Acceptance criteria
+
+- `pytest tests/martini_pipeline/test_missing_compositions.py -q` passes locally and on HPC.
+- `python scripts/simulation/print_work_queue.py --grid dppc_corner` prints a non-empty table on the current repo state (since no DPPC-corner systems exist in `data/membrane_only/` beyond pure `DPPC100`).
+- `python scripts/simulation/print_work_queue.py --grid dopc_corner` prints a non-empty table (legacy data lacks high-DOPC mixtures except `POPC30_DOPC70`-style POPC-anchored ones).
+- `print_work_queue.py --grid dppc_corner --format json --out /tmp/queue.json` writes a valid JSON array consumable by the step-9 submission orchestrator.
+- Re-running the CLI after one composition lands in `data/martini_pipeline/<comp>/` with a `manifest.json` `overall_status="ok"` reduces the queue by exactly one.
+- Step status table row 8 flipped to `[x]`.
+
+### H.10 Open questions (need user input before implementation)
+
+1. **Corner definition boundary.** "DPPC-rich" = `DPPC ≥ 50 %`? Or stricter (`≥ 60 %` to focus on the *corner*, not the *edge*)? Recommend `≥ 50 %`, matching the natural split point; revisit if the resulting queue is too large for HPC step 11.
+2. **CHOL handling in corner grids.** CHOL is special: it's a sterol, not a phospholipid, and legacy CHOL systems max out at 40 % (`POPC60_CHOL40`). Should `dppc_corner_grid` include `DPPC60_CHOL40`? Recommend yes, but cap CHOL at 40 % everywhere in the grid (consistent with the Martini 3 sterol-content guidance and legacy practice).
+3. **Ternary corner expansion.** The Stage 5b worst points are all binaries; should the corner grids also queue ternaries like `DPPC60_DOPC30_POPC10`? Recommend defer to a follow-up after the binary corners fill, since ternary count explodes (15 systems per step=20 simplex × C(10,3) lipid triples).
+4. **Step-8 vs step-9 dividing line for `--max-queue N`.** Should the CLI itself be able to cap the queue length (priority-sorted) or is that a submission-orchestrator concern? Recommend keep step-8 unbounded and let step-9 prioritise; otherwise step-8 grows scoring logic that belongs in the submission layer.
+5. **Should `summarise_systems` walk both the legacy and new roots in one call?** Or is "summarise a single root" the right unit and the CLI does the union? Recommend single-root primitive + CLI-level union; keeps the function composable.
+6. **Output file convention.** `--out /tmp/queue.json` or `--out /tmp/queue.txt` — should the format be inferred from the suffix, or driven only by `--format`? Recommend `--format` is authoritative; suffix is advisory. Avoids surprise behaviour.
+
+### H.11 New decisions to log on completion
+
+- **Decision 33** — Legacy `data/membrane_only/` systems counted as present via filesystem fallback (`run/prun.xtc` exists), not via manifest. Rationale: legacy systems pre-date the pipeline's manifest format; re-simulating them just to mint manifests is wasteful. Opt-out via `legacy_fallback=False`.
+- **Decision 34** — `dppc_corner_grid` and `dopc_corner_grid` use a `≥ 50 %` cutoff for the named lipid (per H.10 Q1 answer; adjust if user picks otherwise).
+- **Decision 35** — CHOL capped at 40 % in all generated grids (Martini 3 sterol guidance + legacy precedent).
+- **Decision 36** — Work-queue ordering/prioritisation lives in step 9, not step 8. The step-8 CLI emits an unsorted (or alphabetically sorted) queue.
+- *Plus any decisions arising from H.10 Q2-Q6.*
