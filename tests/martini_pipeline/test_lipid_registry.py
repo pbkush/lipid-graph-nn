@@ -274,7 +274,13 @@ def test_check_resources_combined_all_pass(tmp_path):
     not (_HAS_LEGACY_ITP and _HAS_NODE_MAPPING),
     reason="legacy data or node mapping not present",
 )
-@pytest.mark.parametrize("name", sorted(_DEFAULT_LIPIDS))
+@pytest.mark.parametrize(
+    "name",
+    # DIPC excluded: registry now points to v2 ITP (DLPC moleculetype),
+    # while legacy data uses v1 (DIPC moleculetype).  See lipid_registry.py
+    # comment on the DIPC entry and Decision 49 in martini_pipeline_plan.md.
+    sorted(_DEFAULT_LIPIDS - {"DIPC"}),
+)
 def test_check_resources_legacy_integration(name):
     entry = get_lipid(name)
     result = check_resources(

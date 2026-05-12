@@ -1886,6 +1886,7 @@ No new Python dependencies. Bash dependencies: `python scripts/python/print_conf
 - **Decision 40** — Each backgrounded slot is a separate `python scripts/simulation/run_martini_pipeline.py` invocation. Failures of one slot do not abort node-mates; worst exit code is surfaced (mirror of `sbatch_sweep.sh` lines 113–121).
 - **Decision 41** — Idempotency is inherited from `pipeline.run()` (Decision 23); no separate restart / checkpoint logic at the bash layer. Resubmission with `--missing-from-grid` is the canonical retry mechanism.
 - **Decision 42** — `--dry-run` is a first-class testing affordance; all unit tests use it.
+- **Decision 49** — Composition token `DIPC` maps to v2 moleculetype `DLPC`. The M3-Lipid-Parameters v2 set (per [K.B. Pedersen et al., ACS Central Science 2025](https://doi.org/10.1021/acscentsci.5c00755)) renamed di-C18:2 PC from legacy `DIPC` to `DLPC`. We keep `DIPC` as the user-facing composition token (matches legacy 70-system directory naming and `composition.py` parsing) but pass `DLPC` to insane and into `topol.top`. Discovered when sanity_check_dipc100 failed at grompp with `No such moleculetype DIPC`; legacy systems remain unaffected because they ship their own v1 ITPs in `toppar/`.
 - *Plus any decisions arising from I.10 Q1–Q9.*
 
 ---

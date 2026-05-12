@@ -186,10 +186,15 @@ _STEROL_ITP = "martini_v3.0_sterols_v1.0.itp"
 
 _REGISTRY_DATA: dict[str, LipidEntry] = {
     e.name: e for e in [
+        # Composition token "DIPC" maps to v2 moleculetype "DLPC" — the M3-Lipid-Parameters
+        # v2 set renamed di-C18:2 PC from legacy "DIPC" to "DLPC".  We keep the user-facing
+        # token as "DIPC" (matches legacy 70-system directory naming and composition.py
+        # parsing) but pass "DLPC" to insane and the v2 PC ITP.
         LipidEntry(
-            name="DIPC", resname="DIPC", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DIPC",
+            name="DIPC", resname="DLPC", itp_file="martini_v3.0.0_phospholipids_PC_v2.itp",
+            moleculetype="DLPC",
             beads=("NC3", "PO4", "GL1", "GL2", "C1A", "D2A", "D3A", "C4A", "C1B", "D2B", "D3B", "C4B"),
-            family="phospholipid", insane_keyword="DIPC",
+            family="phospholipid", insane_keyword="DLPC",
         ),
         LipidEntry(
             name="DOPC", resname="DOPC", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DOPC",
