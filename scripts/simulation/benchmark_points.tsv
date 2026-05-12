@@ -7,11 +7,14 @@
 #   gpus_per_node    — GPUs requested per node (0 = CPU-only)
 #   cpus_per_sim     — CPU threads per slot
 #   mem_per_sim      — memory per slot (e.g. 16G)
-#   partition        — SLURM partition (overridden to the value passed to benchmark_hpc.sh
-#                      for GPU points; used as-is for CPU points with gpus_per_node=0)
+#   partition        — declared partition (gpu_test for GPU points; overridden by
+#                      --partition on the CLI).  CPU-baseline removed: general1
+#                      only has GROMACS 2022, which we've already seen produces
+#                      different ion naming + MDP-key behaviour than the v2025.4
+#                      module on gpu nodes.  Add a CPU row back via an explicit
+#                      points file if needed later.
 #
-# gpu_test cap: max 4 GPUs per job.  All GPU rows respect this limit.
-# CPU baseline (row 8) uses general1 partition regardless of --partition.
+# gpu_test cap: max 4 GPUs per job.  All rows respect this limit.
 #
 1_gpu_1sim_cpu16	1	1	16	16G	gpu_test
 2_gpu_2sim_cpu8	2	2	8	16G	gpu_test
@@ -20,4 +23,3 @@
 4_gpu_4sim_cpu16	4	4	16	16G	gpu_test
 2_sim_1gpu_share	2	1	8	16G	gpu_test
 8_sim_4gpu_pack	8	4	4	16G	gpu_test
-8_sim_cpu_baseline	8	0	4	16G	general1

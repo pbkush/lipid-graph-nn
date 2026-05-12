@@ -1945,11 +1945,9 @@ The 7 curated points:
 
 Points 6–7 probe whether one MI210 can timeshare multiple `gmx mdrun` slots — relevant if POPC100 is GPU-underutilised. Drop them if step 9 reveals `--gres=gpu:N` is enforced strictly per slot (cannot allocate fewer GPUs than sims). Note that `gpu_test` allows GPU sharing across *different* jobs from different users on the same node, but within a single job `HIP_VISIBLE_DEVICES` masking is what creates the over-subscription tested here.
 
-Point 8 adds a CPU baseline (J.12 Q8 answer: yes, add one CPU point for the GPU-vs-CPU thesis figure):
+CPU baseline (formerly point 8 on `general1`) dropped: `general1`'s GROMACS is the 2022 build which has already shown divergent behaviour (ion naming, MDP-key acceptance) from the v2025.4 ROCm module used for production. Mixing the two in one calibration sweep would compare apples to oranges; if a CPU number is needed later for the thesis figure, run it as a separate one-off with an explicit points file.
 
-| 8 | 8 | 0 | 4  | 32 | 0 | 128 G | CPU-only; `general1` partition |
-
-Total quota: 7 GPU jobs + 1 CPU job; GPU jobs ≤ 10 min each ≤ 70 GPU-min serialised, ≤ 30 wallclock min if scheduled in parallel.
+Total quota: 7 GPU jobs; ≤ 10 min each, ≤ 70 GPU-min serialised, ≤ 30 wallclock min if 2 schedule in parallel under the `gpu_test` per-user cap.
 
 ### J.4 Public API — `scripts/simulation/benchmark_hpc.sh`
 
