@@ -228,7 +228,7 @@ def _run_bench_sh(args: list[str]) -> subprocess.CompletedProcess:
 
 class TestBenchmarkHshDryRun(unittest.TestCase):
     def test_dry_run_emits_one_sbatch_per_point(self):
-        """--dry-run with default 8-point TSV → 8 [DRY RUN] sbatch lines."""
+        """--dry-run with default 7-point GPU-only TSV → 7 [DRY RUN] sbatch lines."""
         with tempfile.TemporaryDirectory() as d:
             result = _run_bench_sh([
                 "--dry-run",
@@ -237,7 +237,7 @@ class TestBenchmarkHshDryRun(unittest.TestCase):
             ])
         self.assertEqual(result.returncode, 0, result.stderr)
         dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
-        self.assertEqual(len(dry_lines), 8)
+        self.assertEqual(len(dry_lines), 7)
 
     def test_dry_run_with_multi_comp(self):
         """Two reference comps → two REFERENCE_TPRS entries in export string."""
