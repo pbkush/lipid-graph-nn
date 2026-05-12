@@ -104,6 +104,12 @@ def main() -> None:
     parser.add_argument("--out-dir", default="data/sanity_check", help="Output root")
     parser.add_argument("--gmx", default="gmx", help="GROMACS executable")
     parser.add_argument("--metrics-json", default=None, help="Write metrics to JSON file")
+    parser.add_argument("--nsteps-min", type=int, default=None,
+                        help="Override minimization steps (default: from config, 20000)")
+    parser.add_argument("--nsteps-eq", type=int, default=None,
+                        help="Override equilibration steps (default: from config, 1000000 = 10 ns)."
+                             " Use a small value (e.g. 5000) for a fast login-node smoke test;"
+                             " the physical APL check expects a fully equilibrated system.")
     args = parser.parse_args()
 
     from lipid_gnn.config import CONFIG
@@ -127,7 +133,12 @@ def main() -> None:
         center=True,
         pbc="rectangular",
     )
-    mdp_params = MDPParams(nsteps_prod=nsteps_prod)
+    mdp_kwargs = {"nsteps_prod": nsteps_prod}
+    if args.nsteps_min is not None:
+        mdp_kwargs["nsteps_min"] = args.nsteps_min
+    if args.nsteps_eq is not None:
+        mdp_kwargs["nsteps_eq"] = args.nsteps_eq
+    mdp_params = MDPParams(**mdp_kwargs)
 
     print(f"Running DIPC100 sanity check — {args.prod_ns} ns production")
     print(f"Output: {out_dir}")
