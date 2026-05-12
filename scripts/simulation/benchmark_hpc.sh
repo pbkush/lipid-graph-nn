@@ -122,30 +122,30 @@ for COMP in "${REFERENCE_COMPS[@]}"; do
 
     printf '  [setup] %s: prun.tpr missing — submitting pipeline setup job\n' "$COMP"
 
-    # Mirror submit_simulations.sh's --export= pattern (one token, equals form).
-    # Some SLURM builds parse the space-separated `--export ALL,VAR=val` form
-    # differently and drop trailing entries; the `=` form is unambiguous.
-    SETUP_EXPORT="ALL"
-    SETUP_EXPORT+=",N_SIMS_PER_NODE=1"
-    SETUP_EXPORT+=",RUN_0_COMP=${COMP}"
-    SETUP_EXPORT+=",OUTPUT_ROOT=${BENCH_SIM_ROOT}"
-    SETUP_EXPORT+=",NSTEPS=${SETUP_NSTEPS}"
-    SETUP_EXPORT+=",MAXWARN=2"
-    SETUP_EXPORT+=",GPUS_PER_NODE=1"
-    SETUP_EXPORT+=",CPUS_PER_SIM=8"
-    SETUP_EXPORT+=",SAVE_FORCES=0"
-
-    SETUP_SBATCH=(
-        sbatch
-        --partition="$SETUP_PARTITION"
-        --time=04:00:00
-        --cpus-per-task=8
-        --mem=16G
-        --gres=gpu:1
-        --export="$SETUP_EXPORT"
-        "$SCRIPT_DIR/../bash/sbatch_simulations.sh"
+    # Bulletproof export: set the variables as a command-prefix assignment so
+    # they live only for this `sbatch` invocation, then use --export=ALL to
+    # have SLURM inherit them.  Avoids the SLURM-version-specific parsing
+    # quirks around `--export=ALL,VAR=val` (silently dropped entries on
+    # Goethe-HLR's SLURM build) and doesn't pollute the parent shell.
+    JOB_ID=$(
+        N_SIMS_PER_NODE=1 \
+        RUN_0_COMP="$COMP" \
+        OUTPUT_ROOT="$BENCH_SIM_ROOT" \
+        NSTEPS="$SETUP_NSTEPS" \
+        MAXWARN=2 \
+        GPUS_PER_NODE=1 \
+        CPUS_PER_SIM=8 \
+        SAVE_FORCES=0 \
+        sbatch \
+            --partition="$SETUP_PARTITION" \
+            --time=04:00:00 \
+            --cpus-per-task=8 \
+            --mem=16G \
+            --gres=gpu:1 \
+            --export=ALL \
+            "$SCRIPT_DIR/../bash/sbatch_simulations.sh" \
+        | awk '{print $NF}'
     )
-    JOB_ID=$("${SETUP_SBATCH[@]}" | awk '{print $NF}')
     SETUP_JOB_IDS+=("$JOB_ID")
     printf '  [setup] %s: job %s submitted\n' "$COMP" "$JOB_ID"
 done
@@ -161,6 +161,7 @@ TPRS_STR=$(IFS=:; echo "${REFERENCE_TPRS[*]}")
 
 printf '\n'
 BATCH_COUNT=0
+PREV_BENCH_JOB_ID=""    # for afterany chaining (minimises concurrent pending bench jobs)
 
 while IFS=$'\t' read -r LABEL SIMS GPUS CPUS MEM POINT_PARTITION REST; do
     [[ -z "$LABEL" || "$LABEL" == \#* ]] && continue
@@ -205,34 +206,52 @@ with open(sys.argv[7], 'w') as f:
     GRES_ARG=""
     [[ "${GPUS}" -gt 0 ]] && GRES_ARG="--gres=gpu:${GPUS}"
 
-    BENCH_EXPORT="ALL"
-    BENCH_EXPORT+=",BENCH_POINT_DIR=${POINT_DIR}"
-    BENCH_EXPORT+=",REFERENCE_TPRS=${TPRS_STR}"
-    BENCH_EXPORT+=",SIMS_PER_NODE=${SIMS}"
-    BENCH_EXPORT+=",GPUS_PER_NODE=${GPUS}"
-    BENCH_EXPORT+=",CPUS_PER_SIM=${CPUS}"
-    BENCH_EXPORT+=",NSTEPS=${NSTEPS}"
-
-    SBATCH_CMD=(
-        sbatch
-        --partition="$EFFECTIVE_PARTITION"
-        --time="$TIME_LIMIT"
-        --cpus-per-task="$TOTAL_CPUS"
-        --mem="$TOTAL_MEM"
-        ${GRES_ARG:+"$GRES_ARG"}
-        ${DEPENDENCY_ARG:+"$DEPENDENCY_ARG"}
-        --export="$BENCH_EXPORT"
-        "$SCRIPT_DIR/sbatch_benchmark_hpc.sh"
-    )
-
     BATCH_COUNT=$(( BATCH_COUNT + 1 ))
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '  [DRY RUN] %s\n' "${SBATCH_CMD[*]}"
+        # In dry-run, build a printable command-line that includes the
+        # variable assignments (helps the user eyeball what gets exported).
+        printf '  [DRY RUN] BENCH_POINT_DIR=%s REFERENCE_TPRS=%s SIMS_PER_NODE=%s GPUS_PER_NODE=%s CPUS_PER_SIM=%s NSTEPS=%s ' \
+            "$POINT_DIR" "$TPRS_STR" "$SIMS" "$GPUS" "$CPUS" "$NSTEPS"
+        printf 'sbatch --partition=%s --time=%s --cpus-per-task=%s --mem=%s %s %s --export=ALL %s\n' \
+            "$EFFECTIVE_PARTITION" "$TIME_LIMIT" "$TOTAL_CPUS" "$TOTAL_MEM" \
+            "${GRES_ARG}" "${DEPENDENCY_ARG}" "$SCRIPT_DIR/sbatch_benchmark_hpc.sh"
         printf '    label=%s  sims=%s  gpus=%s  cpus/sim=%s  mem=%s  partition=%s\n' \
             "$LABEL" "$SIMS" "$GPUS" "$CPUS" "$TOTAL_MEM" "$EFFECTIVE_PARTITION"
     else
-        JOB_ID=$("${SBATCH_CMD[@]}" | awk '{print $NF}')
+        # Compose the dependency string: afterok on Phase 1 setup jobs (so we
+        # don't run benchmarks against a missing tpr) AND afterany on the
+        # previous bench job (so SLURM only runs one bench point at a time —
+        # keeps the pending count down under tight per-user QOS limits like
+        # gpu_test's MaxSubmitJobs).
+        POINT_DEP="$DEPENDENCY_ARG"
+        if [[ -n "$PREV_BENCH_JOB_ID" ]]; then
+            if [[ -n "$POINT_DEP" ]]; then
+                POINT_DEP="${POINT_DEP},afterany:${PREV_BENCH_JOB_ID}"
+            else
+                POINT_DEP="--dependency=afterany:${PREV_BENCH_JOB_ID}"
+            fi
+        fi
+
+        JOB_ID=$(
+            BENCH_POINT_DIR="$POINT_DIR" \
+            REFERENCE_TPRS="$TPRS_STR" \
+            SIMS_PER_NODE="$SIMS" \
+            GPUS_PER_NODE="$GPUS" \
+            CPUS_PER_SIM="$CPUS" \
+            NSTEPS="$NSTEPS" \
+            sbatch \
+                --partition="$EFFECTIVE_PARTITION" \
+                --time="$TIME_LIMIT" \
+                --cpus-per-task="$TOTAL_CPUS" \
+                --mem="$TOTAL_MEM" \
+                ${GRES_ARG:+"$GRES_ARG"} \
+                ${POINT_DEP:+"$POINT_DEP"} \
+                --export=ALL \
+                "$SCRIPT_DIR/sbatch_benchmark_hpc.sh" \
+            | awk '{print $NF}'
+        )
+        PREV_BENCH_JOB_ID="$JOB_ID"
         printf '  [bench]  %s: job %s  (sims=%s gpus=%s cpus/sim=%s)\n' \
             "$LABEL" "$JOB_ID" "$SIMS" "$GPUS" "$CPUS"
     fi
