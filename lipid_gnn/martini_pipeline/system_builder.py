@@ -100,6 +100,7 @@ def build_command(
     for name, ratio in ratios.items():
         keyword = _insane_keyword(name)
         argv += ["-l", f"{keyword}:{ratio}"]
+    argv += _alname_args(ratios)
     argv += ["-sol", box.water_type, "-salt", str(box.salt_M), "-charge", box.charge_mode]
     if box.center:
         argv.append("-center")
@@ -186,6 +187,37 @@ def _insane_keyword(name: str) -> str:
         return get_lipid(name).insane_keyword
     except (KeyError, Exception):
         return name
+
+
+def _alname_args(ratios: dict) -> list:
+    """Build -alname/-alhead/-allink/-altail/-alcharge flag groups for any
+    composition lipid whose registry entry has an inline insane spec.
+
+    Lipids not in insane's packaged lipids.dat (e.g. DLPC, DOPE, DPPE in the
+    M3.* namespace) must be defined this way so the bead layout matches the
+    v2 ITP that grompp will read.  Order across the four lists is paired by
+    index inside insane's add_from_def.
+    """
+    try:
+        from lipid_gnn.martini_pipeline.lipid_registry import get_lipid
+    except Exception:
+        return []
+    args: list = []
+    for name in ratios:
+        try:
+            entry = get_lipid(name)
+        except KeyError:
+            continue
+        if not entry.needs_alname:
+            continue
+        args += [
+            "-alname",   entry.insane_keyword,
+            "-alhead",   entry.insane_alhead,
+            "-allink",   entry.insane_allink,
+            "-altail",   entry.insane_altail,
+            "-alcharge", str(entry.insane_alcharge),
+        ]
+    return args
 
 
 def _preflight_check_itps(itp_dir: str) -> None:
