@@ -121,14 +121,28 @@ for COMP in "${REFERENCE_COMPS[@]}"; do
     fi
 
     printf '  [setup] %s: prun.tpr missing — submitting pipeline setup job\n' "$COMP"
+
+    # Mirror submit_simulations.sh's --export= pattern (one token, equals form).
+    # Some SLURM builds parse the space-separated `--export ALL,VAR=val` form
+    # differently and drop trailing entries; the `=` form is unambiguous.
+    SETUP_EXPORT="ALL"
+    SETUP_EXPORT+=",N_SIMS_PER_NODE=1"
+    SETUP_EXPORT+=",RUN_0_COMP=${COMP}"
+    SETUP_EXPORT+=",OUTPUT_ROOT=${BENCH_SIM_ROOT}"
+    SETUP_EXPORT+=",NSTEPS=${SETUP_NSTEPS}"
+    SETUP_EXPORT+=",MAXWARN=2"
+    SETUP_EXPORT+=",GPUS_PER_NODE=1"
+    SETUP_EXPORT+=",CPUS_PER_SIM=8"
+    SETUP_EXPORT+=",SAVE_FORCES=0"
+
     SETUP_SBATCH=(
         sbatch
-        --partition  "$SETUP_PARTITION"
-        --time       "04:00:00"
-        --cpus-per-task 8
-        --mem        "16G"
-        --gres       "gpu:1"
-        --export     "ALL,N_SIMS_PER_NODE=1,RUN_0_COMP=${COMP},OUTPUT_ROOT=${BENCH_SIM_ROOT},NSTEPS=${SETUP_NSTEPS},MAXWARN=2,GPUS_PER_NODE=1,CPUS_PER_SIM=8,SAVE_FORCES=0"
+        --partition="$SETUP_PARTITION"
+        --time=04:00:00
+        --cpus-per-task=8
+        --mem=16G
+        --gres=gpu:1
+        --export="$SETUP_EXPORT"
         "$SCRIPT_DIR/../bash/sbatch_simulations.sh"
     )
     JOB_ID=$("${SETUP_SBATCH[@]}" | awk '{print $NF}')
@@ -191,15 +205,23 @@ with open(sys.argv[7], 'w') as f:
     GRES_ARG=""
     [[ "${GPUS}" -gt 0 ]] && GRES_ARG="--gres=gpu:${GPUS}"
 
+    BENCH_EXPORT="ALL"
+    BENCH_EXPORT+=",BENCH_POINT_DIR=${POINT_DIR}"
+    BENCH_EXPORT+=",REFERENCE_TPRS=${TPRS_STR}"
+    BENCH_EXPORT+=",SIMS_PER_NODE=${SIMS}"
+    BENCH_EXPORT+=",GPUS_PER_NODE=${GPUS}"
+    BENCH_EXPORT+=",CPUS_PER_SIM=${CPUS}"
+    BENCH_EXPORT+=",NSTEPS=${NSTEPS}"
+
     SBATCH_CMD=(
         sbatch
-        --partition "$EFFECTIVE_PARTITION"
-        --time      "$TIME_LIMIT"
-        --cpus-per-task "$TOTAL_CPUS"
-        --mem       "$TOTAL_MEM"
+        --partition="$EFFECTIVE_PARTITION"
+        --time="$TIME_LIMIT"
+        --cpus-per-task="$TOTAL_CPUS"
+        --mem="$TOTAL_MEM"
         ${GRES_ARG:+"$GRES_ARG"}
         ${DEPENDENCY_ARG:+"$DEPENDENCY_ARG"}
-        --export "ALL,BENCH_POINT_DIR=${POINT_DIR},REFERENCE_TPRS=${TPRS_STR},SIMS_PER_NODE=${SIMS},GPUS_PER_NODE=${GPUS},CPUS_PER_SIM=${CPUS},NSTEPS=${NSTEPS}"
+        --export="$BENCH_EXPORT"
         "$SCRIPT_DIR/sbatch_benchmark_hpc.sh"
     )
 
