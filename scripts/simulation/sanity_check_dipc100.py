@@ -86,7 +86,7 @@ def check_energy(edr_path: str) -> tuple[bool, float]:
     try:
         import pyedr
         import numpy as np
-        edr = pyedr.get_edr(edr_path)
+        edr = pyedr.read_edr(edr_path)
         epot = edr.get("Potential", edr.get("potential", None))
         if epot is None:
             return True, 0.0
@@ -117,7 +117,9 @@ def main() -> None:
     insane_cmd = cfg.insane_cmd if cfg else "insane"
     itp_dir = str(cfg.itp_dir) if cfg else "resources/martini3/itp"
 
-    nsteps_prod = round(args.prod_ns * 1e9 / (0.01 * 1e12))  # ns → steps at dt=0.01 ps
+    # Martini 3 production timestep is 0.02 ps; 1 ns = 1000 ps → 50 000 steps/ns.
+    _DT_PS = 0.02
+    nsteps_prod = round(args.prod_ns * 1000.0 / _DT_PS)
 
     composition = {"DIPC": 1.0}
     out_dir = os.path.join(args.out_dir, "DIPC100")
@@ -160,10 +162,15 @@ def main() -> None:
     tpr_path = os.path.join(out_dir, "run", "prun.tpr")
     edr_path = os.path.join(out_dir, "run", "prun.edr")
 
-    # Molecule counts from manifest
+    # Molecule counts from manifest.  The composition token is "DIPC" but the
+    # v2 moleculetype name (what appears in topol.top after Decision 49) is
+    # "DLPC".  Look up via the registry to get the right key.
+    from lipid_gnn.martini_pipeline.lipid_registry import get_lipid
     with open(result.manifest_path) as fh:
         manifest = json.load(fh)
-    n_lipids = manifest["build_stats"]["molecule_counts"].get("DIPC", 0)
+    counts = manifest["build_stats"]["molecule_counts"]
+    lipid_resname = get_lipid("DIPC").resname  # "DLPC"
+    n_lipids = counts.get(lipid_resname, counts.get("DIPC", 0))
 
     checks: list[tuple[str, bool, str]] = []
 

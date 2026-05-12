@@ -20,7 +20,7 @@ import os
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 
-_DT_PS = 0.01  # production MDP dt; 1 ns = 100 000 steps
+_DT_PS = 0.02  # production MDP dt (Martini 3); 1 ns = 50 000 steps
 
 
 def parse_composition(ratio_args: list[str]) -> dict[str, float]:
@@ -130,7 +130,7 @@ def main() -> None:
 
     # Resolve nsteps_prod
     if args.prod_ns is not None:
-        nsteps_prod = round(args.prod_ns * 1e9 / (_DT_PS * 1e12))  # ns → steps
+        nsteps_prod = round(args.prod_ns * 1000.0 / _DT_PS)  # ns → ps → steps
     else:
         nsteps_prod = args.nsteps
 
