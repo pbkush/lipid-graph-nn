@@ -128,6 +128,29 @@ class TestBuildCommand(unittest.TestCase):
                              insane_cmd="myinsane")
         self.assertEqual(argv[0], "myinsane")
 
+    def test_dipc_emits_alname_flags(self):
+        """DIPC requires inline insane spec (M3.DLPC missing from lipids.dat)."""
+        argv = build_command({"DIPC": 1.0}, BoxParams(), "/tmp/a.gro", "/tmp/a.top")
+        # -alname DLPC must appear; bead spec must be CDDC CDDC for di-C18:2
+        self.assertIn("-alname", argv)
+        idx = argv.index("-alname")
+        self.assertEqual(argv[idx + 1], "DLPC")
+        self.assertIn("CDDC CDDC", argv)
+
+    def test_popc_no_alname_flags(self):
+        """POPC is in insane's packaged lipids.dat — no -alname needed."""
+        argv = build_command({"POPC": 1.0}, BoxParams(), "/tmp/a.gro", "/tmp/a.top")
+        self.assertNotIn("-alname", argv)
+        self.assertNotIn("-altail", argv)
+
+    def test_mixed_composition_only_emits_for_missing(self):
+        """POPC + DIPC composition emits one -alname pair (for DIPC only)."""
+        argv = build_command({"POPC": 0.5, "DIPC": 0.5}, BoxParams(),
+                             "/tmp/a.gro", "/tmp/a.top")
+        self.assertEqual(argv.count("-alname"), 1)
+        idx = argv.index("-alname")
+        self.assertEqual(argv[idx + 1], "DLPC")
+
 
 # ---------------------------------------------------------------------------
 # build_system tests (use fake insane executable + fake itp dir)

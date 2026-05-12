@@ -16,7 +16,17 @@ _NAME_RE = re.compile(r"^[A-Z][A-Z0-9]*$")
 
 @dataclass(frozen=True)
 class LipidEntry:
-    """Metadata for a single Martini 3 lipid."""
+    """Metadata for a single Martini 3 lipid.
+
+    The four ``insane_al*`` fields are optional inline definitions for
+    insane's ``-alname/-alhead/-allink/-altail/-alcharge`` flags.  Set them
+    when the lipid is **not** in insane's packaged ``lipids.dat`` under the
+    ``M3.<insane_keyword>`` key, or when the packaged template uses a
+    different bead layout than the v2 ITP (e.g. DLPC = di-C18:2 PC in v2 is
+    a 12-bead lipid, but the packaged ``M3.DLPC`` is missing and ``M2.DLPC``
+    is a 10-bead di-C12:0 PC).  All four must be set together; otherwise
+    none are emitted to insane.
+    """
 
     name: str
     resname: str
@@ -25,6 +35,17 @@ class LipidEntry:
     beads: tuple[str, ...]
     family: str
     insane_keyword: str
+    insane_alhead: str | None = None
+    insane_allink: str | None = None
+    insane_altail: str | None = None
+    insane_alcharge: float | None = None
+
+    @property
+    def needs_alname(self) -> bool:
+        return all(
+            v is not None
+            for v in (self.insane_alhead, self.insane_allink, self.insane_altail, self.insane_alcharge)
+        )
 
 
 @dataclass(frozen=True)
@@ -189,12 +210,16 @@ _REGISTRY_DATA: dict[str, LipidEntry] = {
         # Composition token "DIPC" maps to v2 moleculetype "DLPC" — the M3-Lipid-Parameters
         # v2 set renamed di-C18:2 PC from legacy "DIPC" to "DLPC".  We keep the user-facing
         # token as "DIPC" (matches legacy 70-system directory naming and composition.py
-        # parsing) but pass "DLPC" to insane and the v2 PC ITP.
+        # parsing) but pass "DLPC" to insane and the v2 PC ITP.  insane has no built-in
+        # M3.DLPC entry (only M2.DLPC = 10-bead di-C12:0); we pass the v2 spec inline so
+        # insane builds the 12-bead di-C18:2 with D2A/D3A double-bond beads.
         LipidEntry(
             name="DIPC", resname="DLPC", itp_file="martini_v3.0.0_phospholipids_PC_v2.itp",
             moleculetype="DLPC",
             beads=("NC3", "PO4", "GL1", "GL2", "C1A", "D2A", "D3A", "C4A", "C1B", "D2B", "D3B", "C4B"),
             family="phospholipid", insane_keyword="DLPC",
+            insane_alhead="C P", insane_allink="G G",
+            insane_altail="CDDC CDDC", insane_alcharge=0.0,
         ),
         LipidEntry(
             name="DOPC", resname="DOPC", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DOPC",
@@ -211,15 +236,21 @@ _REGISTRY_DATA: dict[str, LipidEntry] = {
             beads=("NC3", "PO4", "GL1", "GL2", "C1A", "D2A", "C3A", "C4A", "C1B", "C2B", "C3B", "C4B"),
             family="phospholipid", insane_keyword="POPC",
         ),
+        # DOPE not in insane's packaged lipids.dat under M3.DOPE; pass v2 spec inline.
         LipidEntry(
             name="DOPE", resname="DOPE", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DOPE",
             beads=("NH3", "PO4", "GL1", "GL2", "C1A", "D2A", "C3A", "C4A", "C1B", "D2B", "C3B", "C4B"),
             family="phospholipid", insane_keyword="DOPE",
+            insane_alhead="E P", insane_allink="G G",
+            insane_altail="CDCC CDCC", insane_alcharge=0.0,
         ),
+        # DPPE not in insane's packaged lipids.dat under M3.DPPE; pass v2 spec inline.
         LipidEntry(
             name="DPPE", resname="DPPE", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DPPE",
             beads=("NH3", "PO4", "GL1", "GL2", "C1A", "C2A", "C3A", "C4A", "C1B", "C2B", "C3B", "C4B"),
             family="phospholipid", insane_keyword="DPPE",
+            insane_alhead="E P", insane_allink="G G",
+            insane_altail="CCCC CCCC", insane_alcharge=0.0,
         ),
         LipidEntry(
             name="POPE", resname="POPE", itp_file=_PHOSPHOLIPID_ITP, moleculetype="POPE",
