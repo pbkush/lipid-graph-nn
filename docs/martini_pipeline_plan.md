@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-12.
+Last updated: 2026-05-12 (step 7 complete).
 
 ---
 
@@ -144,7 +144,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 4 | `mdp_writer.py` + templates derived from audit (Appendix D) | [x] | Eq diverges from legacy: `compressibility 3e-4`, `nsteps 1e6`, explicit `gen-vel=yes`. Knobs: `nsteps_*`, `save_forces`, `gen_seed`. 32 tests pass. |
 | 5 | Vendor `insane.py` into `resources/martini3/insane.py`; record source/version in `thesisStory.md` (Appendix E) | [x] | **Reworked 2026-05-08 (Decision 26)**: insane.py vendoring removed; `insane` pip package (v1.2.0) used as command instead. `INSANE_PATH` → `INSANE_CMD = "insane"`. 7 tests pass. |
 | 6 | `system_builder.py` + tests | [x] | **Reworked 2026-05-08 (Decision 27)**: 32 ITPs from M3-Lipid-Parameters (full lipidome) replace the 9 legacy-copied ITPs. `ffbonded_v2.itp` included (required by v2 lipid files). pbc now always passed explicitly. 27 tests pass. |
-| 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [ ] | |
+| 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [x] | Decisions 22–25, 28–32. Filenames match legacy (`martini_em`, `martini_eq`, `prun`). `-maxwarn 2` default (CLI flag). Seed deterministic from composition hash. `MartiniPipelineConfig` in `config.py`. CLI `run_martini_pipeline.py` with insane-style ratio args + `--nsteps`/`--prod-ns`. 377 tests pass, 7 skipped. |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [ ] | Subgoal 2 |
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [ ] | Single orchestrator with GPU/CPU branch |
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | |
@@ -183,6 +183,15 @@ Append-only. Each entry: date · decision · rationale.
 | 21 | 2026-05-08 | `LipidEntry.insane_keyword` (not `.name`) used as the `-l` token in `build_command()` | Allows future lipids whose insane identifier differs from their registry name without special-casing in `system_builder.py`. |
 | 26 | 2026-05-08 | `insane` pip package (v1.2.0) used via command, not vendored single-file script | Modern Python-3 package; installed in `lipid_gnn` conda env. Vendoring a 2to3-converted 2014 script was a workaround; using the package directly is cleaner and upgradeable. `INSANE_PATH` constant replaced by `INSANE_CMD = "insane"`. Added to `requirements.txt`. Supersedes Decision 18. |
 | 27 | 2026-05-08 | 32 ITPs from `github.com/Martini-Force-Field-Initiative/M3-Lipid-Parameters` replace 9 legacy copies | Full lipidome coverage (standard phospholipids, ether phospholipids, plasmalogens, sterols, glycerolipids, ions, solvents, DOTAP) using current upstream parameters. Includes `ffbonded_v2.itp` (required by v2 lipid files). Legacy copies from POPC100 toppar were an old snapshot with 4 unneeded files (nucleobases, sugars, small molecules, matthieu phospholipids). Supersedes Decision 19. |
+| 22 | 2026-05-12 | `pipeline.run()` orchestrates one composition; multi-system batching is the submission layer's job (step 9) | Keeps the orchestrator linear and testable; HPC step 9 wraps N parallel invocations. |
+| 23 | 2026-05-12 | Stage handoff via per-stage `.gro` copy (`minimized.gro`, `equilibrated.gro`); production reuses `prun.gro` directly | Handoff `.gro` written after `mdrun` exits zero is a strong success marker; no separate `.done` sentinel needed. Production's `prun.gro` is the same file GROMACS writes, so no copy is performed. |
+| 24 | 2026-05-12 | Seed derived deterministically from composition name via `sha256(name)[:8]`; CLI overrides; same seed used across all stages | Reproducible without making seeds part of the canonical `<comp>` name. |
+| 25 | 2026-05-12 | Manifest rewritten after every stage transition | A killed run still leaves a useful manifest reflecting the last completed stage. |
+| 28 | 2026-05-12 | Stage filenames match legacy: `martini_em`, `martini_eq`, `prun` | Pure parity; downstream code references these names today. |
+| 29 | 2026-05-12 | `index.ndx` uses default groups (`q\n`) by default; `make_ndx_script` parameter allows callers to pass a custom script | MDPs use `System` group only — custom `Membrane`/`Solute` groups are for analysis, not for grompp. Default is sufficient for all simulations. |
+| 30 | 2026-05-12 | `-maxwarn` defaults to 2; configurable via CLI flag `--maxwarn` | Legacy used -maxwarn 5 for em/eq steps. Value 2 is a conservative default; CLI allows override on a per-run basis. |
+| 31 | 2026-05-12 | `nsteps_prod = -1` in config; CLI requires `--nsteps N` or `--prod-ns N` (mutually exclusive, one required) | Production run length is the most consequential knob; forcing an explicit value prevents accidental zero-length runs. |
+| 32 | 2026-05-12 | CLI `run_martini_pipeline.py` uses insane-style ratio strings (`POPC:1.0 DOPC:0.3`) | Ergonomic for single-system invocations; fractions are normalised so raw counts (e.g. `POPC:7 DOPC:3`) also work. |
 
 ---
 
