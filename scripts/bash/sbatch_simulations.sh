@@ -87,7 +87,7 @@ for (( i=0; i<N_SIMS; i++ )); do
 
     # Build run_martini_pipeline.py argument list
     SIM_ARGS=("$COMP"
-        "--output-root" "$OUTPUT_ROOT"
+        "--out-dir"     "$OUTPUT_ROOT"
         "--maxwarn"     "${MAXWARN:-2}"
         "--mdrun-args"  "$MDRUN_EXTRA"
     )
