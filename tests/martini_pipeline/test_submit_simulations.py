@@ -392,5 +392,114 @@ class TestEmptyQueue(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+# ---------------------------------------------------------------------------
+# Step 10c: partition dispatch (general1 CPU)
+# ---------------------------------------------------------------------------
+
+class TestPartitionDispatch(unittest.TestCase):
+    """Verifies submit_simulations.sh routes general1 to the CPU worker and
+    GPU partitions to the existing worker (Appendix L / Decisions 58, 59).
+    """
+
+    def test_general1_dispatches_to_cpu_worker(self):
+        """--partition general1 → sbatch line ends in sbatch_simulations_general1.sh."""
+        result = _run([
+            "--compositions", "DPPC100",
+            "--prod-ns", "10",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dry_line = next(l for l in result.stdout.splitlines() if "[DRY RUN]" in l)
+        self.assertIn("sbatch_simulations_general1.sh", dry_line)
+        self.assertNotIn("sbatch_simulations.sh ", dry_line)  # trailing space → distinct from _general1
+
+    def test_general1_no_gres(self):
+        """general1 has no GPUs; --gres= must not appear in the sbatch line."""
+        result = _run([
+            "--compositions", "DPPC100",
+            "--prod-ns", "10",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dry_line = next(l for l in result.stdout.splitlines() if "[DRY RUN]" in l)
+        self.assertNotIn("--gres", dry_line)
+
+    def test_general1_mpi_ranks_in_export(self):
+        """--mpi-ranks-per-sim N → EXPORT_VARS contains MPI_RANKS_PER_SIM=N."""
+        result = _run([
+            "--compositions", "DPPC100",
+            "--prod-ns", "10",
+            "--partition", "general1",
+            "--mpi-ranks-per-sim", "4",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MPI_RANKS_PER_SIM=4", result.stdout)
+
+    def test_general1_cpus_includes_ranks(self):
+        """CPU partition: total CPUs = sims × ranks × cpus_per_sim."""
+        result = _run([
+            "--compositions", "DPPC100", "DIPC100",
+            "--prod-ns", "10",
+            "--partition", "general1",
+            "--sims-per-node", "2",
+            "--mpi-ranks-per-sim", "4",
+            "--cpus-per-sim", "5",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Expect --cpus-per-task=40  (2 × 4 × 5)
+        self.assertIn("--cpus-per-task=40", result.stdout)
+
+    def test_gpu_test_still_uses_gpu_worker(self):
+        """Regression guard: --partition gpu_test must still route to sbatch_simulations.sh
+        (not the general1 variant), unchanged from step 9."""
+        result = _run([
+            "--compositions", "DPPC100",
+            "--prod-ns", "10",
+            "--partition", "gpu_test",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dry_line = next(l for l in result.stdout.splitlines() if "[DRY RUN]" in l)
+        # The GPU worker path (no _general1 suffix) is in the line
+        self.assertRegex(dry_line, r"scripts/bash/sbatch_simulations\.sh\b")
+        self.assertNotIn("sbatch_simulations_general1.sh", dry_line)
+
+    def test_unknown_partition_fails_fast(self):
+        """Unknown partition (e.g. 'fancy') → non-zero exit with a clear message."""
+        result = _run([
+            "--compositions", "DPPC100",
+            "--prod-ns", "10",
+            "--partition", "fancy",
+            "--dry-run",
+        ])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown partition", result.stderr.lower())
+
+    def test_general1_uses_hpc_defaults_cpu_for_defaults(self):
+        """No explicit --sims-per-node → fall back to hpc_defaults_cpu.sims_per_node."""
+        # Read the config-yaml value to make the assertion robust against future
+        # changes to the stub.
+        import subprocess as _sp
+        cfg_sims = int(_sp.check_output(
+            ["python", "scripts/python/print_config_var.py",
+             "martini_pipeline.hpc_defaults_cpu.sims_per_node"],
+            cwd=_REPO_ROOT, text=True,
+        ).strip())
+
+        result = _run([
+            "--compositions"] + ["DPPC100"] * cfg_sims + [
+            "--prod-ns", "10",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # The summary block prints "sims-per-node  : <N>"
+        self.assertIn(f"sims-per-node  : {cfg_sims}", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-14 (step 10b complete — CPU benchmark on general1).
+Last updated: 2026-05-14 (step 10c complete — production routing to general1).
 
 ---
 
@@ -149,6 +149,7 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [x] | Decisions 37–42. Multi-token `--compositions`, `--queue-file`, `--missing-from-grid`; GPU/CPU branch; `gpu_test` guards; `--dry-run`. 476 tests pass (25 new). |
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | GPU sweep merged; awaiting first real run to land values |
 | 10b | CPU benchmark on general1 (`benchmark_hpc_general1.sh` + worker; populate `hpc_defaults_cpu`) | [x] | Decisions 50–53. 7-point sweep × 40 cores each; reuses v2025.4 tpr; mpi_ranks dimension probes domain decomp. 24 tests pass (8 new). |
+| 10c | Route `submit_simulations.sh` to general1 (`hpc_defaults_cpu`, `sbatch_simulations_general1.sh`) | [x] | Decisions 58–62. Partition-aware dispatch + `--mpi-ranks-per-sim` flag + CPU worker with OMP pinning. 32 dry-run tests pass (7 new). |
 | 11 | Subgoal 2 — fill DPPC/DOPC corners on HPC | [ ] | Production run; not a code task |
 | 12 | Subgoal 3 — extend lipid pool beyond current 10 | [ ] | Future, after subgoal 2 lands |
 
@@ -2365,3 +2366,211 @@ To be added before row 11 once we agree on the design:
 - **Decision 55** — `-resethway` is **off** for CPU benchmarks (per K.12 Q4 recommendation). GROMACS 2022 PME-tuning behaviour differs from v2025.4; including the half-run reset would bias the GPU/CPU comparison via version-specific warm-up. CPU benchmarks measure steady-state throughput from step 0.
 - **Decision 56** — Thread pinning **on** for CPU worker: `OMP_PLACES=cores OMP_PROC_BIND=close` (per K.12 Q5). Validated to add ~5–10 % throughput on shared CPU nodes in prior projects by avoiding OS thread migration.
 - **Decision 57** — Explicit `mpirun -np <R>` invocation for *every* slot, including 1-rank ones (per K.12 Q9). Keeps the number of MPI ranks unambiguous and matches the form needed for the multi-rank decomp points; no implicit `srun` magic to debug if it misbehaves on `general1`.
+
+---
+
+## Appendix L — Step 10c detailed plan: route production work to `general1`
+
+### L.1 Scope
+
+Wire the step-9 submission layer (`submit_simulations.sh`) to support `--partition general1`, so corner-fill production (step 11) and any future bulk runs can dispatch to the CPU partition transparently. Without this step, `hpc_defaults_cpu` (calibrated by step 10b) is a dead-letter — `submit_simulations.sh` only reads `hpc_defaults` and only knows how to load the ROCm gromacs module.
+
+The benchmark proved the CPU pipeline works end-to-end on `general1` (insane → grompp → mpirun-gmx_mpi mdrun, all with the spack 2022 toolchain). Step 10c lifts that proof into the production submission layer, reusing the wrapper + module-load patterns we already debugged.
+
+#### What's in scope
+
+- `scripts/bash/submit_simulations.sh` — partition-aware dispatch. When `--partition general1` (or any future CPU partition listed in a small registry), read `hpc_defaults_cpu` instead of `hpc_defaults`, omit `--gres`, propagate `MPI_RANKS_PER_SIM`, and route to the CPU worker.
+- `scripts/bash/sbatch_simulations_general1.sh` — new compute-node worker. Mirrors `sbatch_simulations.sh` (same `RUN_<i>_*` env-var protocol, same fan-out + `wait` loop) but loads the spack openmpi + gromacs/2022 modules, uses the `_gmx_mpi_wrapper.sh` shim for the pipeline, and adds OpenMP thread pinning.
+- `lipid_gnn/config.py` — parse the new `martini_pipeline.hpc_defaults_cpu` block into a `MartiniPipelineHpcDefaultsCpuConfig` dataclass.
+- `tests/martini_pipeline/test_submit_simulations.py` — extend existing bash-level dry-run tests with a `--partition general1` matrix (no real sbatch).
+- `docs/martini_pipeline_plan.md` — status table row 10c → `[x]`, Decisions 58–N appended.
+
+#### What's out of scope
+
+- A CPU re-benchmark after this lands. The step-10b numbers are authoritative until the lipid pool or GROMACS version changes.
+- Cross-partition load balancing (split a queue across `gpu` + `general1` simultaneously). The user runs `submit_simulations.sh` twice with different `--partition` if they want both.
+- New compositions, new mdp templates, new analysis. Pure plumbing.
+- A `general1` analog of `gpu_test` quick-iteration partition. `general1` has no time-limit shortcut.
+
+### L.2 Locked-in design decisions
+
+1. **Two workers, one orchestrator.** `submit_simulations.sh` keeps a single CLI surface and dispatches internally based on `--partition`. The two compute-node workers (`sbatch_simulations.sh` GPU and `sbatch_simulations_general1.sh` CPU) stay separate — mirrors the benchmark architecture (10 vs 10b) and avoids piling partition-conditional branching into one large bash file. Matches Decision 50.
+2. **Partition-to-config map is explicit, not heuristic.** `submit_simulations.sh` has a small lookup `case` block translating `$PARTITION` into `$DEFAULTS_KEY` and `$WORKER`. No fallback. Unknown partitions fail fast; the user adds a row to the table when they want a new one. Auditable.
+3. **`MPI_RANKS_PER_SIM` becomes a first-class CLI flag** (`--mpi-ranks-per-sim N`) with default from `hpc_defaults_cpu.mpi_ranks_per_sim`. Used only by the CPU worker; the GPU worker ignores it.
+4. **Resource scaling differs per device.** GPU: `cpus_per_task = sims × cpus_per_sim`, `--gres=gpu:sims`. CPU: `cpus_per_task = sims × mpi_ranks × cpus_per_sim`, no `--gres`. Mem scaling is the same for both: `sims × mem_per_sim`.
+5. **CPU worker reuses the existing `_gmx_mpi_wrapper.sh` shim** as the pipeline's `--gmx` argument. The wrapper already picked up the `--map-by :OVERSUBSCRIBE` fix during step 10b; production CPU runs inherit that fix automatically.
+6. **Production CPU runs default `mpi_ranks_per_sim = 1`** unless the benchmark recommended otherwise. Production sims are throughput-bound, not latency-bound; multi-rank decomp is only worth it if benchmark data says so. The flag is there for completeness and lets us re-route to the multi-rank winner if step 10b promotes it.
+7. **`gpu_test`-style guard rails apply to no other partition.** The orchestrator only enforces `gpu_test`'s 8h-cap-and-max-2 limits when `--partition gpu_test` is in play, unchanged from step 9.
+8. **Module names live in config.yaml, not in scripts.** The step-10b `hpc_defaults_cpu` block already carries `module_gromacs_cpu` and `module_mpi_cpu`. Worker reads via `print_config_var.py`. Matches step 9 Decision 7.
+9. **Idempotency is unchanged.** `pipeline.run()`'s stage-skip logic is identical regardless of `gmx_executable`. A partial CPU run resumes from the last completed stage; `--missing-from-grid` queries the same manifests.
+10. **No partition flag in manifest.** The composition's manifest already records `mdrun_cmd` per stage; that's the source of truth for "this system was run on CPU vs GPU". `summarise_systems()` doesn't need partition awareness for step 11.
+
+### L.3 Public API changes — `submit_simulations.sh`
+
+Additions to the usage block:
+
+```text
+[--mpi-ranks-per-sim N]    # CPU only; default from hpc_defaults_cpu.mpi_ranks_per_sim
+```
+
+No other CLI changes. `--partition general1` and friends just work after step 10c.
+
+Internal changes:
+
+- Single `case` block translates `$PARTITION` into `$DEFAULTS_KEY` and `$WORKER`.
+- `_cfg()` invocations use `martini_pipeline.${DEFAULTS_KEY}.*` instead of the hard-coded `hpc_defaults`.
+- `--gres=gpu:N` line conditioned on `$DEFAULTS_KEY == hpc_defaults`.
+- `EXPORT_VARS` adds `MPI_RANKS_PER_SIM=…` when on CPU; the GPU worker ignores it (it never reads that env var).
+
+### L.4 Public API — `scripts/bash/sbatch_simulations_general1.sh` (new)
+
+Static `#SBATCH` directives identical to the GPU worker except `--output=logs/simulations/sim-cpu-%j.out` and corresponding `--error`. Inside:
+
+1. `set -euo pipefail`
+2. Source conda; activate the env.
+3. `module purge; module load "$(_cfg ...module_mpi_cpu)"; module load "$(_cfg ...module_gromacs_cpu)"`
+4. Validate `OUTPUT_ROOT`, `N_SIMS_PER_NODE`, `MPI_RANKS_PER_SIM`, `CPUS_PER_SIM` env vars
+5. `NTOMP_VALUE = CPUS_PER_SIM` (NOT `$SLURM_CPUS_PER_TASK / N_SIMS` — the CPU resource math accounts for ranks explicitly, see L.2 Decision 4)
+6. For `i in 0..N_SIMS-1`:
+   - Indirect lookup `COMP="${!RUN_${i}_COMP}"`
+   - Per-slot `OUT_DIR`, log paths (same convention as GPU)
+   - Subshell exports `OMP_NUM_THREADS=$NTOMP_VALUE`, `OMP_PLACES=cores`, `OMP_PROC_BIND=close`. No `HIP_VISIBLE_DEVICES`.
+   - `MDRUN_EXTRA="-ntomp $NTOMP_VALUE -nb cpu"`; pipeline invoked with `--gmx "$PWD/scripts/simulation/_gmx_mpi_wrapper.sh"`.
+   - `&` into background; collect PID.
+7. After loop: `wait` on every PID; report worst exit code.
+
+Notable differences from the GPU worker:
+
+| | GPU worker | CPU worker |
+|---|---|---|
+| Module set | `gromacs/v2025.4/rocm-…` | `mpi/openmpi/5.0.0` + `gromacs/2022.4-…` |
+| `--gmx` to pipeline | `gmx` (default) | `_gmx_mpi_wrapper.sh` |
+| GPU pinning | `HIP_VISIBLE_DEVICES=$i` | (none) |
+| Thread pinning | (none; threads share GPU bandwidth) | `OMP_PLACES=cores OMP_PROC_BIND=close` |
+| `-nb` arg | implicit (GPU) | explicit `-nb cpu` |
+| MPI ranks per slot | n/a | wrapper does `mpirun --map-by :OVERSUBSCRIBE -np 1`; multi-rank inside one slot is benchmark-only |
+
+### L.5 Config schema
+
+Step 10b already added `martini_pipeline.hpc_defaults_cpu` to `config.yaml`. Step 10c only adds a Python-side dataclass in `lipid_gnn/config.py`:
+
+```python
+@dataclass(frozen=True)
+class MartiniPipelineHpcDefaultsCpuConfig:
+    sims_per_node: int
+    mpi_ranks_per_sim: int
+    cpus_per_sim: int
+    mem_per_sim: str
+    partition: str = "general1"
+    module_gromacs_cpu: str = "gromacs/2022.4-gcc-11.3.1-zx2wwcx"
+    module_mpi_cpu: str = "mpi/openmpi/5.0.0"
+
+@dataclass(frozen=True)
+class MartiniPipelineConfig:
+    …
+    hpc_defaults: Optional[MartiniPipelineHpcDefaultsConfig] = None
+    hpc_defaults_cpu: Optional[MartiniPipelineHpcDefaultsCpuConfig] = None
+```
+
+Plus a `_build_martini_pipeline_hpc_defaults_cpu` builder mirroring the existing GPU version.
+
+### L.6 Internal data flow
+
+```text
+submit_simulations.sh --missing-from-grid dppc_corner --prod-ns 100 --partition general1
+        │
+        ├─ resolve composition list (unchanged from step 9)
+        ├─ partition lookup: general1 → DEFAULTS_KEY=hpc_defaults_cpu, WORKER=sbatch_simulations_general1.sh
+        ├─ read hpc_defaults_cpu.{sims_per_node, mpi_ranks_per_sim, cpus_per_sim, mem_per_sim} via _cfg()
+        ├─ pack: N_batches = ceil(N_total / sims_per_node)
+        ├─ per batch, build EXPORT_VARS with MPI_RANKS_PER_SIM added; --gres omitted
+        └─ sbatch --partition=general1 --cpus-per-task=$(( sims × ranks × cpus_per_sim )) \
+                  --mem=... --export="$EXPORT_VARS" sbatch_simulations_general1.sh
+                ▼
+        sbatch_simulations_general1.sh (compute node)
+        ├─ load openmpi + gromacs/2022
+        ├─ for each slot: OMP env + run_martini_pipeline.py --gmx _gmx_mpi_wrapper.sh ... &
+        └─ wait; surface worst rc
+                ▼
+        Per-composition outputs at /work/.../martini_pipeline/<comp>/{minimization,equilibration,run,manifest.json}
+        — identical layout to GPU runs; summarise_systems doesn't care which partition produced them.
+```
+
+### L.7 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| `--partition general1` without `hpc_defaults_cpu` in config.yaml | Fail-fast: "hpc_defaults_cpu missing; run benchmark_hpc_general1.sh first or paste a stub" |
+| `--compositions A B C --partition general1` | All A, B, C dispatched to general1 worker. No partition-per-comp routing |
+| Resubmission after CPU failure | pipeline.run() stage-skip kicks in; resumes via grompp(stage_in.gro) |
+| `--mpi-ranks-per-sim 4` on `gpu_test` | Warning + ignored; GPU worker doesn't read MPI_RANKS_PER_SIM |
+| `--mpi-ranks-per-sim 4` on `general1` | `--cpus-per-task = sims × 4 × cpus_per_sim`; mpirun -np 4 per slot via wrapper |
+| `--dry-run` | Prints sbatch line with CPU worker path and MPI_RANKS_PER_SIM in EXPORT_VARS |
+| Unknown partition (`--partition fancy`) | Fail-fast: "unknown partition; add a row to the case block" |
+| Job times out mid-corner-fill | Same as benchmark: partial manifest with `failed_at_<stage>`; next `--missing-from-grid` picks it up. CPU runs longer, so wall-time misjudgments are more likely — see L.12 Q4 |
+| Accidental double-submit | pipeline.run() is idempotent; second job no-ops or resumes. Worst case is duplicated CPU-hours |
+
+### L.8 Test plan — `tests/martini_pipeline/test_submit_simulations.py` extensions
+
+All extend the existing dry-run subprocess pattern. No real sbatch.
+
+1. `test_general1_dispatches_to_cpu_worker` — `--partition general1` ⇒ sbatch line contains `sbatch_simulations_general1.sh`.
+2. `test_general1_no_gres` — `--partition general1` ⇒ no `--gres=` in the sbatch line.
+3. `test_general1_mpi_ranks_in_export` — `--partition general1 --mpi-ranks-per-sim 4` ⇒ EXPORT_VARS contains `MPI_RANKS_PER_SIM=4`.
+4. `test_general1_cpus_includes_ranks` — `--partition general1 --sims-per-node 2 --mpi-ranks-per-sim 4 --cpus-per-sim 5` ⇒ `--cpus-per-task=40`.
+5. `test_gpu_test_still_uses_gpu_worker` — regression guard.
+6. `test_unknown_partition_fails_fast` — `--partition fancy` ⇒ non-zero exit, "unknown partition" in stderr.
+7. `test_general1_uses_hpc_defaults_cpu_for_defaults` — no explicit `--sims-per-node` ⇒ dry-run reflects `hpc_defaults_cpu.sims_per_node`.
+
+### L.9 Layout & dependencies
+
+```text
+scripts/bash/
+    submit_simulations.sh                  ← MODIFIED: partition-aware dispatch
+    sbatch_simulations.sh                  ← unchanged
+    sbatch_simulations_general1.sh         ← NEW
+config.yaml                                ← hpc_defaults_cpu already present from step 10b
+lipid_gnn/config.py                        ← +MartiniPipelineHpcDefaultsCpuConfig + builder
+tests/martini_pipeline/
+    test_submit_simulations.py             ← +7 dry-run cases
+docs/martini_pipeline_plan.md              ← row 10c → [x] + Decisions 58–N
+```
+
+No new Python deps. No new bash deps.
+
+### L.10 Acceptance criteria
+
+1. `pytest tests/martini_pipeline/test_submit_simulations.py -q` passes locally.
+2. `bash scripts/bash/submit_simulations.sh --compositions DIPC100 --prod-ns 1 --partition general1 --dry-run` prints a coherent sbatch line: routes to `sbatch_simulations_general1.sh`, no `--gres=`, `MPI_RANKS_PER_SIM=1`.
+3. `--partition gpu_test --dry-run` unchanged from step 9.
+4. On HPC: a 1-comp smoke (`--compositions DIPC100 --prod-ns 1 --partition general1`) lands one job, exits clean, manifest `overall_status=ok`.
+5. `--missing-from-grid dppc_corner --partition general1 --dry-run` works against a partly-populated output root.
+6. Plan doc row 10c → `[x]`.
+
+### L.11 Status-table row to add
+
+```markdown
+| 10c | Route submit_simulations.sh to general1 (hpc_defaults_cpu, sbatch_simulations_general1.sh) | [ ] | |
+```
+
+### L.12 Open questions (need user input before implementation)
+
+1. **Dispatch model**: single `submit_simulations.sh` with internal `case` (L.2 Decision 2 — my recommendation), or two CLI entry points? Recommend single dispatcher — fewer scripts for users to remember, partition is already a required arg.
+2. **Missing `hpc_defaults_cpu`**: when `--partition general1` but the YAML block is absent, should we (a) fail-fast, (b) fall back to hard-coded conservative values, or (c) fall back to `hpc_defaults` and warn? Recommend (a) — failing loud means the user notices that the benchmark hasn't calibrated the partition yet.
+3. **MPI-rank dimension in production**: expose `--mpi-ranks-per-sim` CLI flag with default from config (recommended) or always force 1?
+4. **CPU wall-time defaults**: step 9's `--time 24:00:00` works on GPU; on CPU at ~500 ns/day a 100 ns POPC100 ≈ 5 h, a 200 ns CHOL-heavy system ≈ 10 h — still under 24h. Recommend keep `--time 24:00:00` default for all partitions; user can pass `--time 48:00:00` for long systems.
+5. **`gpu_test`-style guard rails for `general1`**: any partition-specific limits we should enforce in the orchestrator? My draft enforces none. Override if your group's QOS is tighter?
+6. **Module-name location**: `module_gromacs_cpu` / `module_mpi_cpu` currently live under `hpc_defaults_cpu` (per step 10b). Recommend keep them there — the analyzer already emits them in that block.
+7. **Worker naming**: `sbatch_simulations_general1.sh` (partition-typed) vs `sbatch_simulations_cpu.sh` (device-typed). Recommend partition-typed, mirrors Decision 50.
+8. **CHOL handling on CPU**: legacy CHOL-rich systems converge slowly (sterol flip-flop); worth a soft warning note in L.13? Recommend yes — documentation only, no code change.
+9. **`--smoke` flag**: should the orchestrator gain a `--smoke` shortcut that submits a single short job? Recommend no — feature creep; the manual command is fine.
+10. **Backwards compat**: any user scripts that grep for `sbatch_simulations.sh` directly? Recommend a quick `grep -rn` audit before merging.
+
+### L.13 New decisions to log on completion
+
+- **Decision 58** — `submit_simulations.sh` dispatches via an explicit partition lookup table; unknown partitions fail fast.
+- **Decision 59** — Two compute-node workers (`sbatch_simulations.sh` GPU + `sbatch_simulations_general1.sh` CPU), one orchestrator. Mirrors benchmark architecture (step 10 + 10b).
+- **Decision 60** — `MPI_RANKS_PER_SIM` is a first-class CLI flag (`--mpi-ranks-per-sim N`) and config key. Default from `hpc_defaults_cpu`. Ignored on GPU partitions.
+- **Decision 61** — Module names for both GROMACS builds live in `hpc_defaults_cpu` (CPU) and `hpc.module_gromacs` (GPU). Centralises HPC plumbing in `config.yaml` per step 9 Decision 7.
+- **Decision 62** — If `hpc_defaults_cpu` is missing and `--partition general1` is requested, fail-fast rather than fall back to GPU defaults.
+- *Plus any decisions arising from L.12 Q1–Q10.*

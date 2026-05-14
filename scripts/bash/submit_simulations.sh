@@ -29,15 +29,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# ── Read defaults from config.yaml (frozen at invocation time) ───────────────
-DEFAULT_SIMS_PER_NODE=$(python scripts/python/print_config_var.py martini_pipeline.hpc_defaults.sims_per_node)
-DEFAULT_CPUS_PER_SIM=$(python scripts/python/print_config_var.py martini_pipeline.hpc_defaults.cpus_per_sim)
-DEFAULT_MEM_PER_SIM=$(python scripts/python/print_config_var.py martini_pipeline.hpc_defaults.mem_per_sim)
-DEFAULT_GPUS_PER_NODE=$(python scripts/python/print_config_var.py martini_pipeline.hpc_defaults.gpus_per_node)
+# ── Read partition-independent config (frozen at invocation time) ────────────
 DEFAULT_PARTITION=$(python scripts/python/print_config_var.py hpc.partition_train)
 DEFAULT_MAXWARN=$(python scripts/python/print_config_var.py martini_pipeline.gmx.maxwarn)
 WORK_SUBPATH=$(python scripts/python/print_config_var.py hpc.work_subpath)
 HPC_OUTPUT_SUBPATH=$(python scripts/python/print_config_var.py martini_pipeline.hpc_output_subpath)
+
+# Partition-dependent defaults are filled after arg parsing (we need to know
+# --partition first to pick between hpc_defaults and hpc_defaults_cpu).  See
+# the "Partition dispatch" block below.
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 COMPOSITIONS=()
@@ -57,11 +57,14 @@ NTOMP=""           # empty → auto-computed in sbatch script as SLURM_CPUS_PER_
 OUTPUT_ROOT_OVERRIDE=""
 PARTITION="$DEFAULT_PARTITION"
 TIME_LIMIT="24:00:00"
-GPUS_PER_NODE="$DEFAULT_GPUS_PER_NODE"
-SIMS_PER_NODE="$DEFAULT_SIMS_PER_NODE"
-CPUS_PER_SIM="$DEFAULT_CPUS_PER_SIM"
-MEM_PER_SIM="$DEFAULT_MEM_PER_SIM"
-MAX_QUEUE=0        # 0 = no cap
+# Empty-string sentinels: set by CLI flags, else filled from the partition's
+# config block (hpc_defaults for GPU, hpc_defaults_cpu for general1).
+GPUS_PER_NODE=""
+SIMS_PER_NODE=""
+CPUS_PER_SIM=""
+MEM_PER_SIM=""
+MPI_RANKS_PER_SIM=""   # CPU only; ignored on GPU partitions
+MAX_QUEUE=0            # 0 = no cap
 
 DRY_RUN=0
 
@@ -94,11 +97,68 @@ while [[ $# -gt 0 ]]; do
         --sims-per-node)        SIMS_PER_NODE="$2";           shift 2 ;;
         --cpus-per-sim)         CPUS_PER_SIM="$2";            shift 2 ;;
         --mem-per-sim)          MEM_PER_SIM="$2";             shift 2 ;;
+        --mpi-ranks-per-sim)    MPI_RANKS_PER_SIM="$2";       shift 2 ;;
         --max-queue)            MAX_QUEUE="$2";               shift 2 ;;
         --dry-run)              DRY_RUN=1;                    shift ;;
         *) echo "ERROR: unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+# ── Partition dispatch ───────────────────────────────────────────────────────
+# Map --partition to (config defaults key, sbatch worker script).  Unknown
+# partitions fail fast (Decision 58); the user adds a case row to extend.
+case "$PARTITION" in
+    gpu|gpu_test|test)
+        DEFAULTS_KEY="martini_pipeline.hpc_defaults"
+        SBATCH_WORKER="scripts/bash/sbatch_simulations.sh"
+        IS_CPU_PARTITION=0
+        ;;
+    general1)
+        DEFAULTS_KEY="martini_pipeline.hpc_defaults_cpu"
+        SBATCH_WORKER="scripts/bash/sbatch_simulations_general1.sh"
+        IS_CPU_PARTITION=1
+        ;;
+    *)
+        cat >&2 <<EOF
+ERROR: unknown partition: $PARTITION
+  Known partitions: gpu, gpu_test, test, general1
+  Add a case row to submit_simulations.sh's partition-dispatch block to extend.
+EOF
+        exit 1
+        ;;
+esac
+
+# Fail-fast if the partition's defaults block is missing from config.yaml
+# (Decision 62).  print_config_var.py exits non-zero on a missing key.
+_default() {
+    local key="$1" default_when_optional="${2-}"
+    local val
+    if val=$(python scripts/python/print_config_var.py "$key" 2>/dev/null); then
+        echo "$val"
+    elif [[ -n "$default_when_optional" ]]; then
+        echo "$default_when_optional"
+    else
+        echo "ERROR: required config key missing: $key" >&2
+        echo "  For --partition $PARTITION, populate '${DEFAULTS_KEY}' in config.yaml." >&2
+        echo "  (Run benchmark_hpc_general1.sh first to calibrate, or paste a stub.)" >&2
+        exit 1
+    fi
+}
+
+# Fill any unset partition-dependent defaults from the matching config block.
+[[ -z "$SIMS_PER_NODE" ]] && SIMS_PER_NODE=$(_default "${DEFAULTS_KEY}.sims_per_node")
+[[ -z "$CPUS_PER_SIM"  ]] && CPUS_PER_SIM=$(_default "${DEFAULTS_KEY}.cpus_per_sim")
+[[ -z "$MEM_PER_SIM"   ]] && MEM_PER_SIM=$(_default "${DEFAULTS_KEY}.mem_per_sim")
+
+if [[ "$IS_CPU_PARTITION" -eq 1 ]]; then
+    GPUS_PER_NODE=0     # general1 has no GPUs
+    [[ -z "$MPI_RANKS_PER_SIM" ]] && MPI_RANKS_PER_SIM=$(_default "${DEFAULTS_KEY}.mpi_ranks_per_sim")
+else
+    [[ -z "$GPUS_PER_NODE" ]] && GPUS_PER_NODE=$(_default "${DEFAULTS_KEY}.gpus_per_node")
+    # MPI_RANKS_PER_SIM has no effect on the GPU worker; keep it as-is if set
+    # (so the user can pass it without harm), default to 1 otherwise.
+    [[ -z "$MPI_RANKS_PER_SIM" ]] && MPI_RANKS_PER_SIM=1
+fi
 
 # ── Validate source exclusivity ───────────────────────────────────────────────
 N_SOURCES=0
@@ -250,7 +310,13 @@ for (( b=0; b<N_BATCHES; b++ )); do
     (( BATCH_END > N_TOTAL )) && BATCH_END=$N_TOTAL
     N_SIMS=$(( BATCH_END - BATCH_START ))
 
-    TOTAL_CPUS=$(( CPUS_PER_SIM * N_SIMS ))
+    # CPU partition allocates cores per (sim × rank × omp_thread); GPU
+    # partition allocates per (sim × omp_thread) since 1 sim = 1 GPU = 1 rank.
+    if [[ "$IS_CPU_PARTITION" -eq 1 ]]; then
+        TOTAL_CPUS=$(( CPUS_PER_SIM * MPI_RANKS_PER_SIM * N_SIMS ))
+    else
+        TOTAL_CPUS=$(( CPUS_PER_SIM * N_SIMS ))
+    fi
     TOTAL_MEM="$(( MEM_NUM * N_SIMS ))${MEM_UNIT}"
 
     EXPORT_VARS="ALL"
@@ -260,6 +326,7 @@ for (( b=0; b<N_BATCHES; b++ )); do
     EXPORT_VARS+=",SAVE_FORCES=${SAVE_FORCES}"
     EXPORT_VARS+=",GPUS_PER_NODE=${GPUS_PER_NODE}"
     EXPORT_VARS+=",CPUS_PER_SIM=${CPUS_PER_SIM}"
+    EXPORT_VARS+=",MPI_RANKS_PER_SIM=${MPI_RANKS_PER_SIM}"
     [[ -n "$PROD_NS" ]]   && EXPORT_VARS+=",PROD_NS=${PROD_NS}"
     [[ -n "$NSTEPS" ]]    && EXPORT_VARS+=",NSTEPS=${NSTEPS}"
     [[ -n "$NSTEPS_EQ" ]] && EXPORT_VARS+=",NSTEPS_EQ=${NSTEPS_EQ}"
@@ -283,7 +350,7 @@ for (( b=0; b<N_BATCHES; b++ )); do
         --export="$EXPORT_VARS"
     )
     [[ -n "$GRES_ARG" ]] && SBATCH_CMD+=("$GRES_ARG")
-    SBATCH_CMD+=(scripts/bash/sbatch_simulations.sh)
+    SBATCH_CMD+=("$SBATCH_WORKER")
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "  [DRY RUN]  ${SBATCH_CMD[*]}"

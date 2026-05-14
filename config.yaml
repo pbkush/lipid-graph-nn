@@ -123,3 +123,12 @@ martini_pipeline:
     cpus_per_sim: 8
     mem_per_sim: "16G"
     gpus_per_node: 8
+
+  hpc_defaults_cpu:                      # general1 CPU defaults; step 10b overwrites
+    sims_per_node: 4
+    mpi_ranks_per_sim: 1
+    cpus_per_sim: 10
+    mem_per_sim: "16G"
+    partition: general1
+    module_gromacs_cpu: gromacs/2022.4-gcc-11.3.1-zx2wwcx
+    module_mpi_cpu: mpi/openmpi/5.0.0
