@@ -225,6 +225,13 @@ class TestQueueFile(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMissingFromGrid(unittest.TestCase):
+    # The LEGACY_DATA_DIR env override (added in the fix-both-now patch) points
+    # submit_simulations.sh at a known-empty path so the legacy-skip path in
+    # production code doesn't make these tests depend on whatever happens to
+    # live under data/membrane_only/ on the test host.  We pass via env_extra
+    # in every call.
+    _NO_LEGACY = {"LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy"}
+
     def test_missing_grid_dppc_corner_empty_root(self):
         """With an empty output root, the full dppc_corner (35 comps) is missing."""
         with tempfile.TemporaryDirectory() as root:
@@ -233,7 +240,7 @@ class TestMissingFromGrid(unittest.TestCase):
                 "--output-root", root,
                 "--prod-ns", "100",
                 "--dry-run",
-            ])
+            ], env_extra=self._NO_LEGACY)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Total comps    : 35", result.stdout)
 
@@ -246,7 +253,7 @@ class TestMissingFromGrid(unittest.TestCase):
                 "--output-root", root,
                 "--prod-ns", "100",
                 "--dry-run",
-            ])
+            ], env_extra=self._NO_LEGACY)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Total comps    : 34", result.stdout)
 
@@ -257,7 +264,7 @@ class TestMissingFromGrid(unittest.TestCase):
             "--output-root", "/tmp",
             "--prod-ns", "10",
             "--dry-run",
-        ])
+        ], env_extra=self._NO_LEGACY)
         self.assertNotEqual(result.returncode, 0)
 
     def test_missing_grid_all_empty_root(self):
@@ -268,7 +275,7 @@ class TestMissingFromGrid(unittest.TestCase):
                 "--output-root", root,
                 "--prod-ns", "100",
                 "--dry-run",
-            ])
+            ], env_extra=self._NO_LEGACY)
         self.assertEqual(result.returncode, 0, result.stderr)
         # dppc_corner=35, dopc_corner=35, shared singletons deduplicated
         total_line = next(
@@ -499,6 +506,70 @@ class TestPartitionDispatch(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         # The summary block prints "sims-per-node  : <N>"
         self.assertIn(f"sims-per-node  : {cfg_sims}", result.stdout)
+
+
+class TestLegacyAutoSkip(unittest.TestCase):
+    """submit_simulations.sh should pass the legacy data root to print_work_queue
+    so already-simulated systems are skipped without manual --queue-file editing."""
+
+    def test_legacy_root_via_env_skips_present_comps(self):
+        """Legacy root containing DPPC100/run/prun.xtc → grid omits DPPC100."""
+        with tempfile.TemporaryDirectory() as new_root, \
+             tempfile.TemporaryDirectory() as legacy_root:
+            # Legacy: DPPC100 with the run/prun.xtc fallback signal (no manifest)
+            legacy_dppc = os.path.join(legacy_root, "DPPC100", "run")
+            os.makedirs(legacy_dppc)
+            with open(os.path.join(legacy_dppc, "prun.xtc"), "wb") as fh:
+                fh.write(b"\x00")  # any non-empty content
+            result = _run([
+                "--missing-from-grid", "dppc_corner",
+                "--output-root", new_root,
+                "--prod-ns", "100",
+                "--dry-run",
+            ], env_extra={"LEGACY_DATA_DIR": legacy_root})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Without DPPC100: 35 → 34
+        self.assertIn("Total comps    : 34", result.stdout)
+
+
+class TestPartitionJobCap(unittest.TestCase):
+    """submit_simulations.sh enforces per-partition QOSMaxSubmitJob limits with
+    a clear pre-sbatch error (mirrors gpu_test's 2-job guard)."""
+
+    _NO_LEGACY = {"LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy"}
+
+    def test_general1_over_40_jobs_errors_out(self):
+        """41+ batches on general1 → exit non-zero with --max-queue hint."""
+        # 82 comps at sims_per_node=2 = 41 batches; over the 40-job cap.
+        # CHOL is capped at 40 — so to get 82+ comps cheaply, use the
+        # popc_interpolation grid (77) plus duplicates via explicit listing.
+        # Simpler: pass 82 explicit (valid) comps and force --sims-per-node=2.
+        # We synthesise 82 distinct POPCn_DPPCm-style comps.
+        comps = [f"POPC{n}_DPPC{100-n}" for n in range(1, 50)]  # 49
+        comps += [f"POPC{n}_DOPC{100-n}" for n in range(1, 34)]  # 33 → 82 total
+        result = _run([
+            "--compositions"] + comps + [
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--sims-per-node", "2",
+        ], env_extra=self._NO_LEGACY)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("general1 allows at most 40 jobs", result.stderr)
+        self.assertIn("--max-queue", result.stderr)
+
+    def test_general1_under_40_jobs_passes(self):
+        """80 comps at sims_per_node=2 = 40 batches; exactly at the cap → ok."""
+        comps = [f"POPC{n}_DPPC{100-n}" for n in range(1, 50)]  # 49
+        comps += [f"POPC{n}_DOPC{100-n}" for n in range(1, 32)]  # 31 → 80 total
+        result = _run([
+            "--compositions"] + comps + [
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--sims-per-node", "2",
+            "--dry-run",
+        ], env_extra=self._NO_LEGACY)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Batches        : 40", result.stdout)
 
 
 if __name__ == "__main__":
