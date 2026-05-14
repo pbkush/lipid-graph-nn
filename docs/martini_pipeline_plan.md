@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-14 (step 10c complete — production routing to general1).
+Last updated: 2026-05-14 (subgoal 3 refactored into 3a/3b/3c/3d — interpolation vs extrapolation).
 
 ---
 
@@ -10,8 +10,12 @@ Last updated: 2026-05-14 (step 10c complete — production routing to general1).
 
 1. **Dynamic membrane creation pipeline** — parameterised in lipid types, per-lipid mol fractions, box size, water, ions, temperature, simulation length, force output, etc. Output layout matches the existing `data/membrane_only/<comp>/{equilibration, minimization, run, ...}` tree so downstream graph/dataset code keeps working unchanged when pointed at the new output root.
 2. **Capable of simulating any Martini 3 lipid** — registry designed for extension beyond the current 10-lipid pool.
-3. **Subgoal — fill the 10-lipid composition coverage** — DPPC- and DOPC-rich corners flagged by the Stage 5b per-system MAE concentration (POPC30_DOPC70 worst).
-4. **Later — extend the lipid pool** — add Martini 3 lipids beyond the current 10, expanding `LIPID_TYPES` for future training rounds.
+3. **Subgoal — composition-coverage filling**, decomposed into *interpolation* (densify the regime the GNN already learned from) and *extrapolation* (push into regions it has never seen). Motivation: the Stage 5b per-system MAE concentration showed that error grows away from POPC-anchored mixtures (POPC30_DOPC70 worst within-domain); the new compositions are designed both to reduce in-domain error and to probe out-of-domain generalisation systematically.
+   - **3a. Interpolation — more two-lipid compositions *with* POPC.** Densifies the POPC-anchored binary region the legacy 70 systems already populate. Concretely: add finer-step `POPCn_OTHERm` binaries (with `n + m = 100`) beyond the existing coarse coverage — refine to 5%-step where the legacy 10/20% steps leave the per-system MAE highest.
+   - **3b. Extrapolation within the current 10-lipid pool — two-lipid compositions *without* POPC.** Already partly addressed by the DPPC- and DOPC-rich corners (per Stage 5b's flagged regions); generalises to any binary pair (DIPC_DPPE, DOPS_CHOL, etc.) where POPC is absent. This was the original "DPPC/DOPC corner" deliverable, now seen as one slice of a broader extrapolation matrix.
+   - **3c. Extrapolation by pool extension — new lipid + an existing lipid.** Requires goal 4 to land first (registry entries for the new lipid). Tests whether the GNN's bead-level featurisation generalises to head/tail chemistries it never saw, when at least one partner is familiar.
+   - **3d. Extrapolation deep — only new lipids.** Pure out-of-distribution test: every lipid in the composition is outside the legacy 10. Hardest generalisation regime; data point for the thesis on the limits of bead-feature transferability.
+4. **Goal — extend the lipid pool** — add Martini 3 lipids beyond the current 10, expanding `LIPID_TYPES` and adding registry entries with v2-ITP-derived `insane_al*` specs (matching the DLPC/DOPE/DPPE pattern from [Decision 49](#decision-log)). Prerequisite for subgoals 3c and 3d.
 
 The pipeline targets HPC (Goethe MI210 / ROCm, GROMACS, SLURM) as the production environment; tests must pass locally and on HPC without a real `gmx`.
 
@@ -150,8 +154,11 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | GPU sweep merged; awaiting first real run to land values |
 | 10b | CPU benchmark on general1 (`benchmark_hpc_general1.sh` + worker; populate `hpc_defaults_cpu`) | [x] | Decisions 50–53. 7-point sweep × 40 cores each; reuses v2025.4 tpr; mpi_ranks dimension probes domain decomp. 24 tests pass (8 new). |
 | 10c | Route `submit_simulations.sh` to general1 (`hpc_defaults_cpu`, `sbatch_simulations_general1.sh`) | [x] | Decisions 58–62. Partition-aware dispatch + `--mpi-ranks-per-sim` flag + CPU worker with OMP pinning. 32 dry-run tests pass (7 new). |
-| 11 | Subgoal 2 — fill DPPC/DOPC corners on HPC | [ ] | Production run; not a code task |
-| 12 | Subgoal 3 — extend lipid pool beyond current 10 | [ ] | Future, after subgoal 2 lands |
+| 11a | Subgoal 3a — interpolation: more POPC-anchored binaries on HPC | [ ] | Production run; densify the legacy POPC regime at 5%-step where MAE is highest |
+| 11b | Subgoal 3b — extrapolation within 10-lipid pool: non-POPC binaries (DPPC/DOPC corners + other pairs) on HPC | [ ] | Production run; the original "corner fill" deliverable, now framed as one slice of extrapolation |
+| 12 | Goal 4 — extend lipid pool beyond current 10 (registry + ITP wiring for new lipids) | [ ] | Code task: new `LipidEntry` rows with v2-ITP `insane_al*` specs; tests; refresh node mapping. Prerequisite for 11c/11d |
+| 11c | Subgoal 3c — extrapolation by pool extension: new-lipid + old-lipid binaries | [ ] | Production run; depends on step 12 |
+| 11d | Subgoal 3d — extrapolation deep: only-new-lipid compositions | [ ] | Production run; depends on step 12; hardest generalisation test |
 
 Update this table as each step lands. Add a one-line note when a step diverges from plan; record the rationale in the decision log below.
 
@@ -348,7 +355,7 @@ Eight test groups, all stdlib:
 1. **Registry is functional, not mutable.** `register_lipid` returns a new dict. The module-level `LIPID_REGISTRY` is a `MappingProxyType` over a private dict; callers cannot mutate it. Rationale: matches the immutability pattern in `composition.py`; thesis-scale registry is small, copying is free, and we never need cross-test mutation.
 2. **Bead order is hardcoded in the registry, then *cross-checked* against `resources/martini_ff_node_mapping.json` in tests.** Source-of-truth lives in code (explicit, reviewable, version-controlled with the pipeline) but a test asserts agreement with the existing node-mapping resource so drift is caught loudly.
 3. **`check_resources` paths are injected, not read from `CONFIG`.** `config.yaml`'s `martini_pipeline:` block lands in step 4. Until then, callers (and tests) pass paths explicitly. Once step 4 lands, a thin convenience wrapper in `pipeline.py` will fill defaults from `CONFIG`; the registry stays config-free.
-4. **`family` is a closed enum-like string set**: `{"phospholipid", "sterol"}` for the current 10. Adding a new family (e.g. `"glycolipid"`, `"sphingolipid"`) requires extending the set explicitly — `validate_lipid` rejects unknown families. Forces a conscious decision when extending the pool (subgoal 3).
+4. **`family` is a closed enum-like string set**: `{"phospholipid", "sterol"}` for the current 10. Adding a new family (e.g. `"glycolipid"`, `"sphingolipid"`) requires extending the set explicitly — `validate_lipid` rejects unknown families. Forces a conscious decision when extending the pool (goal 4 / step 12).
 5. **No `insane.py` parsing in this step.** `insane_keyword` is metadata only; verification is deferred to step 6 where a real insane parser exists. Step 2 cannot fail-or-pass on something it doesn't have access to.
 
 ### B.3 Public API
@@ -880,7 +887,7 @@ Place a versioned, GPL-clean copy of `insane.py` at `resources/martini3/insane.p
 #### What's out of scope for step 5
 
 - `system_builder.py` (step 6).
-- Adding new lipid templates to `insane.py` (step 12 / subgoal 3).
+- Adding new lipid templates to `insane.py` (step 12 / goal 4 — prerequisite for subgoals 3c and 3d).
 - Cleanup of `lipid_gnn/functions_emil/insane.py` and other legacy copies — deferred, recorded as a future task.
 - Modifying upstream logic beyond the 2to3 mechanical patch and shebang fix.
 
@@ -1427,7 +1434,7 @@ Identify which compositions in a target grid have not yet been simulated and emi
 ### H.2 Locked-in design decisions
 
 1. **Detection of "already simulated" is manifest-driven, not directory-existence.** A composition counts as built only if `<output_root>/<canonical_name>/manifest.json` exists AND its `overall_status` field matches the filter (default `"ok"`). Half-built or failed runs are reported as missing, not as present. Rationale: directory existence is a weak signal; the manifest is the single source of truth for "did this simulation actually finish".
-2. **Both legacy `data/membrane_only/` and new `data/martini_pipeline/` are searched.** `missing_compositions` accepts a list of output roots, deduplicates by canonical name across them. Rationale: subgoal 2 is to *fill gaps*, so any legacy system that already covers a target point counts. Legacy systems lack our manifest, so a fallback "directory exists + has run/prun.xtc" check is used for them — documented as Decision 33 below.
+2. **Both legacy `data/membrane_only/` and new `data/martini_pipeline/` are searched.** `missing_compositions` accepts a list of output roots, deduplicates by canonical name across them. Rationale: subgoal 3 (coverage filling, interpolation + extrapolation) is to *fill gaps*, so any legacy system that already covers a target point counts. Legacy systems lack our manifest, so a fallback "directory exists + has run/prun.xtc" check is used for them — documented as Decision 33 below.
 3. **Canonical name is the only join key.** `composition.Composition(...).name` resolves alias issues (e.g. legacy `POPC10_DIPC90` vs canonical `DIPC90_POPC10`). Rationale: keeps the join clean and forces every comparison through the canonicaliser already tested in step 1.
 4. **Grid generators return `Composition` objects, not raw dicts.** Validates fractions on construction and ensures the join key is always available. Rationale: catches bad grids at generation time, not at submission time.
 5. **Step granularity is configurable but defaults to 10 %.** All legacy multi-lipid systems use 10 % increments except the DOPS-rich edge (2/4/6/8 %). Default 10 grid is dense enough for the corner-fill but the function takes a `step` parameter for future refinement. Rationale: matches existing data density; finer grids can be requested explicitly without rewriting.
