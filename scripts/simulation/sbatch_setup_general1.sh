@@ -39,7 +39,7 @@ conda activate "$CONDA_ENV"
 
 # general1 toolchain
 module purge
-module load mpi/openmpi/5.0.5-rocm
+module load mpi/openmpi/5.0.0
 module load gromacs/2022.4-gcc-11.3.1-zx2wwcx
 
 : "${COMP:?COMP must be set by benchmark_hpc_general1.sh}"

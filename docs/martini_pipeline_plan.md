@@ -2144,7 +2144,7 @@ This is explicitly *separate* from Appendix J:
 #### What's in scope
 
 - `scripts/simulation/benchmark_hpc_cpu.sh` — orchestrator analogous to `benchmark_hpc.sh` but always submits to `general1`, never sets `--gres`, loads the spack stack.
-- `scripts/simulation/sbatch_benchmark_hpc_cpu.sh` — worker. Loads `mpi/openmpi/5.0.5-rocm` then `gromacs/2022.4-gcc-11.3.1-zx2wwcx`. Runs the sweep point as `mpirun -np 1 gmx_mpi mdrun ...` (or `mpirun -np N` for the multi-rank decomp points; see K.3).
+- `scripts/simulation/sbatch_benchmark_hpc_cpu.sh` — worker. Loads `mpi/openmpi/5.0.0` then `gromacs/2022.4-gcc-11.3.1-zx2wwcx`. Runs the sweep point as `mpirun -np 1 gmx_mpi mdrun ...` (or `mpirun -np N` for the multi-rank decomp points; see K.3).
 - `scripts/simulation/benchmark_points_cpu.tsv` — sweep table with CPU-relevant columns (no `gpus_per_node`, plus `mpi_ranks_per_sim` for the decomp dimension).
 - `scripts/python/analyze_benchmark.py` extension — accept a `--cpu` flag (or auto-detect from `point_meta.json["device"]`) and emit a second YAML block: `hpc_defaults_cpu:`.
 - `tests/martini_pipeline/test_benchmark_hpc_cpu.py` — bash-level dry-run tests (2–3).
@@ -2227,7 +2227,7 @@ Inside the worker:
 
 1. `set -euo pipefail`
 2. `module purge`
-3. `module load mpi/openmpi/5.0.5-rocm`
+3. `module load mpi/openmpi/5.0.0`
 4. `module load gromacs/2022.4-gcc-11.3.1-zx2wwcx`
 5. (no conda activation needed — analyse step is on the login node afterwards)
 6. `cd "$BENCH_POINT_DIR"`
@@ -2265,7 +2265,7 @@ benchmark_hpc_cpu.sh  --reference-tpr <that path>
         │           CPUS_PER_SIM, NSTEPS, BENCH_POINT_DIR
         ▼
 sbatch_benchmark_hpc_cpu.sh  (general1 node)
-        ├─ module load mpi/openmpi/5.0.5-rocm
+        ├─ module load mpi/openmpi/5.0.0
         ├─ module load gromacs/2022.4-gcc-11.3.1-zx2wwcx
         ├─ for i in 0..N-1:
         │      mpirun -np R gmx_mpi mdrun -ntomp K -s prun.tpr ... &
