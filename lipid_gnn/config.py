@@ -161,6 +161,23 @@ class MartiniPipelineHpcDefaultsConfig:
 
 
 @dataclass(frozen=True)
+class MartiniPipelineHpcDefaultsCpuConfig:
+    """CPU-partition equivalent of hpc_defaults (general1 toolchain).
+
+    Populated by `analyze_benchmark.py --recommend --cpu` after step 10b runs;
+    consumed by `submit_simulations.sh --partition general1` for step 10c.
+    """
+
+    sims_per_node: int
+    mpi_ranks_per_sim: int
+    cpus_per_sim: int
+    mem_per_sim: str
+    partition: str = "general1"
+    module_gromacs_cpu: str = "gromacs/2022.4-gcc-11.3.1-zx2wwcx"
+    module_mpi_cpu: str = "mpi/openmpi/5.0.0"
+
+
+@dataclass(frozen=True)
 class MartiniPipelineConfig:
     output_root: Path
     insane_cmd: str
@@ -172,6 +189,7 @@ class MartiniPipelineConfig:
     gmx: MartiniPipelineGmxConfig
     hpc_output_subpath: str = "martini_pipeline"
     hpc_defaults: Optional[MartiniPipelineHpcDefaultsConfig] = None
+    hpc_defaults_cpu: Optional[MartiniPipelineHpcDefaultsCpuConfig] = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +258,7 @@ def _build_martini_pipeline(raw: dict) -> MartiniPipelineConfig:
         ),
         hpc_output_subpath=str(raw.get("hpc_output_subpath", "martini_pipeline")),
         hpc_defaults=_build_martini_pipeline_hpc_defaults(raw.get("hpc_defaults")),
+        hpc_defaults_cpu=_build_martini_pipeline_hpc_defaults_cpu(raw.get("hpc_defaults_cpu")),
     )
 
 
@@ -253,6 +272,22 @@ def _build_martini_pipeline_hpc_defaults(
         cpus_per_sim=int(raw.get("cpus_per_sim", 8)),
         mem_per_sim=str(raw.get("mem_per_sim", "16G")),
         gpus_per_node=int(raw.get("gpus_per_node", 8)),
+    )
+
+
+def _build_martini_pipeline_hpc_defaults_cpu(
+    raw: Optional[dict],
+) -> Optional[MartiniPipelineHpcDefaultsCpuConfig]:
+    if raw is None:
+        return None
+    return MartiniPipelineHpcDefaultsCpuConfig(
+        sims_per_node=int(raw.get("sims_per_node", 4)),
+        mpi_ranks_per_sim=int(raw.get("mpi_ranks_per_sim", 1)),
+        cpus_per_sim=int(raw.get("cpus_per_sim", 10)),
+        mem_per_sim=str(raw.get("mem_per_sim", "16G")),
+        partition=str(raw.get("partition", "general1")),
+        module_gromacs_cpu=str(raw.get("module_gromacs_cpu", "gromacs/2022.4-gcc-11.3.1-zx2wwcx")),
+        module_mpi_cpu=str(raw.get("module_mpi_cpu", "mpi/openmpi/5.0.0")),
     )
 
 
