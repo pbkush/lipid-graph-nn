@@ -29,7 +29,12 @@ NSTEPS=100000
 POINTS_FILE="$SCRIPT_DIR/benchmark_points_general1.tsv"
 BENCH_ROOT=""
 PARTITION="general1"
-TIME_LIMIT="00:30:00"
+# 2 h is generous but cheap: SLURM charges actual run time, not requested.
+# POPC100 on 40 cores ~ 500-1000 ns/day for single mdrun; ~50-150 ns/day per
+# slot when 8 slots share the node.  At 100 ns/day, 100k-step (2 ns) point
+# takes ~30 min — exactly the previous default.  Bumping to 2 h leaves
+# headroom for memory-bandwidth contention surprises.
+TIME_LIMIT="02:00:00"
 DRY_RUN=0
 SETUP_COMP="POPC100"
 SETUP_NSTEPS_EQ=10000      # 200 ps at dt=0.02; enough to relax forces for benchmarking
@@ -50,7 +55,7 @@ usage: benchmark_hpc_general1.sh
     [--bench-root PATH]       results dir
                               (default: results/benchmarks/martini_pipeline/<date>/general1)
     [--partition NAME]        partition                           (default: general1)
-    [--time HH:MM:SS]         wall time per benchmark point       (default: 00:30:00)
+    [--time HH:MM:SS]         wall time per benchmark point       (default: 02:00:00)
     [--dry-run]               print sbatch commands, do not submit
 EOF
     exit 1
