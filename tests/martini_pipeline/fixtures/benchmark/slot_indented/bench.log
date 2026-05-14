@@ -1,0 +1,10 @@
+GROMACS:      gmx mdrun, 2022.4-spack
+
+Input Parameters:
+   nsteps                         = 100000
+
+               Core t (s)   Wall t (s)        (%)
+       Time:       46.328       11.582      400.0
+
+                 (ns/day)    (hour/ns)
+Performance:       9108.65      0.0026

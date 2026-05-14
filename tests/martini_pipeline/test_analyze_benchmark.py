@@ -53,6 +53,15 @@ class TestParsePerfLine(unittest.TestCase):
         self.assertIsNone(ns)
         self.assertIsNone(wall)
 
+    def test_parse_indented_time_line(self):
+        """Real gmx 2022 emits 'Time:' indented with leading whitespace
+        (e.g. '       Time:  46.328  11.582  400.0').  The regex must
+        tolerate the leading whitespace or we silently lose wall-time
+        and the recommend() filter drops every point as NaN-scored."""
+        ns, wall = parse_perf(_FIXTURES / "slot_indented" / "bench.log")
+        self.assertAlmostEqual(ns, 9108.65, places=2)
+        self.assertAlmostEqual(wall, 11.582, places=3)
+
 
 # ---------------------------------------------------------------------------
 # rocm-smi parsing
@@ -106,6 +115,30 @@ class TestAggregateAndScore(unittest.TestCase):
         p = self._make_point([300.0, 320.0], [1800.0, 1800.0])
         expected_score = 620.0 / (1800.0 / 3600.0)  # 1240.0
         self.assertAlmostEqual(p.score, expected_score, places=3)
+
+    def test_score_falls_back_to_aggregate_when_walltime_missing(self):
+        """If wall-time parse fails (no 'Time:' line), score falls back to
+        aggregate_ns_per_day so recommend() can still rank — see the user's
+        first general1 sweep where logs were truncated."""
+        # Write logs WITHOUT the Time: line — only Performance:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "point_meta.json").write_text(json.dumps({
+                "label": "x", "sims_per_node": 2, "gpus_per_node": 0,
+                "cpus_per_sim": 20, "mem_per_sim": "16G", "partition": "general1",
+                "mpi_ranks_per_sim": 1, "device": "cpu",
+            }))
+            for i, ns in enumerate([6589.0, 6589.0]):
+                slot = root / f"slot_{i}"
+                slot.mkdir()
+                (slot / "bench.log").write_text(
+                    f"Performance:    {ns:.2f}    {24/ns:.4f}\n"
+                    "             ns/day   hours/ns\n"
+                )
+            p = load_point(root)
+        # aggregate = 13178; node_hours = NaN; score should fall back to aggregate
+        self.assertAlmostEqual(p.aggregate_ns_per_day, 13178.0, places=1)
+        self.assertAlmostEqual(p.score, 13178.0, places=1)
 
 
 # ---------------------------------------------------------------------------

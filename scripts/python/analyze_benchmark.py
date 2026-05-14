@@ -79,11 +79,13 @@ def parse_perf(log_path: Path) -> tuple[Optional[float], Optional[float]]:
     text = log_path.read_text(errors="replace")
 
     # Performance: <ns_per_day>  <hours_per_ns>   (two floats on one line)
-    m_perf = re.search(r"^Performance:\s+([\d.]+)\s+[\d.]+", text, re.MULTILINE)
+    # gmx writes this line indented; we anchor on optional leading whitespace.
+    m_perf = re.search(r"^\s*Performance:\s+([\d.]+)\s+[\d.]+", text, re.MULTILINE)
     ns_per_day = float(m_perf.group(1)) if m_perf else None
 
     # Time: <core_t>  <wall_t>  <pct>
-    m_time = re.search(r"^Time:\s+[\d.]+\s+([\d.]+)", text, re.MULTILINE)
+    # gmx writes this line indented; we anchor on optional leading whitespace.
+    m_time = re.search(r"^\s*Time:\s+[\d.]+\s+([\d.]+)", text, re.MULTILINE)
     wall_t_s = float(m_time.group(1)) if m_time else None
 
     return ns_per_day, wall_t_s
@@ -153,6 +155,13 @@ def load_point(point_dir: Path) -> PointResult:
         p.node_hours = p.max_wall_t_s / 3600.0
         if p.node_hours > 0:
             p.score = p.aggregate_ns_per_day / p.node_hours
+    # Fallback: if wall-time extraction failed (e.g. truncated log, or a gmx
+    # build whose Time: line we don't parse), rank by aggregate ns/day alone.
+    # Since every point ran the same -nsteps, walltime is approximately
+    # inversely proportional to aggregate ns/day across the sweep, so this
+    # preserves the qualitative ranking — just without absolute node-hour units.
+    if p.score != p.score and p.aggregate_ns_per_day > 0:  # NaN check
+        p.score = p.aggregate_ns_per_day
 
     p.gpu_util_mean, p.gpu_power_W_mean, p.vram_used_MB_max = \
         parse_rocm_smi(point_dir / "rocm-smi.tsv")
