@@ -357,6 +357,23 @@ class TestGromppInvocations(_PipelineTestBase):
                 self.assertIn("-ntomp", cmd)
                 self.assertIn("4", cmd)
 
+    def test_mdrun_extra_args_string_form_is_split(self):
+        """Single-string extra_args (e.g. '-ntomp 4 -nb cpu') must be tokenised
+        before being passed to mdrun — bash workers pass --mdrun-args as one
+        quoted token and argparse.REMAINDER stores it as a 1-element list."""
+        result = self._run(mdrun_extra_args=("-ntomp 4 -nb cpu",))
+        with open(result.manifest_path) as fh:
+            data = json.load(fh)
+        for stage_data in data["stages"]:
+            if stage_data["status"] != "skipped":
+                cmd = stage_data["mdrun_cmd"]
+                # Each token must appear as its own argv element, not a fused string
+                self.assertIn("-ntomp", cmd)
+                self.assertIn("4", cmd)
+                self.assertIn("-nb", cmd)
+                self.assertIn("cpu", cmd)
+                self.assertNotIn("-ntomp 4 -nb cpu", cmd)
+
 
 class TestIdempotency(_PipelineTestBase):
     def _run(self, **kwargs):

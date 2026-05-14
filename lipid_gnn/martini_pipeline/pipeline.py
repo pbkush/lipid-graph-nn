@@ -323,7 +323,17 @@ def _run_grompp(*, stage_dir, mdp, gro_in, top, ndx, tpr_out, gmx, maxwarn):
 
 
 def _run_mdrun(*, stage_dir, deffnm, gmx, extra_args):
-    cmd = [gmx, "mdrun", "-deffnm", deffnm] + list(extra_args)
+    # Flatten extra_args via shlex so callers can pass either:
+    #   - already-tokenised:  ("-ntomp", "40", "-nb", "cpu")
+    #   - or a single string:  ("-ntomp 40 -nb cpu",)
+    # The latter happens when bash workers pass --mdrun-args "$STR" as one
+    # quoted token and run_martini_pipeline.py's argparse.REMAINDER stores
+    # the whole string as a single list element.
+    import shlex as _shlex
+    flat: list = []
+    for a in extra_args:
+        flat.extend(_shlex.split(a))
+    cmd = [gmx, "mdrun", "-deffnm", deffnm] + flat
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=stage_dir)
     log_path = os.path.join(stage_dir, "mdrun.log")
     with open(log_path, "w") as fh:
