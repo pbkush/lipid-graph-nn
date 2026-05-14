@@ -43,6 +43,10 @@ class PointResult:
     cpus_per_sim: int
     mem_per_sim: str
     partition: str
+    # CPU-benchmark extension: mpi_ranks_per_sim and device tag.  Default values
+    # keep GPU points (without these fields in point_meta.json) backward-compatible.
+    mpi_ranks_per_sim: int = 1
+    device: str = "gpu"
     slot_ns_per_day: list = field(default_factory=list)
     slot_wall_t_s: list = field(default_factory=list)
     aggregate_ns_per_day: float = 0.0
@@ -119,6 +123,8 @@ def load_point(point_dir: Path) -> PointResult:
         cpus_per_sim=meta["cpus_per_sim"],
         mem_per_sim=meta["mem_per_sim"],
         partition=meta["partition"],
+        mpi_ranks_per_sim=meta.get("mpi_ranks_per_sim", 1),
+        device=meta.get("device", "gpu"),
         n_slots_total=meta["sims_per_node"],
     )
 
@@ -175,17 +181,33 @@ def recommend(
     points: list[PointResult],
     node_mem_GB: float,
     headroom: float,
+    device: str = "gpu",
 ) -> Optional[PointResult]:
-    """Return top-scoring point under memory headroom, or None."""
+    """Return top-scoring point for the requested device, or None.
+
+    GPU branch: applies memory headroom filter; tie-break by fewer GPUs.
+    CPU branch: no memory headroom (general1 nodes have plenty); tie-break
+    by fewer MPI ranks (less comm overhead), then fewer sims_per_node.
+    """
+    device_filtered = [p for p in points if p.device == device]
+    if device == "cpu":
+        candidates = [
+            p for p in device_filtered
+            if p.status == "ok" and not _isnan(p.score)
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda p: (-p.score, p.mpi_ranks_per_sim, p.sims_per_node))
+        return candidates[0]
+    # GPU branch
     candidates = [
-        p for p in points
+        p for p in device_filtered
         if p.status == "ok"
         and not _isnan(p.score)
         and float(p.mem_per_sim.rstrip("G")) * p.sims_per_node <= headroom * node_mem_GB
     ]
     if not candidates:
         return None
-    # rank: score desc; tie-break gpus_per_node asc, then sims_per_node asc
     candidates.sort(key=lambda p: (-p.score, p.gpus_per_node, p.sims_per_node))
     return candidates[0]
 
@@ -199,8 +221,10 @@ def to_dataframe(points: list[PointResult]) -> pd.DataFrame:
     rows = [
         {
             "label":                      p.label,
+            "device":                     p.device,
             "sims_per_node":              p.sims_per_node,
             "gpus_per_node":              p.gpus_per_node,
+            "mpi_ranks_per_sim":          p.mpi_ranks_per_sim,
             "cpus_per_sim":               p.cpus_per_sim,
             "mem_per_sim":                p.mem_per_sim,
             "aggregate_ns_per_day":       _r(p.aggregate_ns_per_day, 2),
@@ -219,6 +243,19 @@ def to_dataframe(points: list[PointResult]) -> pd.DataFrame:
 
 
 def _rec_yaml(rec: PointResult) -> str:
+    if rec.device == "cpu":
+        # Per K.12 Q6: include partition + module_gromacs_cpu so a future
+        # submit_simulations.sh --partition general1 can route automatically.
+        return (
+            "  hpc_defaults_cpu:\n"
+            f"    sims_per_node: {rec.sims_per_node}\n"
+            f"    mpi_ranks_per_sim: {rec.mpi_ranks_per_sim}\n"
+            f"    cpus_per_sim: {rec.cpus_per_sim}\n"
+            f'    mem_per_sim: "{rec.mem_per_sim}"\n'
+            f'    partition: "{rec.partition}"\n'
+            f'    module_gromacs_cpu: "gromacs/2022.4-gcc-11.3.1-zx2wwcx"\n'
+            f'    module_mpi: "mpi/openmpi/5.0.5-rocm"\n'
+        )
     return (
         "  hpc_defaults:\n"
         f"    sims_per_node: {rec.sims_per_node}\n"
@@ -266,6 +303,9 @@ def main() -> int:
                         help="Node RAM in GB (default: 256; MI210 nodes on Goethe-HLR)")
     parser.add_argument("--recommend", action="store_true",
                         help="Print recommended config.yaml hpc_defaults block")
+    parser.add_argument("--cpu", action="store_true",
+                        help="Recommend from CPU points (device=cpu) — emits "
+                             "hpc_defaults_cpu block instead of hpc_defaults")
     parser.add_argument("--allow-partial", action="store_true",
                         help="Include incomplete points in ranking/recommendation")
     args = parser.parse_args()
@@ -304,7 +344,8 @@ def main() -> int:
         return 1
 
     eligible = points if args.allow_partial else [p for p in points if p.status == "ok"]
-    rec = recommend(eligible, args.node_mem, args.mem_headroom_frac) if args.recommend else None
+    device = "cpu" if args.cpu else "gpu"
+    rec = recommend(eligible, args.node_mem, args.mem_headroom_frac, device=device) if args.recommend else None
 
     df = to_dataframe(points)
     fmt = args.format
@@ -329,9 +370,15 @@ def main() -> int:
 
     if args.recommend:
         if rec is None:
-            print("ERROR: no qualifying point found (all failed or over memory cap)", file=sys.stderr)
+            kind = "CPU" if device == "cpu" else "GPU"
+            print(
+                f"ERROR: no qualifying {kind} point found "
+                "(all failed, or — for GPU — over memory cap, or — for CPU — wrong device tag).",
+                file=sys.stderr,
+            )
             return 1
-        print("Recommended hpc_defaults (paste into martini_pipeline: in config.yaml):")
+        block_name = "hpc_defaults_cpu" if device == "cpu" else "hpc_defaults"
+        print(f"Recommended {block_name} (paste into martini_pipeline: in config.yaml):")
         print(_rec_yaml(rec))
 
     return 0

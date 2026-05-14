@@ -185,6 +185,61 @@ class TestRecommendation(unittest.TestCase):
         self.assertIsNone(rec)
 
 
+def _make_cpu_pr(label, sims, mpi, cpus, score) -> PointResult:
+    p = PointResult(
+        label=label, sims_per_node=sims, gpus_per_node=0,
+        cpus_per_sim=cpus, mem_per_sim="16G", partition="general1",
+        mpi_ranks_per_sim=mpi, device="cpu",
+        status="ok", n_slots_ok=sims, n_slots_total=sims,
+        aggregate_ns_per_day=score * 0.5,
+        max_wall_t_s=1800.0, node_hours=0.5,
+        score=score,
+    )
+    return p
+
+
+class TestRecommendCpu(unittest.TestCase):
+    def test_cpu_branch_ignores_mem_headroom(self):
+        """CPU branch should pick top score regardless of memory (per K.12 Q10)."""
+        # A "huge mem" CPU point would be disqualified in the GPU branch but
+        # must NOT be in the CPU branch.
+        p_huge = _make_cpu_pr("huge", sims=8, mpi=1, cpus=5, score=2000.0)
+        p_mid  = _make_cpu_pr("mid",  sims=4, mpi=1, cpus=10, score=1500.0)
+        rec = recommend([p_huge, p_mid], node_mem_GB=256.0, headroom=0.10, device="cpu")
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec.label, "huge")
+
+    def test_cpu_tie_break_prefers_fewer_mpi_ranks(self):
+        """Equal score → prefer fewer mpi ranks (less comm overhead)."""
+        p_4rank = _make_cpu_pr("four_rank", sims=1, mpi=4, cpus=10, score=1000.0)
+        p_1rank = _make_cpu_pr("one_rank",  sims=1, mpi=1, cpus=40, score=1000.0)
+        rec = recommend([p_4rank, p_1rank], node_mem_GB=256.0, headroom=0.70, device="cpu")
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec.label, "one_rank")
+
+    def test_cpu_ignores_gpu_points(self):
+        """CPU recommend must not return a GPU point even if it scores higher."""
+        p_gpu_fast = _make_pr("gpu_fast", 4, 4, 8, 16, 5000.0)
+        p_cpu_slow = _make_cpu_pr("cpu_slow", sims=1, mpi=1, cpus=40, score=200.0)
+        rec = recommend([p_gpu_fast, p_cpu_slow], node_mem_GB=256.0, headroom=0.70, device="cpu")
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec.label, "cpu_slow")
+
+    def test_cpu_yaml_emits_hpc_defaults_cpu(self):
+        """_rec_yaml for a CPU point should emit hpc_defaults_cpu with the
+        partition + module fields."""
+        from analyze_benchmark import _rec_yaml
+        p = _make_cpu_pr("good", sims=4, mpi=1, cpus=10, score=1500.0)
+        yaml = _rec_yaml(p)
+        self.assertIn("hpc_defaults_cpu:", yaml)
+        self.assertIn("mpi_ranks_per_sim: 1", yaml)
+        self.assertIn('partition: "general1"', yaml)
+        self.assertIn("gromacs/2022.4-gcc-11.3.1-zx2wwcx", yaml)
+        self.assertIn("mpi/openmpi/5.0.5-rocm", yaml)
+        # Must NOT contain GPU-only fields
+        self.assertNotIn("gpus_per_node", yaml)
+
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -252,6 +307,63 @@ class TestBenchmarkHshDryRun(unittest.TestCase):
         # Both comps appear in the REFERENCE_TPRS export value
         self.assertIn("POPC100", result.stdout)
         self.assertIn("DPPC100", result.stdout)
+
+
+_BENCH_CPU_SH = _REPO_ROOT / "scripts/simulation/benchmark_hpc_general1.sh"
+
+
+def _run_bench_cpu_sh(args: list[str]) -> subprocess.CompletedProcess:
+    env = {**os.environ, "GROUP": "testgroup", "USER": os.environ.get("USER", "testuser")}
+    return subprocess.run(
+        ["bash", str(_BENCH_CPU_SH)] + args,
+        capture_output=True, text=True,
+        cwd=str(_REPO_ROOT), env=env,
+    )
+
+
+class TestBenchmarkCpuHshDryRun(unittest.TestCase):
+    def test_dry_run_emits_one_sbatch_per_point(self):
+        """--dry-run with default 7-point general1 TSV → 7 [DRY RUN] sbatch lines."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh([
+                "--dry-run",
+                "--bench-root", d,
+            ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
+        self.assertEqual(len(dry_lines), 7)
+
+    def test_dry_run_all_points_use_general1_partition(self):
+        """Every sbatch line should target --partition=general1 by default."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh(["--dry-run", "--bench-root", d])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sbatch_lines = [l for l in result.stdout.splitlines() if "sbatch " in l]
+        self.assertTrue(all("--partition=general1" in l for l in sbatch_lines))
+
+    def test_dry_run_exports_mpi_ranks(self):
+        """Worker env must include MPI_RANKS_PER_SIM (absent in the GPU benchmark)."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh(["--dry-run", "--bench-root", d])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MPI_RANKS_PER_SIM=", result.stdout)
+
+    def test_dry_run_total_cpus_capped_at_40(self):
+        """Every default point should request --cpus-per-task=40 (full general1 node)
+        — except the lone half-node 1sim_1rank_20omp probe at 20.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh(["--dry-run", "--bench-root", d])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cpus_seen = set()
+        for line in result.stdout.splitlines():
+            for tok in line.split():
+                if tok.startswith("--cpus-per-task="):
+                    cpus_seen.add(int(tok.split("=")[1]))
+        # We expect {20, 40} from the default 7-point sweep
+        self.assertTrue(cpus_seen.issubset({20, 40}),
+                        f"unexpected --cpus-per-task values: {cpus_seen}")
+        self.assertIn(40, cpus_seen)
 
 
 if __name__ == "__main__":
