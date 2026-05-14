@@ -16,6 +16,7 @@ from lipid_gnn.martini_pipeline.analysis import (
     dopc_corner_grid,
     dppc_corner_grid,
     missing_compositions,
+    popc_interpolation_grid,
     summarise_systems,
     ternary_grid,
 )
@@ -152,6 +153,62 @@ class TestCornerGrids(unittest.TestCase):
     def test_dopc_corner_no_duplicates(self):
         names = [c.name for c in dopc_corner_grid()]
         self.assertEqual(len(names), len(set(names)))
+
+
+class TestPopcInterpolationGrid(unittest.TestCase):
+    """Subgoal 3a — POPC-anchored binaries across the full POPC fraction range.
+    Distinct from the corner grids (which cap at anchor>=50%): used for
+    densifying the GNN training-domain regime, not for extrapolation.
+    """
+
+    def test_includes_pure_popc(self):
+        names = {c.name for c in popc_interpolation_grid()}
+        self.assertIn("POPC100", names)
+
+    def test_excludes_pure_partners(self):
+        """Pure-partner endpoints belong in extrapolation grids, not here."""
+        for comp in popc_interpolation_grid():
+            self.assertIn("POPC", comp.fractions,
+                          f"non-POPC composition in popc_interpolation: {comp.name}")
+
+    def test_step_10_default_total_count(self):
+        """At step=10: POPC100 + 8 non-CHOL partners × 9 fractions + CHOL × 4 = 77."""
+        grid = popc_interpolation_grid(step=10)
+        self.assertEqual(len(grid), 1 + 8 * 9 + 4)
+
+    def test_chol_capped_at_40(self):
+        for comp in popc_interpolation_grid():
+            if "CHOL" in comp.fractions:
+                self.assertLessEqual(comp.fractions["CHOL"], 0.40 + 1e-9)
+
+    def test_full_popc_range_covered(self):
+        """Both POPC10_X90 (low-POPC) and POPC90_X10 (high-POPC) must appear
+        for non-CHOL partners — that's the point of interpolation vs corner."""
+        names = {c.name for c in popc_interpolation_grid()}
+        # Low-POPC corner of the binary: DPPC90_POPC10 (canonical order)
+        self.assertIn("DPPC90_POPC10", names)
+        # High-POPC end: POPC90_DPPC10
+        self.assertIn("POPC90_DPPC10", names)
+
+    def test_uses_canonical_names(self):
+        for comp in popc_interpolation_grid():
+            self.assertEqual(comp.name, parse_name(comp.name).name)
+
+    def test_no_duplicates(self):
+        names = [c.name for c in popc_interpolation_grid()]
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_step_validation(self):
+        with self.assertRaises(ValueError):
+            popc_interpolation_grid(step=0)
+        with self.assertRaises(ValueError):
+            popc_interpolation_grid(step=101)
+
+    def test_step_5_doubles_density(self):
+        """At step=5, each non-CHOL partner gets 19 fractions (5..95) instead of 9."""
+        grid5 = popc_interpolation_grid(step=5)
+        # POPC100 + 8 non-CHOL partners × 19 fractions + CHOL × 8 (5..40) = 161
+        self.assertEqual(len(grid5), 1 + 8 * 19 + 8)
 
 
 # ---------------------------------------------------------------------------
