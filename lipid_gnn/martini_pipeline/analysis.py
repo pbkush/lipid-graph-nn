@@ -562,3 +562,50 @@ def dppc_corner_grid(step: int = 10) -> list["Composition"]:
 def dopc_corner_grid(step: int = 10) -> list["Composition"]:
     """DOPC-rich binary grid: DOPC >= 50%, paired with standard partners."""
     return _corner_grid("DOPC", _DOPC_CORNER_PARTNERS, step)
+
+
+# All 9 non-POPC lipids in the current pool.  Used as POPC's binary partners
+# for subgoal 3a (interpolation, see docs/martini_pipeline_plan.md §1).
+_POPC_INTERPOLATION_PARTNERS = (
+    "CHOL", "DIPC", "DOPC", "DOPE", "DPPC", "DPPE", "DOPS", "POPE", "POPS",
+)
+
+
+def popc_interpolation_grid(step: int = 10) -> list["Composition"]:
+    """POPC-anchored binary grid covering the **full** POPC fraction range.
+
+    Distinct from `dppc_corner_grid` / `dopc_corner_grid` which only cover the
+    anchor >= 50% half-plane: this grid spans POPC from `step` % to (100 - step) %
+    so it can be used to densify the GNN's training-domain regime (subgoal 3a,
+    interpolation) rather than to probe the extrapolation corners.
+
+    Includes the pure POPC100 endpoint.  Excludes the pure-partner endpoints
+    (e.g. DPPC100, DIPC100) — those are not POPC-anchored and belong to the
+    extrapolation grids (3b).  CHOL stays capped at 40 % per Decision 35.
+    """
+    from lipid_gnn.martini_pipeline.composition import Composition
+
+    if step <= 0 or step > 100:
+        raise ValueError(f"step must be in (0, 100], got {step}")
+
+    result: list[Composition] = []
+    seen: set[str] = set()
+
+    # Pure POPC anchor
+    pure = Composition({"POPC": 1.0})
+    seen.add(pure.name)
+    result.append(pure)
+
+    for partner in _POPC_INTERPOLATION_PARTNERS:
+        max_partner = _CHOL_MAX_PCT if partner == "CHOL" else 100 - step
+        for pct_partner in range(step, max_partner + 1, step):
+            pct_popc = 100 - pct_partner
+            comp = Composition({
+                "POPC": pct_popc / 100.0,
+                partner: pct_partner / 100.0,
+            })
+            if comp.name not in seen:
+                seen.add(comp.name)
+                result.append(comp)
+
+    return result

@@ -7,6 +7,7 @@ and prints/writes the result in the requested format.
 Usage examples:
     python scripts/simulation/print_work_queue.py --grid dppc_corner
     python scripts/simulation/print_work_queue.py --grid dopc_corner --format json
+    python scripts/simulation/print_work_queue.py --grid popc_interpolation  # subgoal 3a
     python scripts/simulation/print_work_queue.py --grid all --format lines --out /tmp/queue.txt
     python scripts/simulation/print_work_queue.py --grid binary --lipids DPPC DOPC --step 10
     python scripts/simulation/print_work_queue.py --grid ternary --lipids POPC DOPC DPPC --step 20
@@ -26,6 +27,7 @@ from lipid_gnn.martini_pipeline.analysis import (
     dopc_corner_grid,
     dppc_corner_grid,
     missing_compositions,
+    popc_interpolation_grid,
     ternary_grid,
 )
 
@@ -36,6 +38,8 @@ def _build_target_grid(args: argparse.Namespace):
         return dppc_corner_grid(step=args.step)
     if args.grid == "dopc_corner":
         return dopc_corner_grid(step=args.step)
+    if args.grid == "popc_interpolation":
+        return popc_interpolation_grid(step=args.step)
     if args.grid == "all":
         seen: set[str] = set()
         result = []
@@ -116,7 +120,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--grid",
-        choices=["dppc_corner", "dopc_corner", "binary", "ternary", "all"],
+        choices=["dppc_corner", "dopc_corner", "popc_interpolation", "binary", "ternary", "all"],
         default="all",
         help="Target grid to check (default: all = dppc_corner ∪ dopc_corner).",
     )
