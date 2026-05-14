@@ -2,7 +2,7 @@
 
 Long-term, general-purpose Martini 3 membrane simulation pipeline. Stands as a research deliverable in its own right; newly simulated systems are not necessarily training data. This document is the single source of truth for the plan, progress, and decisions.
 
-Last updated: 2026-05-12 (step 9 complete).
+Last updated: 2026-05-14 (step 10b complete — CPU benchmark on general1).
 
 ---
 
@@ -147,7 +147,8 @@ Status keys: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipp
 | 7 | `pipeline.py` + `manifest.py` — local end-to-end; DIPC100 APL sanity check against physical criteria | [x] | Decisions 22–25, 28–32. Filenames match legacy (`martini_em`, `martini_eq`, `prun`). `-maxwarn 2` default (CLI flag). Seed deterministic from composition hash. `MartiniPipelineConfig` in `config.py`. CLI `run_martini_pipeline.py` with insane-style ratio args + `--nsteps`/`--prod-ns`. 377 tests pass, 7 skipped. |
 | 8 | `analysis.py::missing_compositions()` + CLI driver to print DPPC/DOPC corner work queue | [x] | Decisions 33–36. Grid generators: `binary_grid`, `ternary_grid` (full symmetric simplex), `dppc_corner_grid`, `dopc_corner_grid`. CHOL capped at 40%. CLI `print_work_queue.py` with `--grid`, `--format`, `--out`. 451 tests pass (32 new). |
 | 9 | HPC submission layer (`submit_simulations.sh` + `sbatch_simulations.sh`) | [x] | Decisions 37–42. Multi-token `--compositions`, `--queue-file`, `--missing-from-grid`; GPU/CPU branch; `gpu_test` guards; `--dry-run`. 476 tests pass (25 new). |
-| 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | |
+| 10 | HPC benchmark (`benchmark_hpc.sh` + `analyze_benchmark.py`); populate `hpc_defaults` | [ ] | GPU sweep merged; awaiting first real run to land values |
+| 10b | CPU benchmark on general1 (`benchmark_hpc_general1.sh` + worker; populate `hpc_defaults_cpu`) | [x] | Decisions 50–53. 7-point sweep × 40 cores each; reuses v2025.4 tpr; mpi_ranks dimension probes domain decomp. 24 tests pass (8 new). |
 | 11 | Subgoal 2 — fill DPPC/DOPC corners on HPC | [ ] | Production run; not a code task |
 | 12 | Subgoal 3 — extend lipid pool beyond current 10 | [ ] | Future, after subgoal 2 lands |
 
@@ -2120,3 +2121,246 @@ Python deps: `pandas` (CSV → markdown), already in `lipid_gnn` env. No new bas
 - **Decision 47** — `analyze_benchmark.py --recommend` prints the YAML block; user pastes manually into `config.yaml`. Matches the audit-freeze flow of [Step 3](#step-3-mdp-audit).
 - **Decision 48** — `summary.md` and `summary.csv` are committed under `results/benchmarks/martini_pipeline/<date>/` for thesis traceability; raw per-point logs are gitignored.
 - *Plus any decisions arising from J.12 Q1–Q10.*
+
+---
+
+## Appendix K — Step 10b detailed plan: CPU benchmark on `general1`
+
+### K.1 Scope
+
+Run a CPU-only throughput sweep on the `general1` partition using the spack-installed GROMACS 2022 (`gmx_mpi`), so we have a calibrated CPU baseline for:
+
+- **Thesis figure** — GPU/CPU speedup ratio for the corner systems (≈ 12 k beads each).
+- **Overflow planning** — if GPU quota or hardware availability becomes a bottleneck during step-11 production, we know whether routing a fraction of the queue to `general1` is feasible (in wall-time / CPU-hours per system).
+- **A second `hpc_defaults_cpu` block** in `config.yaml`, separate from the GPU defaults, that `submit_simulations.sh --partition general1` could read in a future enhancement.
+
+This is explicitly *separate* from Appendix J:
+
+- Different GROMACS module → different `module load` sequence
+- `gmx_mpi` binary (not `gmx`) → different invocation pattern
+- No GPUs → one fewer sweep dimension, but multi-rank MPI domain decomposition becomes interesting
+- A different `sbatch_benchmark_hpc_cpu.sh` worker (the GPU worker hard-codes `gmx`, `HIP_VISIBLE_DEVICES`, ROCm module)
+
+#### What's in scope
+
+- `scripts/simulation/benchmark_hpc_cpu.sh` — orchestrator analogous to `benchmark_hpc.sh` but always submits to `general1`, never sets `--gres`, loads the spack stack.
+- `scripts/simulation/sbatch_benchmark_hpc_cpu.sh` — worker. Loads `mpi/openmpi/5.0.5-rocm` then `gromacs/2022.4-gcc-11.3.1-zx2wwcx`. Runs the sweep point as `mpirun -np 1 gmx_mpi mdrun ...` (or `mpirun -np N` for the multi-rank decomp points; see K.3).
+- `scripts/simulation/benchmark_points_cpu.tsv` — sweep table with CPU-relevant columns (no `gpus_per_node`, plus `mpi_ranks_per_sim` for the decomp dimension).
+- `scripts/python/analyze_benchmark.py` extension — accept a `--cpu` flag (or auto-detect from `point_meta.json["device"]`) and emit a second YAML block: `hpc_defaults_cpu:`.
+- `tests/martini_pipeline/test_benchmark_hpc_cpu.py` — bash-level dry-run tests (2–3).
+- `config.yaml` — new `martini_pipeline.hpc_defaults_cpu` stub.
+- `lipid_gnn/config.py` — parse the new sub-block (small structural addition).
+- `docs/martini_pipeline_plan.md` — status table row 10b → `[x]`, Decisions 49+ appended.
+
+#### What's out of scope
+
+- Production-running on `general1`. The benchmark proves feasibility; actually wiring `submit_simulations.sh` to support `general1` is a future step (probably 10c) that loads the spack modules conditionally.
+- Comparing GROMACS 2022 vs v2025.4 on the same hardware. We've already documented two divergences (`NA+`/`CL-` ion naming, missing MDP-key acceptance) and don't want this benchmark to drag those in.
+- TPR-building on `general1`. We re-use the same `prun.tpr` produced by Phase 1 of the GPU benchmark (built with v2025.4) — see K.2 Decision 3 for the version-mismatch caveat.
+
+### K.2 Locked-in design decisions
+
+1. **Reuse the GPU benchmark's `prun.tpr`.** Phase 1 of `benchmark_hpc.sh` produces a clean POPC100 `prun.tpr` under `/work/.../martini_pipeline/benchmark/POPC100/run/prun.tpr`. The CPU benchmark consumes that same file via `REFERENCE_TPRS`; no separate Phase 1 needed. Saves quota, and we benchmark the *same* physics that v2025.4 will run in production.
+2. **GROMACS 2022 reads v2025.4 TPRs.** TPRs are forward-compatible — a 2022 `gmx_mpi mdrun` can run a v2025-built TPR (it'll print a "downgraded" warning at startup but the integration is identical). Validated experimentally before submitting the full sweep (K.9 acceptance criterion 1).
+3. **No `mdrun` flags that depend on v2025-only features.** We do *not* pass `-resethway` to the CPU worker — `-resethway` exists in GROMACS 2022 (since 2018), but PME tuning differs between versions and we don't want startup-cost differences contaminating the comparison. (Reverse argument also holds: keeping it removes noise. Pending confirmation in K.12 Q4.)
+4. **MPI-rank-per-slot via `mpirun -np <N>`.** `gmx_mpi mdrun` requires `mpirun`. For single-rank slots: `mpirun -np 1 gmx_mpi mdrun -ntomp <K> ...`. For multi-rank: `mpirun -np <N> gmx_mpi mdrun -ntomp <K> ...` and let `gmx_mpi` do the domain decomposition. This adds one sweep dimension absent from the GPU benchmark.
+5. **One reference comp.** POPC100 only, matching the GPU benchmark, so the CPU/GPU comparison is on identical physics. Multi-comp extension is a one-line points-file change for later.
+6. **Sweep length: same 100 000 steps (2 ns) as GPU benchmark.** CPU is ≈ 30× slower, so 2 ns of POPC100 on 16 cores ≈ 6–10 min per point. Quota: 8 points × ≤ 15 min ≤ 2 CPU-hours total — trivial on `general1`.
+7. **Outputs under `results/benchmarks/martini_pipeline/<date>/cpu/`.** Sibling to the GPU sweep under the same date, so `analyze_benchmark.py` can correlate both into one `summary.md`. `point_meta.json` records `"device": "cpu"`.
+8. **Recommendation logic separated by device.** `--recommend` picks the best GPU point under the GPU mem-headroom filter; `--recommend --cpu` picks the best CPU point under a similar CPU mem-headroom filter (default 70 %). Two independent YAML blocks — `hpc_defaults:` and `hpc_defaults_cpu:`.
+9. **No `HIP_VISIBLE_DEVICES`, no `--gres`.** CPU node; everything goes through `OMP_NUM_THREADS` and `mpirun`'s rank placement. We optionally set `OMP_PLACES=cores OMP_PROC_BIND=close` (proven to help Martini throughput on shared CPU nodes); confirmation in K.12 Q5.
+10. **Walltime: 30 min per sbatch.** Generous for a 2-ns POPC100 run on any reasonable CPU layout.
+
+### K.3 Sweep table — `benchmark_points_cpu.tsv`
+
+Need K.12 Q1 (node core count) to finalise. Strawman assuming ≥ 64 cores per `general1` node:
+
+| # | label | sims/node | mpi_ranks/sim | cpus/sim (= ntomp) | total CPUs | rationale |
+|---|---|---|---|---|---|---|
+| 1 | 1sim_1rank_16omp | 1 | 1 | 16 | 16 | single-sim baseline; thread-only |
+| 2 | 1sim_1rank_32omp | 1 | 1 | 32 | 32 | single-sim, max threads — diminishing returns probe |
+| 3 | 1sim_2rank_8omp  | 1 | 2 | 8  | 16 | single sim, 2-way MPI decomp + threads |
+| 4 | 1sim_4rank_4omp  | 1 | 4 | 4  | 16 | single sim, 4-way MPI decomp — typical small-system sweet spot |
+| 5 | 2sim_1rank_16omp | 2 | 1 | 16 | 32 | two parallel sims, no MPI decomp each |
+| 6 | 4sim_1rank_8omp  | 4 | 1 | 8  | 32 | four parallel sims — max packing |
+| 7 | 4sim_1rank_16omp | 4 | 1 | 16 | 64 | four parallel sims, more threads each |
+| 8 | 8sim_1rank_8omp  | 8 | 1 | 8  | 64 | eight parallel sims, packing-dominant regime |
+
+The "aggregate ns/day per node-hour" metric (Decision 46) ranks all 8 cleanly even though the parallelism axis differs.
+
+### K.4 Public API — `scripts/simulation/benchmark_hpc_cpu.sh`
+
+```text
+usage: benchmark_hpc_cpu.sh
+    [--reference-tpr PATH]          # required; usually .../benchmark/POPC100/run/prun.tpr
+    [--nsteps N]                    # default 100000
+    [--points PATH]                 # default benchmark_points_cpu.tsv
+    [--output-root PATH]            # default results/benchmarks/martini_pipeline/<ISO date>/cpu
+    [--partition NAME]              # default general1 (CLI override allowed for testing)
+    [--time HH:MM:SS]               # default 00:30:00 per point
+    [--dry-run]
+```
+
+Behaviour:
+
+1. Verify `--reference-tpr` exists. If not, fail with "run benchmark_hpc.sh first to build it".
+2. For each row of the points TSV: build the export env (`REFERENCE_TPR`, `SIMS_PER_NODE`, `MPI_RANKS_PER_SIM`, `CPUS_PER_SIM`, `NSTEPS`), then submit one `sbatch sbatch_benchmark_hpc_cpu.sh`.
+3. Mirror the GPU script's chaining (`afterany:<prev>`) so SLURM serialises submissions politely on `general1`'s QOS.
+4. `--dry-run` prints the would-be `sbatch` line per point, no real submission.
+
+### K.5 Public API — `scripts/simulation/sbatch_benchmark_hpc_cpu.sh`
+
+Static SBATCH directives:
+
+```bash
+#SBATCH --job-name=lipid-bench-cpu
+#SBATCH --mail-user=pberger@fias.uni-frankfurt.de
+#SBATCH --mail-type=FAIL
+#SBATCH --account=cellmembrane
+#SBATCH --output=logs/benchmarks/cpu-%j.out
+#SBATCH --error=logs/benchmarks/cpu-%j.err
+```
+
+Dynamic resources (`--partition`, `--time`, `--cpus-per-task`, `--mem`) come from the orchestrator's command line.
+
+Inside the worker:
+
+1. `set -euo pipefail`
+2. `module purge`
+3. `module load mpi/openmpi/5.0.5-rocm`
+4. `module load gromacs/2022.4-gcc-11.3.1-zx2wwcx`
+5. (no conda activation needed — analyse step is on the login node afterwards)
+6. `cd "$BENCH_POINT_DIR"`
+7. Symlink `REFERENCE_TPR` to local `prun.tpr` (same as GPU worker)
+8. For each slot `i in 0..SIMS_PER_NODE-1`:
+   - `mkdir slot_$i; cd slot_$i; ln -s ../prun.tpr .`
+   - Background: `OMP_NUM_THREADS=$CPUS_PER_SIM OMP_PLACES=cores OMP_PROC_BIND=close mpirun -np $MPI_RANKS_PER_SIM gmx_mpi mdrun -s prun.tpr -deffnm prun-bench -ntomp $CPUS_PER_SIM -nsteps $NSTEPS >prun.log 2>&1 &`
+9. `wait` all PIDs, propagate worst exit code.
+
+### K.6 `analyze_benchmark.py` extension
+
+- Walk `<root>/cpu/points/*/prun-bench-*.log` (note the extra `cpu/` segment), parse `Performance:` lines exactly as for GPU.
+- Per-point columns added to `summary.csv`: `device`, `mpi_ranks_per_sim`.
+- New CLI flag: `--cpu` toggles which device's points are considered for `--recommend`. Defaults to GPU (preserves existing behaviour).
+- `summary.md` gains a "CPU baseline (general1)" section with its own ranking table.
+- YAML block for `--recommend --cpu`:
+
+  ```yaml
+  hpc_defaults_cpu:
+    sims_per_node: <N>
+    mpi_ranks_per_sim: <R>
+    cpus_per_sim: <K>
+    mem_per_sim: "<XG>"
+  ```
+
+### K.7 Internal data flow
+
+```text
+GPU benchmark_hpc.sh  Phase 1
+        │  builds /work/.../benchmark/POPC100/run/prun.tpr  (v2025.4)
+        ▼
+benchmark_hpc_cpu.sh  --reference-tpr <that path>
+        ├─ per point: sbatch sbatch_benchmark_hpc_cpu.sh
+        │      env: REFERENCE_TPR, SIMS_PER_NODE, MPI_RANKS_PER_SIM,
+        │           CPUS_PER_SIM, NSTEPS, BENCH_POINT_DIR
+        ▼
+sbatch_benchmark_hpc_cpu.sh  (general1 node)
+        ├─ module load mpi/openmpi/5.0.5-rocm
+        ├─ module load gromacs/2022.4-gcc-11.3.1-zx2wwcx
+        ├─ for i in 0..N-1:
+        │      mpirun -np R gmx_mpi mdrun -ntomp K -s prun.tpr ... &
+        └─ wait
+                │
+                ▼
+        points/<label>/slot_<i>/prun-bench.log
+                │
+                ▼
+analyze_benchmark.py --root <date> --recommend --cpu
+        → prints hpc_defaults_cpu YAML block
+```
+
+### K.8 Edge-case matrix
+
+| Case | Expected behaviour |
+| --- | --- |
+| `--reference-tpr` missing | Fail-fast with hint to run `benchmark_hpc.sh` first |
+| GROMACS 2022 refuses the v2025 TPR | Fail-fast at the first sbatch; manual fallback documented in K.12 Q2 |
+| `mpirun` invokes more ranks than available cores | mdrun errors at startup; per-slot log records, run counted as `status=incomplete` in analyze |
+| `OMP_NUM_THREADS × MPI_RANKS > cores_per_node` | Same as above; we keep the table tight to avoid this |
+| `general1` `MaxSubmitJobs` exceeded | `afterany` chaining minimises pending count; if still hit, user resubmits remaining via `--points` with a trimmed TSV |
+| `--dry-run` | Prints would-be sbatch line per point, no real submission |
+| Multiple `general1` jobs from the same user collide on cores | SLURM allocates per `--cpus-per-task`; cgroup-fenced — no inter-job CPU contention. The within-job slot-vs-slot contention IS what we're measuring. |
+
+### K.9 Acceptance criteria
+
+1. **Compatibility smoke**: a single `mpirun -np 1 gmx_mpi mdrun -s <v2025.4_built_tpr>` on `general1` runs ≥ 100 steps without errors. Run manually before the full sweep.
+2. `pytest tests/martini_pipeline/test_benchmark_hpc_cpu.py -q` passes (dry-run tests only; no real sbatch).
+3. `bash scripts/simulation/benchmark_hpc_cpu.sh --reference-tpr <tpr> --dry-run` prints 8 coherent `[DRY RUN] sbatch ...` lines.
+4. Real sweep completes in < 2 hours wallclock.
+5. `python scripts/python/analyze_benchmark.py --recommend --cpu` prints a syntactically valid `hpc_defaults_cpu:` YAML block.
+6. `summary.md` includes both GPU and CPU ranking tables, with a derived "GPU/CPU speedup ratio" row (top-GPU ns/day ÷ top-CPU ns/day per node).
+7. Plan doc row 10b → `[x]`.
+
+### K.10 Layout & dependencies
+
+```text
+scripts/simulation/
+    benchmark_hpc_cpu.sh                       ← new
+    sbatch_benchmark_hpc_cpu.sh                ← new
+    benchmark_points_cpu.tsv                   ← new
+scripts/python/
+    analyze_benchmark.py                       ← extended with --cpu flag
+tests/martini_pipeline/
+    test_benchmark_hpc_cpu.py                  ← new
+logs/benchmarks/                               ← created at runtime
+results/benchmarks/martini_pipeline/
+    <ISO date>/cpu/{points/, summary_cpu.csv}  ← runtime output (sibling to GPU)
+config.yaml                                    ← + hpc_defaults_cpu stub
+lipid_gnn/config.py                            ← parse hpc_defaults_cpu sub-block
+docs/martini_pipeline_plan.md                  ← row 10b + Decisions 50–N
+```
+
+No new Python deps. New bash deps: `mpirun` (from the openmpi module).
+
+### K.11 Status-table row
+
+To be added before row 11 once we agree on the design:
+
+```markdown
+| 10b | CPU benchmark on general1 (`benchmark_hpc_cpu.sh` + sbatch worker; populate `hpc_defaults_cpu`) | [ ] | |
+```
+
+### K.12 Open questions (need user input before implementation)
+
+1. **Cores per `general1` node?** I've assumed ≥ 64 in the strawman sweep table. If the node is 32-core, drop points 7–8 and add a 32-core single-sim entry. If 128-core, double everything for points 5–8.
+
+2. **Version-mismatch behaviour.** Does GROMACS 2022 actually accept a v2025.4-built `prun.tpr`? Two answers possible:
+   - (a) **Yes, with a downgrade warning.** Keep K.2 Decision 1 (TPR reuse) and proceed.
+   - (b) **No, refuses outright.** Fall back to building a separate `prun.tpr` with the 2022 module on `general1` first (extra Phase 1, ~30 min CPU). Recommend testing (a) manually with a 100-step run before the full sweep (K.9 criterion 1).
+
+3. **MPI-decomp dimension worth keeping?** Martini systems with ≤ 12 k beads are at the lower edge of where MPI domain decomposition pays off — communication overhead can dominate. Points 3–4 of K.3 probe this. Recommend keeping them: confirming "1-rank-N-threads beats N-ranks-1-thread for our systems" is a useful thesis bullet. Override?
+
+4. **`-resethway` on CPU benchmark?** GPU benchmark uses it to exclude DLB warm-up. CPU has different PME-tuning behaviour in 2022; including it might bias the comparison. Recommend **off** for CPU (steady-state from step 1 is closer to what production overflow would see). Override?
+
+5. **Thread pinning.** Default `OMP_PLACES=cores OMP_PROC_BIND=close` is generally helpful on shared CPU nodes (avoids OS thread migration). Adds ~5–10 % throughput on prior projects. Recommend **on**. Override?
+
+6. **`hpc_defaults_cpu` schema.** Strawman in K.6 is `{sims_per_node, mpi_ranks_per_sim, cpus_per_sim, mem_per_sim}`. Should it also include `partition: general1` and `module_gromacs_cpu: gromacs/2022.4-gcc-11.3.1-zx2wwcx` so future `submit_simulations.sh --partition general1` can route automatically? Recommend yes — keeps the bash side dumb.
+
+7. **Naming.** `benchmark_hpc_cpu.sh` keeps things grouped under `benchmark_*` (good for tab completion), but I could also call it `benchmark_general1.sh`. Recommend the device-typed name (`_cpu`); a future Intel/AMD CPU benchmark on a different partition would just be another `_cpu` script with a different module load.
+
+8. **Step number.** Calling this **10b** keeps the main step-10 deliverable focused (GPU defaults for the production target). Alternative: bump to step **10.5** or just **10.1**. Recommend **10b** for clarity in the status table.
+
+9. **mpirun launch model.** `mpirun -np 1 gmx_mpi mdrun -ntomp K` vs `gmx_mpi mdrun -ntomp K` (with `mpirun` implicit via SLURM's `srun`). Recommend explicit `mpirun -np <R>` so the number of MPI ranks is unambiguous and matches what we want to measure. `srun` is an option if `mpirun` misbehaves on `general1`; need to test.
+
+10. **Memory headroom.** General1 nodes are typically 256–512 GB; Martini POPC100 is < 1 GB per slot. Mem is never the bottleneck on CPU — we can drop the headroom filter from K.6's recommendation logic for the CPU branch. Recommend dropping it (always pick top-score CPU point).
+
+### K.13 New decisions to log on completion
+
+- **Decision 50** — CPU benchmark on `general1` is a separate orchestrator + worker (`benchmark_hpc_general1.sh` + `sbatch_benchmark_hpc_general1.sh`), not a flag on the GPU benchmark. Per K.12 Q7 the script is named by partition (`_general1`) rather than by device (`_cpu`), keeping room for a future Intel-CPU partition with its own script and module stack. Rationale: different GROMACS module (spack `gromacs/2022.4-gcc-11.3.1-zx2wwcx`), different mdrun binary (`mpirun -np <R> gmx_mpi mdrun`), different parallelism dimension. Mixing them in one script would dwarf the actual benchmarking logic in conditionals.
+- **Decision 51** — CPU benchmark reuses the v2025.4-built `prun.tpr` from the GPU benchmark's Phase 1 *by default*, with `--reference-tpr PATH` to override (per K.12 Q2). TPRs are forward-compatible; gmx_mpi 2022 reads v2025-built TPRs with a "downgrade" warning but identical integration. A self-contained Phase 1 (build TPR on `general1` with the 2022 toolchain) is deferred to a future revision — see the orchestrator's docstring.
+- **Decision 52** — Sweep adds an `mpi_ranks_per_sim` dimension absent from the GPU sweep (K.12 Q3 kept), because CPU domain decomposition is meaningful below the GPU-throughput regime. Points 3–4 (`1sim_2rank_20omp`, `1sim_4rank_10omp`) probe whether 2/4-way MPI decomp beats pure threading on ≤ 12 k-bead systems.
+- **Decision 53** — `hpc_defaults_cpu` is a separate config block from `hpc_defaults` (which stays GPU-only). It includes `partition: "general1"`, `module_gromacs_cpu`, and `module_mpi` (per K.12 Q6) so a future `submit_simulations.sh --partition general1` extension can route automatically without re-introspecting the analyzer output.
+- **Decision 54** — CPU recommendation logic drops the memory-headroom filter (per K.12 Q10): `general1` nodes have 256+ GB RAM and Martini POPC100 fits in < 1 GB per slot; mem is never the bottleneck. Tie-break order changes from GPU's `(gpus_per_node, sims_per_node)` to `(mpi_ranks_per_sim, sims_per_node)` — prefer fewer MPI ranks for less comm overhead.
+- **Decision 55** — `-resethway` is **off** for CPU benchmarks (per K.12 Q4 recommendation). GROMACS 2022 PME-tuning behaviour differs from v2025.4; including the half-run reset would bias the GPU/CPU comparison via version-specific warm-up. CPU benchmarks measure steady-state throughput from step 0.
+- **Decision 56** — Thread pinning **on** for CPU worker: `OMP_PLACES=cores OMP_PROC_BIND=close` (per K.12 Q5). Validated to add ~5–10 % throughput on shared CPU nodes in prior projects by avoiding OS thread migration.
+- **Decision 57** — Explicit `mpirun -np <R>` invocation for *every* slot, including 1-rank ones (per K.12 Q9). Keeps the number of MPI ranks unambiguous and matches the form needed for the multi-rank decomp points; no implicit `srun` magic to debug if it misbehaves on `general1`.

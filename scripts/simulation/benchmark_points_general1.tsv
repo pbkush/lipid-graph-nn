@@ -1,0 +1,23 @@
+# CPU benchmark sweep for general1 partition (Goethe-HLR).
+# Run via: scripts/simulation/benchmark_hpc_general1.sh --dry-run
+#
+# Node spec (per K.12 Q1): 40 physical cores per node (2× 20-core sockets),
+# 80 logical CPUs with SMT.  All points below request 40 physical cores total.
+#
+# Columns (tab-separated):
+#   label              — short id, used as the per-point output directory name
+#   sims_per_node      — number of parallel gmx_mpi mdrun slots on the node
+#   mpi_ranks_per_sim  — MPI ranks for each slot (mpirun -np <R>)
+#   cpus_per_sim       — OpenMP threads per slot (gmx_mpi mdrun -ntomp <K>)
+#   mem_per_sim        — memory per slot (e.g. 16G)
+#   partition          — declared partition; overridable from CLI
+#
+# Total CPU per row = sims_per_node × mpi_ranks_per_sim × cpus_per_sim ≤ 40.
+#
+1sim_1rank_20omp	1	1	20	16G	general1
+1sim_1rank_40omp	1	1	40	16G	general1
+1sim_2rank_20omp	1	2	20	16G	general1
+1sim_4rank_10omp	1	4	10	16G	general1
+2sim_1rank_20omp	2	1	20	16G	general1
+4sim_1rank_10omp	4	1	10	16G	general1
+8sim_1rank_5omp	8	1	5	16G	general1
