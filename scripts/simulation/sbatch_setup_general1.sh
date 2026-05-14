@@ -68,7 +68,7 @@ export OMP_PROC_BIND=close
 # Run the pipeline.  -nb cpu disables GPU offload (no GPUs here); -ntomp uses
 # all the cores we asked SLURM for.
 python scripts/simulation/run_martini_pipeline.py "$COMP" \
-    --output-root "$OUTPUT_ROOT" \
+    --out-dir    "$OUTPUT_ROOT" \
     --gmx        "$PWD/scripts/simulation/_gmx_mpi_wrapper.sh" \
     --nsteps     "$NSTEPS_PROD" \
     --nsteps-eq  "$NSTEPS_EQ" \
