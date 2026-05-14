@@ -235,7 +235,7 @@ class TestRecommendCpu(unittest.TestCase):
         self.assertIn("mpi_ranks_per_sim: 1", yaml)
         self.assertIn('partition: "general1"', yaml)
         self.assertIn("gromacs/2022.4-gcc-11.3.1-zx2wwcx", yaml)
-        self.assertIn("mpi/openmpi/5.0.5-rocm", yaml)
+        self.assertIn("mpi/openmpi/5.0.0", yaml)
         # Must NOT contain GPU-only fields
         self.assertNotIn("gpus_per_node", yaml)
 

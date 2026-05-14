@@ -29,7 +29,7 @@ cd "$HOME/lipid-graph-nn"
 # spack GROMACS 2022 + openmpi (general1 toolchain, per K.12 Q & user-supplied
 # module commands).  No conda env needed — analysis runs on the login node.
 module purge
-module load mpi/openmpi/5.0.5-rocm
+module load mpi/openmpi/5.0.0
 module load gromacs/2022.4-gcc-11.3.1-zx2wwcx
 
 : "${BENCH_POINT_DIR:?BENCH_POINT_DIR must be set by benchmark_hpc_general1.sh}"

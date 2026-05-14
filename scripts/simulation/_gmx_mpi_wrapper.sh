@@ -11,7 +11,7 @@
 # runs single-rank and parallelises via OpenMP threads (-ntomp via --mdrun-args).
 #
 # Requires the calling environment to have loaded:
-#   module load mpi/openmpi/5.0.5-rocm
+#   module load mpi/openmpi/5.0.0
 #   module load gromacs/2022.4-gcc-11.3.1-zx2wwcx
 #
 # Invoked by sbatch_setup_general1.sh as the pipeline's --gmx argument.

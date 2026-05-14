@@ -254,7 +254,7 @@ def _rec_yaml(rec: PointResult) -> str:
             f'    mem_per_sim: "{rec.mem_per_sim}"\n'
             f'    partition: "{rec.partition}"\n'
             f'    module_gromacs_cpu: "gromacs/2022.4-gcc-11.3.1-zx2wwcx"\n'
-            f'    module_mpi: "mpi/openmpi/5.0.5-rocm"\n'
+            f'    module_mpi: "mpi/openmpi/5.0.0"\n'
         )
     return (
         "  hpc_defaults:\n"
