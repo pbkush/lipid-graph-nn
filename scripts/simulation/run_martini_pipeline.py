@@ -24,12 +24,30 @@ _DT_PS = 0.02  # production MDP dt (Martini 3); 1 ns = 50 000 steps
 
 
 def parse_composition(ratio_args: list[str]) -> dict[str, float]:
-    """Parse insane-style ratio strings into {lipid: fraction} dict."""
+    """Parse composition tokens into a {lipid: fraction} dict.
+
+    Accepts two forms (mix-and-match across tokens is rejected):
+
+    1. ``LIPID:fraction`` insane-style ratios, e.g. ``POPC:0.7 DOPC:0.3``.
+       Fractions are normalised to sum to 1.0.
+    2. A single canonical composition name (one token, no colon),
+       e.g. ``POPC100`` or ``DOPC70_POPC30``.  Parsed via composition.parse_name.
+    """
+    if len(ratio_args) == 1 and ":" not in ratio_args[0]:
+        # Canonical-name form: a single token with no colon.
+        from lipid_gnn.martini_pipeline.composition import parse_name
+        try:
+            comp = parse_name(ratio_args[0])
+        except ValueError as exc:
+            raise SystemExit(f"Bad composition name {ratio_args[0]!r}: {exc}")
+        return dict(comp.fractions)
+
     raw: dict[str, float] = {}
     for token in ratio_args:
         if ":" not in token:
             raise SystemExit(
-                f"Bad composition token {token!r}. Expected LIPID:fraction, e.g. POPC:1.0"
+                f"Bad composition token {token!r}. Expected LIPID:fraction "
+                "(e.g. POPC:1.0) or a single canonical name (e.g. POPC100)."
             )
         name, val = token.split(":", 1)
         try:
