@@ -34,6 +34,11 @@ DEFAULT_PARTITION=$(python scripts/python/print_config_var.py hpc.partition_trai
 DEFAULT_MAXWARN=$(python scripts/python/print_config_var.py martini_pipeline.gmx.maxwarn)
 WORK_SUBPATH=$(python scripts/python/print_config_var.py hpc.work_subpath)
 HPC_OUTPUT_SUBPATH=$(python scripts/python/print_config_var.py martini_pipeline.hpc_output_subpath)
+# LEGACY_DATA_DIR: where the pre-pipeline 70-system corpus lives.  By
+# default read from config (`paths.data_dir`), but env-override is supported
+# so tests (and any user who wants to disable the legacy-skip) can point at
+# an empty/nonexistent path.
+LEGACY_DATA_DIR="${LEGACY_DATA_DIR:-$(python scripts/python/print_config_var.py paths.data_dir)}"
 
 # Partition-dependent defaults are filled after arg parsing (we need to know
 # --partition first to pick between hpc_defaults and hpc_defaults_cpu).  See
@@ -196,10 +201,18 @@ fi
 
 # ── Resolve composition list ──────────────────────────────────────────────────
 if [[ -n "$MISSING_GRID" ]]; then
+    # Pass BOTH the new pipeline output root AND the legacy data root.
+    # missing_compositions dedupes by canonical name, so any composition
+    # already present in either tree is dropped before the bash script ever
+    # sees it.  Legacy systems use the run/prun.xtc-fallback path (they
+    # predate manifest.json); new ones use the manifest's overall_status.
+    # If LEGACY_DATA_DIR doesn't exist on this machine (e.g. HPC where the
+    # legacy data lives elsewhere), missing_compositions returns [] for it
+    # — no error.
     MISSING_ARGS=(
         --grid "$MISSING_GRID"
         --format lines
-        --output-roots "$OUTPUT_ROOT"
+        --output-roots "$OUTPUT_ROOT" "$LEGACY_DATA_DIR"
     )
     [[ ${#LIPIDS[@]} -gt 0 ]] && MISSING_ARGS+=(--lipids "${LIPIDS[@]}")
     [[ "$STEP" -ne 10 ]]      && MISSING_ARGS+=(--step "$STEP")
@@ -255,7 +268,16 @@ fi
 N_TOTAL="${#COMPOSITIONS[@]}"
 N_BATCHES=$(( (N_TOTAL + SIMS_PER_NODE - 1) / SIMS_PER_NODE ))
 
-# ── gpu_test guard rails (mirror submit_sweep.sh) ────────────────────────────
+# ── Per-partition QOS guard rails ────────────────────────────────────────────
+# Hard caps mirroring Goethe-HLR QOSMaxSubmitJobPerUser limits.  Hitting these
+# at sbatch-time produces a cryptic error; better to fail fast here with a
+# clear instruction to use --max-queue or re-run after some jobs complete.
+case "$PARTITION" in
+    gpu_test)  PARTITION_JOB_CAP=2  ;;
+    general1)  PARTITION_JOB_CAP=40 ;;
+    *)         PARTITION_JOB_CAP=0  ;;   # 0 = no cap (gpu, test, ...)
+esac
+
 if [[ "$PARTITION" == "gpu_test" ]]; then
     if [[ "$TIME_LIMIT" =~ ^([0-9]{1,2}):([0-9]{2}):([0-9]{2})$ ]]; then
         REQ_SEC=$((10#${BASH_REMATCH[1]}*3600 + 10#${BASH_REMATCH[2]}*60 + 10#${BASH_REMATCH[3]}))
@@ -266,11 +288,23 @@ if [[ "$PARTITION" == "gpu_test" ]]; then
     else
         echo "WARNING: gpu_test max time is 08:00:00; could not parse --time=$TIME_LIMIT (leaving as-is)" >&2
     fi
-    if (( N_BATCHES > 2 )); then
-        echo "ERROR: gpu_test allows at most 2 jobs; this submission needs $N_BATCHES batches" >&2
-        echo "       ($N_TOTAL compositions at $SIMS_PER_NODE/node). Reduce --sims-per-node or use --partition gpu." >&2
-        exit 1
-    fi
+fi
+
+if (( PARTITION_JOB_CAP > 0 )) && (( N_BATCHES > PARTITION_JOB_CAP )); then
+    MAX_COMPS=$(( PARTITION_JOB_CAP * SIMS_PER_NODE ))
+    cat >&2 <<EOF
+ERROR: $PARTITION allows at most $PARTITION_JOB_CAP jobs per user (QOSMaxSubmitJobPerUser);
+       this submission needs $N_BATCHES batches ($N_TOTAL comps at $SIMS_PER_NODE sims/node).
+
+To submit only the first $MAX_COMPS compositions in alphabetical order, add:
+    --max-queue $MAX_COMPS
+
+After those finish, re-run the same command — already-simulated systems are
+auto-skipped via --missing-from-grid, so subsequent runs pick up where you
+left off.  Alternatively, reduce --sims-per-node or switch to a partition
+with a higher MaxSubmitJobs (e.g. --partition gpu).
+EOF
+    exit 1
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
