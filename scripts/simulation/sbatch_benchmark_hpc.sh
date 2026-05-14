@@ -80,6 +80,9 @@ for (( i=0; i<N_SIMS; i++ )); do
     SLOT_DIR="$BENCH_POINT_DIR/slot_${i}"
     mkdir -p "$SLOT_DIR"
 
+    # -nstxout/-nstvout/etc. are MDP options, not mdrun CLI flags; the TPR
+    # already baked in the output frequency from prun.mdp.  Trajectory I/O
+    # over a 100k-step benchmark is a negligible perf contributor.
     MDRUN_ARGS=(
         gmx mdrun
         -s    "$TPR"
@@ -87,11 +90,6 @@ for (( i=0; i<N_SIMS; i++ )); do
         -nsteps "${NSTEPS:-100000}"
         -ntomp  "$NTOMP_VALUE"
         -resethway
-        -nstxout 0
-        -nstxout-compressed 0
-        -nstvout 0
-        -nstfout 0
-        -nstenergy 0
     )
     [[ "${GPUS_PER_NODE:-0}" -eq 0 ]] && MDRUN_ARGS+=(-nb cpu)
 

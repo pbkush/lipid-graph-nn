@@ -66,19 +66,25 @@ for (( i=0; i<N_SIMS; i++ )); do
     # No -resethway on CPU (K.2 Decision 3 / K.12 Q4): GROMACS 2022 PME tuning
     # behaviour differs from v2025.4, and we want clean step-0 throughput so
     # the GPU/CPU comparison isn't biased by version-specific warm-up.
+    #
+    # --map-by :OVERSUBSCRIBE: SLURM allocates --cpus-per-task=40 but only
+    # --ntasks=1 (the default), so openmpi/PRRTE sees 1 "slot" and refuses
+    # to launch -np 4.  Telling openmpi to oversubscribe tells it we manage
+    # the rank-to-core mapping via SLURM + OMP_NUM_THREADS; the kernel
+    # scheduler still respects our cgroup-bounded core count.
+    #
+    # No -nstxout/-nstvout/etc.: those are MDP options, not mdrun CLI flags
+    # in GROMACS 2022.  Output frequency is baked into the TPR from prun.mdp.
     MDRUN_ARGS=(
-        mpirun -np "$N_RANKS"
+        mpirun
+        --map-by ":OVERSUBSCRIBE"
+        -np "$N_RANKS"
         gmx_mpi mdrun
         -s    "$TPR"
         -deffnm bench
         -nsteps "$NSTEPS"
         -ntomp  "$NTOMP"
         -nb cpu
-        -nstxout 0
-        -nstxout-compressed 0
-        -nstvout 0
-        -nstfout 0
-        -nstenergy 0
     )
 
     echo "  [slot $i]  $(basename "$(dirname "$TPR")")  → $SLOT_DIR/bench.log"
