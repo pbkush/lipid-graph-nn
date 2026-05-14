@@ -323,7 +323,7 @@ def _run_bench_cpu_sh(args: list[str]) -> subprocess.CompletedProcess:
 
 class TestBenchmarkCpuHshDryRun(unittest.TestCase):
     def test_dry_run_emits_one_sbatch_per_point(self):
-        """--dry-run with default 7-point general1 TSV → 7 [DRY RUN] sbatch lines."""
+        """--dry-run default mode → 1 Phase-1 setup line + 7 Phase-2 bench lines."""
         with tempfile.TemporaryDirectory() as d:
             result = _run_bench_cpu_sh([
                 "--dry-run",
@@ -331,7 +331,43 @@ class TestBenchmarkCpuHshDryRun(unittest.TestCase):
             ])
         self.assertEqual(result.returncode, 0, result.stderr)
         dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
+        self.assertEqual(len(dry_lines), 8)
+        # First line is the Phase 1 setup
+        self.assertIn("sbatch_setup_general1.sh", dry_lines[0])
+        # Remaining 7 are bench points
+        for l in dry_lines[1:]:
+            self.assertIn("sbatch_benchmark_hpc_general1.sh", l)
+
+    def test_dry_run_reference_tpr_skips_phase_1(self):
+        """--reference-tpr should skip Phase 1 → only 7 bench dry-run lines."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh([
+                "--dry-run",
+                "--bench-root", d,
+                "--reference-tpr", "/tmp/some.tpr",
+            ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
         self.assertEqual(len(dry_lines), 7)
+        self.assertIn("SKIPPED (--reference-tpr provided)", result.stdout)
+        # All bench lines reference the user-supplied tpr
+        for l in dry_lines:
+            self.assertIn("/tmp/some.tpr", l)
+
+    def test_dry_run_setup_overrides_propagate(self):
+        """--setup-comp / --setup-nsteps-eq should appear in the Phase 1 export."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _run_bench_cpu_sh([
+                "--dry-run",
+                "--bench-root", d,
+                "--setup-comp", "DPPC100",
+                "--setup-nsteps-eq", "5000",
+            ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        setup_line = next(l for l in result.stdout.splitlines()
+                          if "[DRY RUN]" in l and "sbatch_setup_general1.sh" in l)
+        self.assertIn("COMP=DPPC100", setup_line)
+        self.assertIn("NSTEPS_EQ=5000", setup_line)
 
     def test_dry_run_all_points_use_general1_partition(self):
         """Every sbatch line should target --partition=general1 by default."""
