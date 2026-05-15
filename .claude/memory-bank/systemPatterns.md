@@ -87,7 +87,51 @@ MD Trajectory (.tpr + .xtc/.trr)
 - `scripts/colab/train_colab_rev.ipynb` — legacy Colab notebook (no longer the active training path; kept for reference)
 - **W&B offline analysis chain**: `scripts/bash/sbatch_sweep.sh` submits sweep → W&B receives run data → `scripts/python/download_wandb_runs.py` pulls to `logs/training/<group>/` as parquet/json → `scripts/notebooks/analyze_hp_search.ipynb` aggregates and visualizes. No live W&B API needed after download. See `docs/analyze_hp_search_notebook.md` for visualization reference.
   - **SLURM GPU column pitfall**: W&B logs all 8 visible GPUs (gpu.0–gpu.7); only the allocated GPU is non-zero. Never hardcode `system.gpu.0.*` — always scan all `gpu.N.*` columns and select the one with the highest mean/max. (After the 2026-05-05 packing refactor, packed jobs do use multiple GPUs per node; each backgrounded process has `HIP_VISIBLE_DEVICES=$i` so it sees only its own GPU as device 0, but W&B's system metrics still report all visible cards — keep the scan-all logic.)
-- **SLURM submission pattern (per-node GPU packing)**: `submit_sweep.sh` is the single orchestrator. It (1) reads HP defaults from `config.yaml` via `print_config_var.py`, (2) expands the Cartesian product of `--lr`, `--wd`, `--hidden-dim`, `--num-layers`, `--seeds` into a flat list of single-cell runs, (3) packs runs onto nodes at up to `--gpus-per-node` (default 8) and submits one sbatch per batch with `--gres=gpu:N`, scaled `--cpus-per-task=N×CPUS_PER_GPU` and `--mem=N×MEM_PER_GPU`. `sbatch_sweep.sh` then stages chunks once per node and backgrounds N `python run_sweep.py` processes, each pinned via `HIP_VISIBLE_DEVICES=$i`/`CUDA_VISIBLE_DEVICES=$i` and fed slot-specific `RUN_<i>_*` env vars that sbatch_sweep.sh translates into `FREEZE_HIDDEN_DIM/NUM_LAYERS/LR/WD` and `SWEEP_SEEDS`. `run_sweep.py::_apply_submission_overrides()` is the single read site for these vars and is unchanged by the refactor. Resource sizing convention: `--cpus-per-gpu 8 --mem-per-gpu 64G` (the original 1-GPU job's footprint, kept as defaults). Partition default comes from `hpc.partition_train`; `gpu_test` adds two static guards (8h max, 2 sbatch jobs max).
+- **Martini simulation submission pattern (GPU + CPU)**: `scripts/bash/submit_simulations.sh` is the single orchestrator for production sims. Routes by `--partition`:
+  - `gpu` / `gpu_test` / `test` → `sbatch_simulations.sh` (ROCm-built gmx 2025.4 module, HIP pinning, 8 sims/node default).
+  - `general1` (CPU) → `sbatch_simulations_general1.sh` (spack openmpi + GROMACS-2022 via `_gmx_mpi_wrapper.sh` shim, OpenMP thread pinning, calibrated `hpc_defaults_cpu`: 2 sims/node, 1 MPI rank, 20 OMP threads, 16G mem).
+  - Unknown partition → fail-fast.
+
+  CLI flags worth knowing: `--missing-from-grid NAME` (e.g. `popc_interpolation`), `--completed-csv PATH` (skip systems whose `canonical_name` is in the CSV — used to avoid re-running legacy data without uploading it to HPC), `--prod-ns NS`, `--time HH:MM:SS`, `--partition`, `--mpi-ranks-per-sim`. Per-partition QOS caps enforced (general1=40, gpu_test=2).
+
+  Env propagation uses **env-file-via-positional-arg**: orchestrator writes `logs/simulations/submit_env.<tmp>.sh` with `export VAR=$'...'` lines and passes the path as `$1` to the sbatch worker; SLURM `--export=ALL,VAR=...` silently drops entries on Goethe-HLR. Workers source `$1` on entry, then re-source defensively after `module load`. `--mdrun-args` is always placed LAST in `SIM_ARGS` (pipeline CLI used to take it as `argparse.REMAINDER`, which greedily absorbed any following flag; CLI now takes a single string, regression test enforced).
+
+  Typical usage:
+
+  ```bash
+  # GPU sweep
+  bash scripts/bash/submit_simulations.sh --missing-from-grid popc_interpolation \
+       --prod-ns 1000 --partition gpu --time 24:00:00
+
+  # general1 CPU sweep with skip-CSV
+  bash scripts/bash/submit_simulations.sh --missing-from-grid popc_interpolation \
+       --completed-csv resources/done.csv --prod-ns 1000 \
+       --partition general1 --time 48:00:00
+
+  # Mid-run ETA check
+  python scripts/simulation/projected_finish.py /work/.../popc_interpolation \
+       --walltime 48 --only over
+  ```
+
+- **Benchmark submission pattern**: `scripts/simulation/benchmark_hpc.sh` is a two-phase orchestrator. Phase 1 builds a shared `prun.tpr` reference once via the production worker; Phase 2 fans `sbatch_benchmark_hpc.sh` jobs across a sweep of `(sims_per_node, mpi_ranks, cpus)` points (read from `benchmark_points.tsv`). Each point runs `gmx mdrun -nsteps N -resethway` on the shared TPR, writes ns/day per slot, and `analyze_benchmark.py --recommend [--cpu]` picks the winning `hpc_defaults_*` block and prints YAML ready to paste into `config.yaml`.
+
+  Typical usage:
+
+  ```bash
+  # GPU benchmark (setup on cheap partition, sweep on production)
+  bash scripts/simulation/benchmark_hpc.sh --partition gpu --setup-partition gpu_test
+
+  # CPU benchmark on general1 (uses general1.tsv + general1 sbatch)
+  bash scripts/simulation/benchmark_hpc_general1.sh
+
+  # After all points land, generate recommendation
+  python scripts/python/analyze_benchmark.py --recommend         # GPU
+  python scripts/python/analyze_benchmark.py --recommend --cpu   # CPU
+  ```
+
+  Same env-file-via-positional-arg and gmx `-ntmpi 1` patterns as production. Benchmark winner currently locked in `config.yaml::martini_pipeline.hpc_defaults_cpu`.
+
+- **SLURM submission pattern (per-node GPU packing) for training**: `submit_sweep.sh` is the single orchestrator. It (1) reads HP defaults from `config.yaml` via `print_config_var.py`, (2) expands the Cartesian product of `--lr`, `--wd`, `--hidden-dim`, `--num-layers`, `--seeds` into a flat list of single-cell runs, (3) packs runs onto nodes at up to `--gpus-per-node` (default 8) and submits one sbatch per batch with `--gres=gpu:N`, scaled `--cpus-per-task=N×CPUS_PER_GPU` and `--mem=N×MEM_PER_GPU`. `sbatch_sweep.sh` then stages chunks once per node and backgrounds N `python run_sweep.py` processes, each pinned via `HIP_VISIBLE_DEVICES=$i`/`CUDA_VISIBLE_DEVICES=$i` and fed slot-specific `RUN_<i>_*` env vars that sbatch_sweep.sh translates into `FREEZE_HIDDEN_DIM/NUM_LAYERS/LR/WD` and `SWEEP_SEEDS`. `run_sweep.py::_apply_submission_overrides()` is the single read site for these vars and is unchanged by the refactor. Resource sizing convention: `--cpus-per-gpu 8 --mem-per-gpu 64G` (the original 1-GPU job's footprint, kept as defaults). Partition default comes from `hpc.partition_train`; `gpu_test` adds two static guards (8h max, 2 sbatch jobs max).
 
 ## Critical Implementation Paths
 
