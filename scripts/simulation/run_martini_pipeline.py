@@ -136,9 +136,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--mdrun-args",
-        nargs=argparse.REMAINDER,
-        default=[],
-        help="Extra arguments passed verbatim to gmx mdrun (place after --)",
+        default="",
+        help="Extra arguments for gmx mdrun, as a single quoted string "
+             "(e.g. --mdrun-args '-ntomp 8 -nb cpu').  Tokenised by shlex "
+             "inside pipeline.run().  Previously used argparse.REMAINDER, "
+             "which silently absorbed any flag placed after it.",
     )
 
     args = parser.parse_args()
@@ -203,7 +205,9 @@ def main() -> None:
         mdp_params=mdp_params,
         seed=seed,
         gmx_executable=args.gmx,
-        mdrun_extra_args=tuple(args.mdrun_args),
+        # args.mdrun_args is now a single string; wrap in a tuple so pipeline.run's
+        # existing shlex.split sees one element to tokenise.
+        mdrun_extra_args=(args.mdrun_args,) if args.mdrun_args else (),
         force_rerun=args.force_rerun,
         maxwarn=args.maxwarn,
         insane_cmd=insane_cmd,

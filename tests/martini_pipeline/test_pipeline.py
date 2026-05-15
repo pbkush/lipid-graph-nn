@@ -13,6 +13,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from pathlib import Path
 
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
@@ -360,7 +361,7 @@ class TestGromppInvocations(_PipelineTestBase):
     def test_mdrun_extra_args_string_form_is_split(self):
         """Single-string extra_args (e.g. '-ntomp 4 -nb cpu') must be tokenised
         before being passed to mdrun — bash workers pass --mdrun-args as one
-        quoted token and argparse.REMAINDER stores it as a 1-element list."""
+        quoted token, pipeline.run() shlex.splits it."""
         result = self._run(mdrun_extra_args=("-ntomp 4 -nb cpu",))
         with open(result.manifest_path) as fh:
             data = json.load(fh)
@@ -373,6 +374,39 @@ class TestGromppInvocations(_PipelineTestBase):
                 self.assertIn("-nb", cmd)
                 self.assertIn("cpu", cmd)
                 self.assertNotIn("-ntomp 4 -nb cpu", cmd)
+
+
+class TestRunMartiniPipelineCli(unittest.TestCase):
+    """CLI-level regression guards for run_martini_pipeline.py argument parsing.
+
+    Specifically: --mdrun-args must NOT be argparse.REMAINDER, because that
+    silently swallows --prod-ns / --nsteps placed after it in argv.  This bug
+    cost us a full afternoon of debugging — guard against regression.
+    """
+
+    def test_mdrun_args_does_not_swallow_subsequent_flags(self):
+        """Invoke run_martini_pipeline.py with --mdrun-args BEFORE --prod-ns:
+        --prod-ns must still be recognised, not absorbed."""
+        import subprocess
+        # We don't need the pipeline to actually run; we just need to confirm
+        # argparse accepts the args.  Add --gmx /bin/false so it fails AT
+        # the gmx-which check (well past argparse), proving args parsed OK.
+        result = subprocess.run(
+            [sys.executable, "scripts/simulation/run_martini_pipeline.py",
+             "POPC:1.0",
+             "--mdrun-args", "-ntomp 8 -nb cpu",
+             "--prod-ns", "10",
+             "--out-dir", "/tmp/_nonexistent_test_outdir",
+             "--gmx", "/bin/false"],
+            capture_output=True, text=True,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+        )
+        # If --mdrun-args swallowed --prod-ns, argparse errors with
+        # "one of the arguments --prod-ns --nsteps is required"
+        self.assertNotIn("--prod-ns --nsteps is required", result.stderr,
+            "argparse error indicates --mdrun-args is absorbing --prod-ns; "
+            "check that --mdrun-args is not using nargs=REMAINDER.\n"
+            f"stderr: {result.stderr}")
 
 
 class TestIdempotency(_PipelineTestBase):
