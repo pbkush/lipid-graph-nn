@@ -399,14 +399,21 @@ for (( b=0; b<N_BATCHES; b++ )); do
     fi
     TOTAL_MEM="$(( MEM_NUM * N_SIMS ))${MEM_UNIT}"
 
-    # Build env var pre-list (command-prefix assignments).  We DON'T use the
-    # --export=ALL,VAR=val,... form: on Goethe-HLR's SLURM build it silently
-    # drops entries after the first '=', so PROD_NS/NSTEPS never reach the
-    # worker → run_martini_pipeline.py errors with "one of the arguments
-    # --prod-ns --nsteps is required".  The pre-list form sets the variables
-    # in this shell's env for the sbatch invocation only; --export=ALL then
-    # has SLURM inherit the whole environment verbatim.  Proven by the
-    # benchmark scripts on the same partition.
+    # Build env var pre-list, then EXPORT in a subshell before invoking sbatch.
+    #
+    # Three previous attempts at env propagation failed on Goethe-HLR's
+    # slurm-wlm build:
+    #   1. `--export="ALL,VAR=val,..."`   silently drops list entries
+    #   2. `--export "ALL,VAR=val,..."`   parses the second token incorrectly
+    #   3. `env VAR=val sbatch --export=ALL`   the env-prefix assignments
+    #      *did* land in sbatch's process env (verified locally), but the
+    #      SLURM controller's --export=ALL implementation here only inherits
+    #      variables that were *exported* in the calling shell, not raw env
+    #      entries inherited via execve.
+    #
+    # The form that actually works: `export VAR=val` (POSIX bash builtin),
+    # then `sbatch --export=ALL`.  Done in a subshell so the export doesn't
+    # leak into the parent script's environment.
     ENV_PRELIST=(
         "OUTPUT_ROOT=$OUTPUT_ROOT"
         "N_SIMS_PER_NODE=$N_SIMS"
@@ -440,9 +447,20 @@ for (( b=0; b<N_BATCHES; b++ )); do
     SBATCH_CMD+=("$SBATCH_WORKER")
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  [DRY RUN]  ${ENV_PRELIST[*]} ${SBATCH_CMD[*]}"
+        # Render as `export VAR=val; ...; sbatch ...` so the user sees the
+        # exact form that'll be used at submission time.
+        EXPORT_LINE=$(printf 'export %s; ' "${ENV_PRELIST[@]}")
+        echo "  [DRY RUN]  ${EXPORT_LINE}${SBATCH_CMD[*]}"
     else
-        JOB_ID=$(env "${ENV_PRELIST[@]}" "${SBATCH_CMD[@]}" | awk '{print $NF}')
+        # Run in a subshell so the export only affects this invocation.
+        # shellcheck disable=SC2163  # `export "$kv"` is intentional: kv is a
+        # `VAR=val` string and bash's export accepts that form as a single arg.
+        JOB_ID=$(
+            for kv in "${ENV_PRELIST[@]}"; do
+                export "$kv"
+            done
+            "${SBATCH_CMD[@]}" | awk '{print $NF}'
+        )
         echo -n "  Job ${JOB_ID}  batch $((b+1))/${N_BATCHES}  N_SIMS=${N_SIMS}  cpus=${TOTAL_CPUS}  mem=${TOTAL_MEM}"
         [[ -n "$GRES_ARG" ]] && echo -n "  gpus=${N_SIMS}" || echo -n "  (cpu-only)"
         echo ""
