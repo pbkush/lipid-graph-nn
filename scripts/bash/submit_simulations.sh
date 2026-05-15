@@ -399,23 +399,30 @@ for (( b=0; b<N_BATCHES; b++ )); do
     fi
     TOTAL_MEM="$(( MEM_NUM * N_SIMS ))${MEM_UNIT}"
 
-    EXPORT_VARS="ALL"
-    EXPORT_VARS+=",OUTPUT_ROOT=${OUTPUT_ROOT}"
-    EXPORT_VARS+=",N_SIMS_PER_NODE=${N_SIMS}"
-    EXPORT_VARS+=",MAXWARN=${MAXWARN}"
-    EXPORT_VARS+=",SAVE_FORCES=${SAVE_FORCES}"
-    EXPORT_VARS+=",GPUS_PER_NODE=${GPUS_PER_NODE}"
-    EXPORT_VARS+=",CPUS_PER_SIM=${CPUS_PER_SIM}"
-    EXPORT_VARS+=",MPI_RANKS_PER_SIM=${MPI_RANKS_PER_SIM}"
-    [[ -n "$PROD_NS" ]]   && EXPORT_VARS+=",PROD_NS=${PROD_NS}"
-    [[ -n "$NSTEPS" ]]    && EXPORT_VARS+=",NSTEPS=${NSTEPS}"
-    [[ -n "$NSTEPS_EQ" ]] && EXPORT_VARS+=",NSTEPS_EQ=${NSTEPS_EQ}"
-    [[ -n "$NSTEPS_MIN" ]] && EXPORT_VARS+=",NSTEPS_MIN=${NSTEPS_MIN}"
-    [[ -n "$NTOMP" ]]     && EXPORT_VARS+=",NTOMP=${NTOMP}"
-    [[ "$SAVE_FORCES" -eq 1 ]] && EXPORT_VARS+=",SAVE_FORCES=1"
-
+    # Build env var pre-list (command-prefix assignments).  We DON'T use the
+    # --export=ALL,VAR=val,... form: on Goethe-HLR's SLURM build it silently
+    # drops entries after the first '=', so PROD_NS/NSTEPS never reach the
+    # worker → run_martini_pipeline.py errors with "one of the arguments
+    # --prod-ns --nsteps is required".  The pre-list form sets the variables
+    # in this shell's env for the sbatch invocation only; --export=ALL then
+    # has SLURM inherit the whole environment verbatim.  Proven by the
+    # benchmark scripts on the same partition.
+    ENV_PRELIST=(
+        "OUTPUT_ROOT=$OUTPUT_ROOT"
+        "N_SIMS_PER_NODE=$N_SIMS"
+        "MAXWARN=$MAXWARN"
+        "SAVE_FORCES=$SAVE_FORCES"
+        "GPUS_PER_NODE=$GPUS_PER_NODE"
+        "CPUS_PER_SIM=$CPUS_PER_SIM"
+        "MPI_RANKS_PER_SIM=$MPI_RANKS_PER_SIM"
+    )
+    [[ -n "$PROD_NS"    ]] && ENV_PRELIST+=("PROD_NS=$PROD_NS")
+    [[ -n "$NSTEPS"     ]] && ENV_PRELIST+=("NSTEPS=$NSTEPS")
+    [[ -n "$NSTEPS_EQ"  ]] && ENV_PRELIST+=("NSTEPS_EQ=$NSTEPS_EQ")
+    [[ -n "$NSTEPS_MIN" ]] && ENV_PRELIST+=("NSTEPS_MIN=$NSTEPS_MIN")
+    [[ -n "$NTOMP"      ]] && ENV_PRELIST+=("NTOMP=$NTOMP")
     for (( i=0; i<N_SIMS; i++ )); do
-        EXPORT_VARS+=",RUN_${i}_COMP=${COMPOSITIONS[$((BATCH_START + i))]}"
+        ENV_PRELIST+=("RUN_${i}_COMP=${COMPOSITIONS[$((BATCH_START + i))]}")
     done
 
     GRES_ARG=""
@@ -427,15 +434,15 @@ for (( b=0; b<N_BATCHES; b++ )); do
         --time="$TIME_LIMIT"
         --cpus-per-task="$TOTAL_CPUS"
         --mem="$TOTAL_MEM"
-        --export="$EXPORT_VARS"
+        --export=ALL
     )
     [[ -n "$GRES_ARG" ]] && SBATCH_CMD+=("$GRES_ARG")
     SBATCH_CMD+=("$SBATCH_WORKER")
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  [DRY RUN]  ${SBATCH_CMD[*]}"
+        echo "  [DRY RUN]  ${ENV_PRELIST[*]} ${SBATCH_CMD[*]}"
     else
-        JOB_ID=$("${SBATCH_CMD[@]}" | awk '{print $NF}')
+        JOB_ID=$(env "${ENV_PRELIST[@]}" "${SBATCH_CMD[@]}" | awk '{print $NF}')
         echo -n "  Job ${JOB_ID}  batch $((b+1))/${N_BATCHES}  N_SIMS=${N_SIMS}  cpus=${TOTAL_CPUS}  mem=${TOTAL_MEM}"
         [[ -n "$GRES_ARG" ]] && echo -n "  gpus=${N_SIMS}" || echo -n "  (cpu-only)"
         echo ""
