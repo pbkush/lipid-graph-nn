@@ -2,6 +2,26 @@
 
 ## Current Work Focus
 
+**Martini pipeline step 10c — general1 CPU production live (2026-05-15)** — `popc_interpolation` grid submitted on Goethe-HLR `general1` (CPU partition, no GPUs) for 1 µs (`--prod-ns 1000`) with 48 h walltime. Production routing on the CPU partition is fully wired: `submit_simulations.sh` dispatches to `sbatch_simulations_general1.sh` (spack openmpi + GROMACS-2022, `_gmx_mpi_wrapper.sh` shim) when `--partition general1` is set. Calibrated `hpc_defaults_cpu`: `sims_per_node=2`, `mpi_ranks_per_sim=1`, `cpus_per_sim=20`, `mem=16G`. Aggregate ~13 200 ns/day per node at the chosen point. Mid-run estimate from checkpoint deltas: ~22 ns/day per slot → ~65 h for 1 µs (over 48 h budget). Resubmit-with-`-cpi` may be needed for some slots.
+
+**Goal framework (refactored 2026-05-13)** — Composition-coverage work split into sub-deliverables: **3a** `popc_interpolation` (POPC-anchored binaries at 10 % step; 77 systems total — current focus), **3b** DPPC/DOPC corner extrapolation, **3c/3d** broader extension after lipid-pool growth (step 12). Tracked in `docs/martini_pipeline_plan.md` §1.
+
+**New tooling this session**:
+- [scripts/python/scan_completed_systems.py](../../scripts/python/scan_completed_systems.py) — walks output roots, canonicalises directory names, emits CSV `(canonical_name, source_dir, source_root, status, has_prun_xtc)`. Feeds `submit_simulations.sh --completed-csv` to skip already-simulated systems without needing the data on HPC.
+- [scripts/simulation/projected_finish.py](../../scripts/simulation/projected_finish.py) — scans `prun.log` files, parses `Writing checkpoint` lines for steps/sec, projects ETA against MDP `nsteps`, flags slots exceeding `--walltime`. Necessary because GROMACS only emits `Performance:` after a successful finish.
+- `analyze_benchmark.py --cpu` flag — separate device-aware recommendation logic; emits `hpc_defaults_cpu` YAML.
+- `popc_interpolation_grid(step)` generator in `martini_pipeline/analysis.py`.
+
+**Bug fixes worth knowing (one-liners, see git history for detail)**:
+- `--mdrun-args` argparse-REMAINDER greediness silently absorbed flags placed after it (`--prod-ns`, `--nsteps`, …). Pipeline CLI now uses a single quoted string; bash workers place `--mdrun-args` LAST in the arg list. Regression test added.
+- SLURM `--export=ALL,VAR=...` silently drops entries on Goethe-HLR slurm-wlm. Replaced with **env-file-via-positional-arg**: orchestrator writes an `export VAR=$'...'` file, passes its path as `$1`, worker sources it on entry.
+- gmx v2025.4 requires `-ntmpi 1` alongside `-ntomp N` on GPU runs. Added to both GPU production and bench workers.
+- 40-job QOS cap on `general1` and 2-job cap on `gpu_test` now enforced by `submit_simulations.sh`.
+
+---
+
+## Earlier Focus — Training (still the most recent training milestone)
+
 **Tier C Stage 5d complete — 6-seed confirmation (2026-05-07)** — `stage_5d_tier_c_confirm` at locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`), 7 active properties incl. `compressibility`. Seed 3 excluded (recurring dead-init); replacement seeds 6 and 8 completed as healthy runs. Final pool: seeds {0,1,4,5,6,8}, all 6 healthy. **Tier A, B, and C are all complete.**
 
 **Headline test results (6-seed pool, normalised, pooled R²)**:

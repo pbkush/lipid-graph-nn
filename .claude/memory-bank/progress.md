@@ -113,6 +113,27 @@ Pooled test R² is computed across 6 seeds × 275 graphs = 1 650 points and is t
 
 Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's seed 2 and Tier B 0c's seed 3). Replacement seeds 6 and 8 both completed as healthy runs. Documented as a cross-tier seed-fragility limitation. Adding compressibility to the shared head costs ~12 % on `lipid_packing` test MSE and tied/improves on the other five Tier B properties — net wash, with `compressibility` itself learning a stronger-than-prior signal.
 
+## Martini Pipeline Status (simulation deliverable)
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| 1–9 — pipeline build, MDP audit, sanity checks | done | DIPC100 smoke + POPC100 sanity passed earlier |
+| 10a — GPU production routing (`gpu`/`gpu_test`) | done | `sbatch_simulations.sh`; 8 sims/node, HIP pinning |
+| 10b — GPU benchmark sweep | done | `hpc_defaults_gpu` calibrated; ROCm-built gmx 2025.4 |
+| 10c — general1 CPU production routing | done | `sbatch_simulations_general1.sh` + `_gmx_mpi_wrapper.sh`; spack openmpi/GROMACS-2022; calibrated `hpc_defaults_cpu` (sims=2, ranks=1, cpus=20, mem=16G; ~13 200 ns/day/node) |
+| 11a — subgoal 3a popc_interpolation, 1 µs | **running** (2026-05-15) | 77 systems at 10 % step on `general1`, 48 h walltime; ETA ~65 h per slot — resubmit likely |
+| 11b — subgoal 3b DPPC/DOPC corners | pending | After 3a lands |
+| 12 — extend lipid pool beyond current 10 | future | Unlocks 3c/3d |
+
+**Pipeline tooling this session**:
+
+- `scan_completed_systems.py` — CSV scanner for "already simulated" systems (canonicalises legacy non-canonical dir names).
+- `submit_simulations.sh --completed-csv PATH` — filter via CSV `canonical_name` column.
+- `projected_finish.py` — mid-run ETA report from `Writing checkpoint` lines (GROMACS only writes final `Performance:` after success).
+- Partition dispatch + QOS caps (general1=40 jobs, gpu_test=2 jobs) in `submit_simulations.sh`.
+- `analyze_benchmark.py --cpu` for device-aware recommendation + `hpc_defaults_cpu` YAML emit.
+- Env propagation refactored to env-file-via-positional-arg (SLURM `--export` silently drops entries on Goethe-HLR).
+
 ## What's Left to Build
 
 - **Tier C complete**: Stage 5d confirmed on 6 seeds {0,1,4,5,6,8}. Report at `docs/stage_5d_analysis_report.md`.
