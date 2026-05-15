@@ -122,6 +122,8 @@ for (( i=0; i<N_SIMS; i++ )); do
 
     # Build run_martini_pipeline.py argument list.  --gmx points at the
     # mpirun-wrapped gmx_mpi shim (Decision 58 / step 10b).
+    echo "[diag] slot $i: PROD_NS='${PROD_NS:-<unset>}'  NSTEPS='${NSTEPS:-<unset>}'  about to build SIM_ARGS"
+
     SIM_ARGS=("$COMP"
         "--out-dir"    "$OUTPUT_ROOT"
         "--gmx"        "$PWD/scripts/simulation/_gmx_mpi_wrapper.sh"
@@ -133,6 +135,13 @@ for (( i=0; i<N_SIMS; i++ )); do
     [[ "${SAVE_FORCES:-0}" -eq 1 ]] && SIM_ARGS+=("--save-forces")
     [[ -n "${NSTEPS_EQ:-}"  ]] && SIM_ARGS+=("--nsteps-eq"  "$NSTEPS_EQ")
     [[ -n "${NSTEPS_MIN:-}" ]] && SIM_ARGS+=("--nsteps-min" "$NSTEPS_MIN")
+
+    # Print the FULL SIM_ARGS list verbatim so we can see exactly what python
+    # will be invoked with.  One arg per line for unambiguous inspection.
+    echo "[diag] slot $i: SIM_ARGS has ${#SIM_ARGS[@]} elements:"
+    for arg in "${SIM_ARGS[@]}"; do
+        printf '[diag]   |%s|\n' "$arg"
+    done
 
     echo "  [slot $i]  $COMP  → $LOGOUT"
 
