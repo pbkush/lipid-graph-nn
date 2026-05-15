@@ -97,17 +97,22 @@ for (( i=0; i<N_SIMS; i++ )); do
     MDRUN_EXTRA="-ntomp ${NTOMP_VALUE}"
     [[ "${GPUS_PER_NODE:-8}" -eq 0 ]] && MDRUN_EXTRA+=" -nb cpu"
 
-    # Build run_martini_pipeline.py argument list
+    # Build run_martini_pipeline.py argument list.  CRITICAL: --mdrun-args
+    # uses argparse.REMAINDER, which greedily consumes everything after it.
+    # It MUST be the last flag — any --prod-ns / --nsteps / --save-forces
+    # placed after --mdrun-args is silently absorbed into mdrun_args and
+    # never reaches its own option (real bug observed on general1 first run).
     SIM_ARGS=("$COMP"
         "--out-dir"     "$OUTPUT_ROOT"
         "--maxwarn"     "${MAXWARN:-2}"
-        "--mdrun-args"  "$MDRUN_EXTRA"
     )
     [[ -n "${PROD_NS:-}"    ]] && SIM_ARGS+=("--prod-ns"    "$PROD_NS")
     [[ -n "${NSTEPS:-}"     ]] && SIM_ARGS+=("--nsteps"     "$NSTEPS")
     [[ "${SAVE_FORCES:-0}" -eq 1 ]] && SIM_ARGS+=("--save-forces")
     [[ -n "${NSTEPS_EQ:-}"  ]] && SIM_ARGS+=("--nsteps-eq"  "$NSTEPS_EQ")
     [[ -n "${NSTEPS_MIN:-}" ]] && SIM_ARGS+=("--nsteps-min" "$NSTEPS_MIN")
+    # --mdrun-args MUST come LAST (REMAINDER absorbs everything after it)
+    SIM_ARGS+=("--mdrun-args" "$MDRUN_EXTRA")
 
     echo "  [slot $i]  $COMP  → $LOGOUT"
 

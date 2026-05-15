@@ -44,14 +44,11 @@ if [[ $# -gt 0 && -f "$1" ]]; then
     echo "Sourced env from: $SUBMIT_ENV_FILE"
     shift
 fi
-echo "[diag] after source-env-file: PROD_NS='${PROD_NS:-<unset>}'  NSTEPS='${NSTEPS:-<unset>}'  OUTPUT_ROOT='${OUTPUT_ROOT:-<unset>}'"
 
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
-echo "[diag] after source-conda.sh: PROD_NS='${PROD_NS:-<unset>}'"
 
 CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
 conda activate "$CONDA_ENV"
-echo "[diag] after conda activate:   PROD_NS='${PROD_NS:-<unset>}'"
 
 # general1 toolchain: spack openmpi + GROMACS-2022.  Module names come from
 # the hpc_defaults_cpu block in config.yaml so they're version-locked alongside
@@ -61,18 +58,15 @@ MODULE_MPI=$(python scripts/python/print_config_var.py \
 MODULE_GROMACS_CPU=$(python scripts/python/print_config_var.py \
     martini_pipeline.hpc_defaults_cpu.module_gromacs_cpu)
 module purge
-echo "[diag] after module purge:     PROD_NS='${PROD_NS:-<unset>}'"
 module load "$MODULE_MPI"
 module load "$MODULE_GROMACS_CPU"
-echo "[diag] after module load:      PROD_NS='${PROD_NS:-<unset>}'"
 
-# Defensive: re-source the env file AFTER conda+module, so anything they
-# unset (e.g. a stray `unset PROD_NS` in a conda activate.d script) is
-# restored before the slot loop reads PROD_NS.
+# Defensive: re-source the env file AFTER conda+module just in case anything
+# in those scripts ever clobbers user-set env vars (zero observed cases as of
+# this commit, but it's free insurance).
 if [[ -n "$SUBMIT_ENV_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$SUBMIT_ENV_FILE"
-    echo "[diag] after re-source:        PROD_NS='${PROD_NS:-<unset>}'"
 fi
 
 # Validate required env vars
@@ -122,26 +116,23 @@ for (( i=0; i<N_SIMS; i++ )); do
 
     # Build run_martini_pipeline.py argument list.  --gmx points at the
     # mpirun-wrapped gmx_mpi shim (Decision 58 / step 10b).
-    echo "[diag] slot $i: PROD_NS='${PROD_NS:-<unset>}'  NSTEPS='${NSTEPS:-<unset>}'  about to build SIM_ARGS"
-
+    # Build run_martini_pipeline.py argument list.  CRITICAL: --mdrun-args
+    # uses argparse.REMAINDER, which greedily consumes everything after it.
+    # So it MUST be the last flag — any --prod-ns / --nsteps / --save-forces
+    # placed after --mdrun-args is silently absorbed into mdrun_args and
+    # never reaches its own option.
     SIM_ARGS=("$COMP"
         "--out-dir"    "$OUTPUT_ROOT"
         "--gmx"        "$PWD/scripts/simulation/_gmx_mpi_wrapper.sh"
         "--maxwarn"    "${MAXWARN:-2}"
-        "--mdrun-args" "$MDRUN_EXTRA"
     )
     [[ -n "${PROD_NS:-}"    ]] && SIM_ARGS+=("--prod-ns"    "$PROD_NS")
     [[ -n "${NSTEPS:-}"     ]] && SIM_ARGS+=("--nsteps"     "$NSTEPS")
     [[ "${SAVE_FORCES:-0}" -eq 1 ]] && SIM_ARGS+=("--save-forces")
     [[ -n "${NSTEPS_EQ:-}"  ]] && SIM_ARGS+=("--nsteps-eq"  "$NSTEPS_EQ")
     [[ -n "${NSTEPS_MIN:-}" ]] && SIM_ARGS+=("--nsteps-min" "$NSTEPS_MIN")
-
-    # Print the FULL SIM_ARGS list verbatim so we can see exactly what python
-    # will be invoked with.  One arg per line for unambiguous inspection.
-    echo "[diag] slot $i: SIM_ARGS has ${#SIM_ARGS[@]} elements:"
-    for arg in "${SIM_ARGS[@]}"; do
-        printf '[diag]   |%s|\n' "$arg"
-    done
+    # --mdrun-args MUST come LAST (REMAINDER absorbs everything after it)
+    SIM_ARGS+=("--mdrun-args" "$MDRUN_EXTRA")
 
     echo "  [slot $i]  $COMP  → $LOGOUT"
 
