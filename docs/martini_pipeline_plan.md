@@ -110,6 +110,11 @@ Two thin sbatch wrappers, mirroring the `submit_sweep.sh` / `sbatch_sweep.sh` sp
 
 **GPU vs CPU**: single orchestrator with a GPU/CPU branch ([Decision 4](#decision-log)). `--gpus-per-node 0` short-circuits the GPU-pinning logic and uses `gmx mdrun` CPU mode with thread budget split across N parallel sims. Avoids two near-duplicate scripts.
 
+**Already-simulated skip**: two redundant mechanisms, used together for safety:
+
+1. **In-place auto-skip** (default) — `--missing-from-grid` searches both the new pipeline output root AND `paths.data_dir` (legacy). Works when the trajectory data is physically present on the host running the submitter.
+2. **CSV skip-list** (`--completed-csv PATH`) — for the case where data lives elsewhere (e.g. on a different cluster or local workstation): run `scripts/python/scan_completed_systems.py` where the data IS, upload the produced CSV, pass it via `--completed-csv`. The CSV canonicalises non-canonical directory names (legacy `POPC10_DIPC90` → canonical `DIPC90_POPC10`), so it's also more accurate than the in-place auto-skip for legacy data.
+
 ---
 
 ## 7. HPC benchmark

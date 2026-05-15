@@ -508,6 +508,95 @@ class TestPartitionDispatch(unittest.TestCase):
         self.assertIn(f"sims-per-node  : {cfg_sims}", result.stdout)
 
 
+class TestCompletedCsvFilter(unittest.TestCase):
+    """--completed-csv lets the user list already-simulated systems via a
+    CSV produced by scan_completed_systems.py.  Works without the trajectory
+    data being physically present on the host that runs submit_simulations.sh.
+    """
+
+    _NO_LEGACY = {"LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy"}
+
+    def _write_csv(self, path: str, canonical_names: list[str]) -> None:
+        with open(path, "w") as fh:
+            fh.write("canonical_name,source_dir,source_root,status,has_prun_xtc\n")
+            for n in canonical_names:
+                fh.write(f"{n},{n},/dev/null,legacy_no_manifest,true\n")
+
+    def test_completed_csv_drops_matching_compositions(self):
+        """If the CSV lists POPC100, it should be dropped from --missing-from-grid output."""
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+            csv_path = f.name
+        try:
+            self._write_csv(csv_path, ["POPC100"])
+            with tempfile.TemporaryDirectory() as root:
+                result = _run([
+                    "--missing-from-grid", "dppc_corner",
+                    "--output-root", root,
+                    "--completed-csv", csv_path,
+                    "--prod-ns", "100",
+                    "--dry-run",
+                ], env_extra=self._NO_LEGACY)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            # dppc_corner has 35 entries; POPC100 isn't in it, so 35 remain
+            self.assertIn("Total comps    : 35", result.stdout)
+        finally:
+            os.unlink(csv_path)
+
+    def test_completed_csv_drops_dppc_corner_entry(self):
+        """CSV listing DPPC100 → that one is dropped from dppc_corner (35 → 34)."""
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+            csv_path = f.name
+        try:
+            self._write_csv(csv_path, ["DPPC100", "DPPC90_DIPC10", "DPPC80_CHOL20"])
+            with tempfile.TemporaryDirectory() as root:
+                result = _run([
+                    "--missing-from-grid", "dppc_corner",
+                    "--output-root", root,
+                    "--completed-csv", csv_path,
+                    "--prod-ns", "100",
+                    "--dry-run",
+                ], env_extra=self._NO_LEGACY)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            # 35 - 3 = 32
+            self.assertIn("Total comps    : 32", result.stdout)
+            # Verify the INFO line is emitted with the right drop count
+            self.assertIn("dropped 3 of 35", result.stderr)
+        finally:
+            os.unlink(csv_path)
+
+    def test_completed_csv_missing_file_errors(self):
+        """--completed-csv with a path that doesn't exist → non-zero exit."""
+        with tempfile.TemporaryDirectory() as root:
+            result = _run([
+                "--missing-from-grid", "dppc_corner",
+                "--output-root", root,
+                "--completed-csv", "/tmp/_definitely_not_a_real_csv_file.csv",
+                "--prod-ns", "100",
+                "--dry-run",
+            ], env_extra=self._NO_LEGACY)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not exist", result.stderr.lower())
+
+    def test_completed_csv_missing_required_column_errors(self):
+        """CSV without canonical_name column → exit non-zero with clear error."""
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+            f.write("just_some_other_column\nfoo\nbar\n")
+            csv_path = f.name
+        try:
+            with tempfile.TemporaryDirectory() as root:
+                result = _run([
+                    "--missing-from-grid", "dppc_corner",
+                    "--output-root", root,
+                    "--completed-csv", csv_path,
+                    "--prod-ns", "100",
+                    "--dry-run",
+                ], env_extra=self._NO_LEGACY)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("canonical_name", result.stderr)
+        finally:
+            os.unlink(csv_path)
+
+
 class TestLegacyAutoSkip(unittest.TestCase):
     """submit_simulations.sh should pass the legacy data root to print_work_queue
     so already-simulated systems are skipped without manual --queue-file editing."""
