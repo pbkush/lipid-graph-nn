@@ -661,5 +661,87 @@ class TestPartitionJobCap(unittest.TestCase):
         self.assertIn("Batches        : 40", result.stdout)
 
 
+class TestEnvPrelistInsteadOfExportList(unittest.TestCase):
+    """Regression guard for the SLURM --export parsing bug.
+
+    Goethe-HLR's slurm-wlm silently drops entries from the comma-separated
+    `--export=ALL,VAR=val,VAR2=val2,...` form, causing PROD_NS/NSTEPS to
+    never reach the worker.  We instead build a command-prefix env list
+    (`env VAR=val ... sbatch ... --export=ALL`) which SLURM inherits intact.
+
+    This test would have caught the bug landed in the step-9 submitter that
+    bit production on first real submission, and prevents reintroducing the
+    `--export="ALL,..."` form during future refactors.
+    """
+
+    _NO_LEGACY = {"LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy"}
+
+    def _dry_run_line(self, args: list[str]) -> str:
+        result = _run(args, env_extra=self._NO_LEGACY)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return next(l for l in result.stdout.splitlines() if "[DRY RUN]" in l)
+
+    def test_export_value_is_plain_ALL(self):
+        """sbatch --export=ALL (no comma-list).  Forbid the buggy form."""
+        line = self._dry_run_line([
+            "--compositions", "POPC100",
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        # Must contain the plain form
+        self.assertRegex(line, r"\s--export=ALL(\s|$)",
+                         "expected '--export=ALL' as a standalone token")
+        # Must NOT contain the comma-extended buggy form
+        self.assertNotRegex(line, r"--export=ALL,",
+                            "found --export=ALL,VAR=val,...  This is the form that "
+                            "Goethe-HLR's SLURM silently drops entries from; switch "
+                            "back to the env-prefix pattern (env VAR=val sbatch ... "
+                            "--export=ALL).")
+
+    def test_prod_ns_appears_as_env_prefix_not_in_export(self):
+        """--prod-ns 100 must end up as a PROD_NS=100 env-prefix token,
+        BEFORE the sbatch keyword, not inside --export."""
+        line = self._dry_run_line([
+            "--compositions", "POPC100",
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        sbatch_pos = line.find(" sbatch ")
+        self.assertGreater(sbatch_pos, 0, f"no ' sbatch ' token in dry-run line: {line!r}")
+        prefix = line[:sbatch_pos]
+        # PROD_NS=100 must be in the command-prefix section (before sbatch)
+        self.assertIn("PROD_NS=100", prefix,
+                      f"PROD_NS=100 missing from command-prefix env list: {prefix!r}")
+
+    def test_run_i_comp_appears_as_env_prefix(self):
+        """RUN_<i>_COMP slot assignments also belong in the env prefix, not
+        in --export.  This token is what the worker looks up via indirect
+        expansion `${!COMP_VAR}` for slot i."""
+        line = self._dry_run_line([
+            "--compositions", "POPC100",
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        sbatch_pos = line.find(" sbatch ")
+        prefix = line[:sbatch_pos]
+        self.assertIn("RUN_0_COMP=POPC100", prefix)
+
+    def test_gpu_partition_also_uses_env_prefix(self):
+        """Regression guard isn't partition-specific — gpu partitions too."""
+        line = self._dry_run_line([
+            "--compositions", "POPC100",
+            "--prod-ns", "100",
+            "--partition", "gpu_test",
+            "--dry-run",
+        ])
+        self.assertNotRegex(line, r"--export=ALL,")
+        sbatch_pos = line.find(" sbatch ")
+        prefix = line[:sbatch_pos]
+        self.assertIn("PROD_NS=100", prefix)
+
+
 if __name__ == "__main__":
     unittest.main()
