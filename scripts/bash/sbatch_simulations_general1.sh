@@ -44,11 +44,14 @@ if [[ $# -gt 0 && -f "$1" ]]; then
     echo "Sourced env from: $SUBMIT_ENV_FILE"
     shift
 fi
+echo "[diag] after source-env-file: PROD_NS='${PROD_NS:-<unset>}'  NSTEPS='${NSTEPS:-<unset>}'  OUTPUT_ROOT='${OUTPUT_ROOT:-<unset>}'"
 
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
+echo "[diag] after source-conda.sh: PROD_NS='${PROD_NS:-<unset>}'"
 
 CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
 conda activate "$CONDA_ENV"
+echo "[diag] after conda activate:   PROD_NS='${PROD_NS:-<unset>}'"
 
 # general1 toolchain: spack openmpi + GROMACS-2022.  Module names come from
 # the hpc_defaults_cpu block in config.yaml so they're version-locked alongside
@@ -58,8 +61,19 @@ MODULE_MPI=$(python scripts/python/print_config_var.py \
 MODULE_GROMACS_CPU=$(python scripts/python/print_config_var.py \
     martini_pipeline.hpc_defaults_cpu.module_gromacs_cpu)
 module purge
+echo "[diag] after module purge:     PROD_NS='${PROD_NS:-<unset>}'"
 module load "$MODULE_MPI"
 module load "$MODULE_GROMACS_CPU"
+echo "[diag] after module load:      PROD_NS='${PROD_NS:-<unset>}'"
+
+# Defensive: re-source the env file AFTER conda+module, so anything they
+# unset (e.g. a stray `unset PROD_NS` in a conda activate.d script) is
+# restored before the slot loop reads PROD_NS.
+if [[ -n "$SUBMIT_ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$SUBMIT_ENV_FILE"
+    echo "[diag] after re-source:        PROD_NS='${PROD_NS:-<unset>}'"
+fi
 
 # Validate required env vars
 : "${OUTPUT_ROOT:?OUTPUT_ROOT must be set by submit_simulations.sh}"
