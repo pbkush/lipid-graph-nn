@@ -70,6 +70,7 @@ CPUS_PER_SIM=""
 MEM_PER_SIM=""
 MPI_RANKS_PER_SIM=""   # CPU only; ignored on GPU partitions
 MAX_QUEUE=0            # 0 = no cap
+COMPLETED_CSV=""       # path to a scan_completed_systems.py output CSV
 
 DRY_RUN=0
 
@@ -104,6 +105,7 @@ while [[ $# -gt 0 ]]; do
         --mem-per-sim)          MEM_PER_SIM="$2";             shift 2 ;;
         --mpi-ranks-per-sim)    MPI_RANKS_PER_SIM="$2";       shift 2 ;;
         --max-queue)            MAX_QUEUE="$2";               shift 2 ;;
+        --completed-csv)        COMPLETED_CSV="$2";           shift 2 ;;
         --dry-run)              DRY_RUN=1;                    shift ;;
         *) echo "ERROR: unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -234,6 +236,50 @@ elif [[ -n "$QUEUE_FILE" ]]; then
         exit 1
     fi
     readarray -t COMPOSITIONS < <(grep -v '^\s*#' "$QUEUE_FILE" | grep -v '^\s*$')
+fi
+
+# ── Filter against --completed-csv (if given) ────────────────────────────────
+# Lets the user pre-scan locally, upload a small CSV to HPC, and have the
+# submitter skip already-simulated compositions without needing the actual
+# trajectory data present on HPC.  The CSV format is produced by
+# scripts/python/scan_completed_systems.py: first column is the canonical
+# composition name; other columns are informational.  Canonicalisation in
+# the scan step means non-canonical legacy dirs (POPC10_DIPC90) are still
+# matched against canonical grid output (DIPC90_POPC10).
+if [[ -n "$COMPLETED_CSV" ]]; then
+    if [[ ! -f "$COMPLETED_CSV" ]]; then
+        echo "ERROR: --completed-csv $COMPLETED_CSV does not exist" >&2
+        exit 1
+    fi
+    _SKIPSET=$(mktemp)
+    python -c "
+import csv, sys
+with open(sys.argv[1]) as fh:
+    reader = csv.DictReader(fh)
+    if 'canonical_name' not in (reader.fieldnames or []):
+        print('ERROR: --completed-csv missing required column: canonical_name', file=sys.stderr)
+        sys.exit(2)
+    for row in reader:
+        name = (row.get('canonical_name') or '').strip()
+        if name:
+            print(name)
+" "$COMPLETED_CSV" > "$_SKIPSET" || { rm -f "$_SKIPSET"; exit 1; }
+
+    N_BEFORE="${#COMPOSITIONS[@]}"
+    _FILTERED=()
+    while IFS= read -r comp; do
+        if ! grep -qxF "$comp" "$_SKIPSET"; then
+            _FILTERED+=("$comp")
+        fi
+    done < <(printf '%s\n' "${COMPOSITIONS[@]}")
+    COMPOSITIONS=("${_FILTERED[@]}")
+    N_AFTER="${#COMPOSITIONS[@]}"
+    rm -f "$_SKIPSET"
+
+    DROPPED=$(( N_BEFORE - N_AFTER ))
+    if (( DROPPED > 0 )); then
+        echo "INFO: --completed-csv $COMPLETED_CSV dropped $DROPPED of $N_BEFORE comp(s)" >&2
+    fi
 fi
 
 if [[ "${#COMPOSITIONS[@]}" -eq 0 ]]; then
