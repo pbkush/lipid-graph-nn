@@ -666,6 +666,34 @@ class TestPartitionJobCap(unittest.TestCase):
         self.assertIn("Batches        : 40", result.stdout)
 
 
+class TestGroupFromConfigFallback(unittest.TestCase):
+    """submit_simulations.sh should auto-fill GROUP from config.yaml hpc.group
+    when the env var isn't set — saves the user from typing `export GROUP=...`
+    every time."""
+
+    def test_unset_group_falls_back_to_config(self):
+        """No GROUP in env → script reads hpc.group from config.yaml."""
+        env = {
+            **os.environ,
+            "USER": os.environ.get("USER", "testuser"),
+            # Explicitly remove GROUP so the script must resolve it from config.
+            "GROUP": "",
+            "LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy",
+        }
+        # Use subprocess.run directly so we can override the env from scratch.
+        result = subprocess.run(
+            ["bash", _SCRIPT,
+             "--compositions", "POPC100",
+             "--prod-ns", "100",
+             "--partition", "general1",
+             "--dry-run"],
+            capture_output=True, text=True, cwd=_REPO_ROOT, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # config.yaml has hpc.group: cellmembrane → output root should contain it
+        self.assertIn("/work/cellmembrane/", result.stdout)
+
+
 class TestEnvFilePropagation(unittest.TestCase):
     """Regression guard for SLURM env-propagation bugs.
 
