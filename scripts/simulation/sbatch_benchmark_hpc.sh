@@ -83,6 +83,9 @@ for (( i=0; i<N_SIMS; i++ )); do
     # -nstxout/-nstvout/etc. are MDP options, not mdrun CLI flags; the TPR
     # already baked in the output frequency from prun.mdp.  Trajectory I/O
     # over a 100k-step benchmark is a negligible perf contributor.
+    #
+    # gmx v2025.4 requires -ntmpi when -ntomp is set on GPU runs.  Each slot
+    # is one process with one GPU → -ntmpi 1.
     MDRUN_ARGS=(
         gmx mdrun
         -s    "$TPR"
@@ -91,7 +94,11 @@ for (( i=0; i<N_SIMS; i++ )); do
         -ntomp  "$NTOMP_VALUE"
         -resethway
     )
-    [[ "${GPUS_PER_NODE:-0}" -eq 0 ]] && MDRUN_ARGS+=(-nb cpu)
+    if [[ "${GPUS_PER_NODE:-0}" -eq 0 ]]; then
+        MDRUN_ARGS+=(-nb cpu)
+    else
+        MDRUN_ARGS+=(-ntmpi 1)
+    fi
 
     echo "  [slot $i]  $(basename "$(dirname "$TPR")")  → $SLOT_DIR/bench.log"
 

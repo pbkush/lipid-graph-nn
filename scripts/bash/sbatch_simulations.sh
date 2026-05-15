@@ -93,9 +93,17 @@ for (( i=0; i<N_SIMS; i++ )); do
     LOGOUT="${OUT_DIR}/sim-${SLURM_JOB_ID}-gpu${i}.out"
     LOGERR="${OUT_DIR}/sim-${SLURM_JOB_ID}-gpu${i}.err"
 
-    # Build mdrun extra args: ntomp + optional -nb cpu for CPU-only runs
-    MDRUN_EXTRA="-ntomp ${NTOMP_VALUE}"
-    [[ "${GPUS_PER_NODE:-8}" -eq 0 ]] && MDRUN_EXTRA+=" -nb cpu"
+    # Build mdrun extra args.  Each slot is one process with one GPU (when
+    # GPUs are present), so we set -ntmpi 1 -ntomp N.  gmx v2025.4 errors
+    # out with just -ntomp on GPU runs:
+    #     "When using GPUs, setting the number of OpenMP threads without
+    #      specifying the number of ranks can lead to conflicting demands.
+    #      Please specify the number of thread-MPI ranks as well."
+    if [[ "${GPUS_PER_NODE:-8}" -eq 0 ]]; then
+        MDRUN_EXTRA="-ntomp ${NTOMP_VALUE} -nb cpu"
+    else
+        MDRUN_EXTRA="-ntmpi 1 -ntomp ${NTOMP_VALUE}"
+    fi
 
     # Build run_martini_pipeline.py argument list.  CRITICAL: --mdrun-args
     # uses argparse.REMAINDER, which greedily consumes everything after it.
