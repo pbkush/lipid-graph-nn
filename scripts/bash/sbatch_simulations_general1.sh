@@ -29,8 +29,23 @@
 set -euo pipefail
 mkdir -p logs/simulations
 
-source "$HOME/miniforge3/etc/profile.d/conda.sh"
 cd "$HOME/lipid-graph-nn"
+
+# Source the per-batch env file passed by submit_simulations.sh as $1.
+# Avoids SLURM --export-propagation quirks: positional args always reach
+# the worker process verbatim.  Backward-compat: if no arg is passed or
+# the file doesn't exist, fall through to using whatever env vars are
+# already set (legacy path / manual invocation).
+SUBMIT_ENV_FILE=""
+if [[ $# -gt 0 && -f "$1" ]]; then
+    SUBMIT_ENV_FILE="$1"
+    # shellcheck disable=SC1090  # dynamic path is the whole point
+    source "$SUBMIT_ENV_FILE"
+    echo "Sourced env from: $SUBMIT_ENV_FILE"
+    shift
+fi
+
+source "$HOME/miniforge3/etc/profile.d/conda.sh"
 
 CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
 conda activate "$CONDA_ENV"
