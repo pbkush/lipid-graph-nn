@@ -197,7 +197,10 @@ fi
 if [[ -n "$OUTPUT_ROOT_OVERRIDE" ]]; then
     OUTPUT_ROOT="$OUTPUT_ROOT_OVERRIDE"
 else
-    : "${GROUP:?set GROUP to your Goethe-HLR group (e.g. export GROUP=cellmembrane), or use --output-root}"
+    # GROUP comes from (in order): env var, config.yaml hpc.group.
+    # Falls through to fail-fast only if both are missing/empty.
+    GROUP="${GROUP:-$(python scripts/python/print_config_var.py hpc.group 2>/dev/null || true)}"
+    : "${GROUP:?set hpc.group in config.yaml or 'export GROUP=...' before running, or pass --output-root}"
     OUTPUT_ROOT="/work/${GROUP}/${USER}/${WORK_SUBPATH}/${HPC_OUTPUT_SUBPATH}"
 fi
 
