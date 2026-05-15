@@ -29,8 +29,20 @@
 set -euo pipefail
 mkdir -p logs/simulations
 
-source "$HOME/miniforge3/etc/profile.d/conda.sh"
 cd "$HOME/lipid-graph-nn"
+
+# Source the per-batch env file passed by submit_simulations.sh as $1.
+# See sbatch_simulations_general1.sh for rationale; same defensive pattern.
+SUBMIT_ENV_FILE=""
+if [[ $# -gt 0 && -f "$1" ]]; then
+    SUBMIT_ENV_FILE="$1"
+    # shellcheck disable=SC1090
+    source "$SUBMIT_ENV_FILE"
+    echo "Sourced env from: $SUBMIT_ENV_FILE"
+    shift
+fi
+
+source "$HOME/miniforge3/etc/profile.d/conda.sh"
 
 CONDA_ENV=$(python scripts/python/print_config_var.py hpc.conda_env)
 conda activate "$CONDA_ENV"

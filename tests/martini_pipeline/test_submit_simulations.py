@@ -52,7 +52,11 @@ def _write_manifest(out_dir: str, overall_status: str = "ok") -> None:
 
 class TestPackingExplicit(unittest.TestCase):
     def test_explicit_compositions_packed_correctly(self):
-        """5 comps at --sims-per-node 2 → 3 batches."""
+        """5 comps at --sims-per-node 2 → 3 batches.
+
+        Each batch emits two [DRY RUN] lines: the sbatch invocation and the
+        "env file would contain:" header.  We count sbatch lines specifically.
+        """
         comps = ["DPPC100", "DIPC100", "DOPC100", "DOPE100", "POPC100"]
         result = _run([
             "--compositions"] + comps + [
@@ -61,9 +65,9 @@ class TestPackingExplicit(unittest.TestCase):
             "--dry-run",
         ])
         self.assertEqual(result.returncode, 0, result.stderr)
-        # 3 dry-run sbatch lines
-        dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
-        self.assertEqual(len(dry_lines), 3)
+        sbatch_lines = [l for l in result.stdout.splitlines()
+                        if "[DRY RUN]" in l and " sbatch " in l]
+        self.assertEqual(len(sbatch_lines), 3)
 
     def test_sims_per_node_default_4(self):
         """Default --sims-per-node reads 4 from config."""
@@ -330,8 +334,9 @@ class TestGpuTestGuards(unittest.TestCase):
             "--dry-run",
         ])
         self.assertEqual(result.returncode, 0, result.stderr)
-        dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
-        self.assertEqual(len(dry_lines), 2)
+        sbatch_lines = [l for l in result.stdout.splitlines()
+                        if "[DRY RUN]" in l and " sbatch " in l]
+        self.assertEqual(len(sbatch_lines), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -661,86 +666,109 @@ class TestPartitionJobCap(unittest.TestCase):
         self.assertIn("Batches        : 40", result.stdout)
 
 
-class TestEnvPrelistInsteadOfExportList(unittest.TestCase):
-    """Regression guard for the SLURM --export parsing bug.
+class TestEnvFilePropagation(unittest.TestCase):
+    """Regression guard for SLURM env-propagation bugs.
 
-    Goethe-HLR's slurm-wlm silently drops entries from the comma-separated
-    `--export=ALL,VAR=val,VAR2=val2,...` form, causing PROD_NS/NSTEPS to
-    never reach the worker.  We instead build a command-prefix env list
-    (`env VAR=val ... sbatch ... --export=ALL`) which SLURM inherits intact.
+    Four prior attempts at passing env vars through SLURM all failed in
+    different ways on Goethe-HLR's slurm-wlm:
+      1. `--export="ALL,VAR=val,..."` — silently drops list entries
+      2. `--export "ALL,VAR=val,..."` — parses second token wrong
+      3. `env VAR=val sbatch --export=ALL` — env-prefix lost somehow
+      4. `(export VAR=val; sbatch --export=ALL)` — same as (3)
 
-    This test would have caught the bug landed in the step-9 submitter that
-    bit production on first real submission, and prevents reintroducing the
-    `--export="ALL,..."` form during future refactors.
+    Current form: write env to a sourceable file, pass its path as a
+    POSITIONAL ARG to the worker (which SLURM always propagates).
+    The worker `source`s the file at startup.
+
+    These guards prevent silently regressing back to any of the broken
+    forms.
     """
 
     _NO_LEGACY = {"LEGACY_DATA_DIR": "/tmp/_definitely_does_not_exist_legacy"}
 
-    def _dry_run_line(self, args: list[str]) -> str:
+    def _dry_run_output(self, args: list[str]) -> tuple[str, str]:
+        """Return (sbatch_line, env_file_body) extracted from dry-run output."""
         result = _run(args, env_extra=self._NO_LEGACY)
         self.assertEqual(result.returncode, 0, result.stderr)
-        return next(l for l in result.stdout.splitlines() if "[DRY RUN]" in l)
+        sbatch_line = next(
+            l for l in result.stdout.splitlines()
+            if "[DRY RUN]" in l and " sbatch " in l
+        )
+        # env file body lines start with the dry-run indent + "export "
+        env_body = "\n".join(
+            l.strip() for l in result.stdout.splitlines()
+            if l.strip().startswith("export ")
+        )
+        return sbatch_line, env_body
 
     def test_export_value_is_plain_ALL(self):
         """sbatch --export=ALL (no comma-list).  Forbid the buggy form."""
-        line = self._dry_run_line([
+        sbatch_line, _ = self._dry_run_output([
             "--compositions", "POPC100",
             "--prod-ns", "100",
             "--partition", "general1",
             "--dry-run",
         ])
         # Must contain the plain form
-        self.assertRegex(line, r"\s--export=ALL(\s|$)",
+        self.assertRegex(sbatch_line, r"\s--export=ALL(\s|$)",
                          "expected '--export=ALL' as a standalone token")
         # Must NOT contain the comma-extended buggy form
-        self.assertNotRegex(line, r"--export=ALL,",
+        self.assertNotRegex(sbatch_line, r"--export=ALL,",
                             "found --export=ALL,VAR=val,...  This is the form that "
-                            "Goethe-HLR's SLURM silently drops entries from; switch "
-                            "back to the env-prefix pattern (env VAR=val sbatch ... "
-                            "--export=ALL).")
+                            "Goethe-HLR's SLURM silently drops entries from.")
 
-    def test_prod_ns_appears_as_env_prefix_not_in_export(self):
-        """--prod-ns 100 must end up as a PROD_NS=100 env-prefix token,
-        BEFORE the sbatch keyword, not inside --export."""
-        line = self._dry_run_line([
+    def test_sbatch_line_passes_env_file_as_positional_arg(self):
+        """The last token on the sbatch line must be a path to a .sh env
+        file, passed as a positional arg to the worker.  This is the
+        propagation mechanism — if it's missing, the worker won't find
+        PROD_NS et al."""
+        sbatch_line, _ = self._dry_run_output([
             "--compositions", "POPC100",
             "--prod-ns", "100",
             "--partition", "general1",
             "--dry-run",
         ])
-        sbatch_pos = line.find(" sbatch ")
-        self.assertGreater(sbatch_pos, 0, f"no ' sbatch ' token in dry-run line: {line!r}")
-        prefix = line[:sbatch_pos]
-        # PROD_NS=100 must be in the command-prefix section (before sbatch)
-        self.assertIn("PROD_NS=100", prefix,
-                      f"PROD_NS=100 missing from command-prefix env list: {prefix!r}")
+        # Last whitespace-separated token should end in .sh
+        last_token = sbatch_line.strip().split()[-1]
+        self.assertTrue(last_token.endswith(".sh"),
+                        f"expected last sbatch token to be an .sh env file; got {last_token!r}")
+        # And it should be a SECOND .sh arg (the first being the worker script)
+        sh_tokens = [t for t in sbatch_line.split() if t.endswith(".sh")]
+        self.assertEqual(len(sh_tokens), 2,
+                         f"expected worker.sh + env_file.sh on sbatch line; got {sh_tokens!r}")
 
-    def test_run_i_comp_appears_as_env_prefix(self):
-        """RUN_<i>_COMP slot assignments also belong in the env prefix, not
-        in --export.  This token is what the worker looks up via indirect
-        expansion `${!COMP_VAR}` for slot i."""
-        line = self._dry_run_line([
+    def test_prod_ns_appears_in_env_file_body(self):
+        """--prod-ns 100 must produce 'export PROD_NS=100' in the env file."""
+        _, env_body = self._dry_run_output([
             "--compositions", "POPC100",
             "--prod-ns", "100",
             "--partition", "general1",
             "--dry-run",
         ])
-        sbatch_pos = line.find(" sbatch ")
-        prefix = line[:sbatch_pos]
-        self.assertIn("RUN_0_COMP=POPC100", prefix)
+        # Match `export PROD_NS=100` (possibly with shell-quoted value).
+        self.assertRegex(env_body, r"export PROD_NS=100\b",
+                         f"PROD_NS=100 missing from env file body: {env_body!r}")
 
-    def test_gpu_partition_also_uses_env_prefix(self):
+    def test_run_i_comp_appears_in_env_file_body(self):
+        """RUN_<i>_COMP slot assignments must also be in the env file body."""
+        _, env_body = self._dry_run_output([
+            "--compositions", "POPC100",
+            "--prod-ns", "100",
+            "--partition", "general1",
+            "--dry-run",
+        ])
+        self.assertRegex(env_body, r"export RUN_0_COMP=POPC100\b")
+
+    def test_gpu_partition_uses_same_pattern(self):
         """Regression guard isn't partition-specific — gpu partitions too."""
-        line = self._dry_run_line([
+        sbatch_line, env_body = self._dry_run_output([
             "--compositions", "POPC100",
             "--prod-ns", "100",
             "--partition", "gpu_test",
             "--dry-run",
         ])
-        self.assertNotRegex(line, r"--export=ALL,")
-        sbatch_pos = line.find(" sbatch ")
-        prefix = line[:sbatch_pos]
-        self.assertIn("PROD_NS=100", prefix)
+        self.assertNotRegex(sbatch_line, r"--export=ALL,")
+        self.assertRegex(env_body, r"export PROD_NS=100\b")
 
 
 if __name__ == "__main__":
