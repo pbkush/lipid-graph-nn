@@ -116,12 +116,29 @@ def analyse_log(name: str, log_path: Path, stall_minutes: float) -> SlotReport:
 
 
 def find_logs(roots: list[Path]) -> list[tuple[str, Path]]:
+    """Locate prun.log files under each root.
+
+    Handles both layouts seen in the wild:
+      <root>/<comp>/prun.log
+      <root>/<comp>/run/prun.log
+    plus the degenerate case where `root` is itself the simulation dir.
+    The display name is the first ancestor that isn't a generic "run" subdir.
+    """
     out: list[tuple[str, Path]] = []
+    seen: set[Path] = set()
     for root in roots:
         if not root.exists():
             continue
-        for log in sorted(root.glob("*/prun.log")):
-            out.append((log.parent.name, log))
+        for log in sorted(root.rglob("prun.log")):
+            if log in seen:
+                continue
+            seen.add(log)
+            # Walk up past "run" wrappers to find a composition-shaped name.
+            parent = log.parent
+            name = parent.name
+            if name == "run" and parent.parent != parent:
+                name = parent.parent.name
+            out.append((name, log))
     return out
 
 
