@@ -91,7 +91,7 @@ def _download_run(run, run_dir: Path) -> tuple[pd.DataFrame, dict]:
         print(f"    WARNING: could not fetch system metrics: {exc}")
 
     # File artifacts uploaded via wandb.save() — e.g. test_artifacts.npz
-    _ARTIFACT_FILES = {"test_artifacts.npz", "model_final.pt"}
+    _ARTIFACT_FILES = {"test_artifacts.npz", "model_final.pt", "model_best.pt"}
     try:
         found = []
         for wf in run.files():

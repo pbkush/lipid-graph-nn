@@ -5,12 +5,14 @@ Reads preprocessed .pt chunks produced by scripts/training/prepare_colab_subset.
 expands FIXED + SWEEP into a list of experiments, and runs each via train_one_run()
 with Weights & Biases logging. Run `wandb login` once before first use.
 """
+import copy
 import io
 import itertools
 import os
 import random
 import sys
 import warnings
+from collections import deque
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -190,6 +192,16 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
             edge_attr_dict, comp_vec=comp_vec,
         )
 
+    # Best-model selector: tail-mean of val/loss_total over last K epochs,
+    # gated until epoch >= min_epoch to avoid locking in pre-convergence weights
+    # (e.g. seeds that plateau on `variation` until ~epoch 50).
+    best_window_k = 10
+    best_min_epoch = max(best_window_k, cfg["epochs"] // 2)
+    val_loss_window = deque(maxlen=best_window_k)
+    best_tail_mean = float("inf")
+    best_state_dict = None
+    best_epoch = None
+
     for epoch in range(1, cfg["epochs"] + 1):
         model.train()
         total_train_loss = 0.0
@@ -268,6 +280,16 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         if device.type == 'cuda':
             metrics["gpu/peak_mem_actual_gb"] = torch.cuda.max_memory_allocated() / 1e9
             torch.cuda.reset_peak_memory_stats()
+
+        val_loss_window.append(avg_val_loss)
+        if epoch >= best_min_epoch and len(val_loss_window) == best_window_k:
+            tail_mean = sum(val_loss_window) / best_window_k
+            metrics["val/loss_total_tail_mean"] = tail_mean
+            if tail_mean < best_tail_mean:
+                best_tail_mean  = tail_mean
+                best_epoch      = epoch
+                best_state_dict = copy.deepcopy(model.state_dict())
+
         wandb.log(metrics)
 
     # ── Final held-out test evaluation ────────────────────────────────────────
@@ -337,6 +359,42 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         checkpoint_path,
     )
     wandb.save(str(checkpoint_path))
+
+    if best_state_dict is not None:
+        best_path = Path(wandb.run.dir) / "model_best.pt"
+        torch.save(
+            {
+                "state_dict": best_state_dict,
+                "model_kwargs": {
+                    "in_channels": CONFIG.model.in_channels,
+                    "hidden_dim": cfg["hidden_dim"],
+                    "num_layers": cfg["num_layers"],
+                    "out_dim": len(properties),
+                    "comp_dim": comp_dim,
+                },
+                "properties": list(properties),
+                "scaler_mean": scaler.mean_[prop_cols],
+                "scaler_scale": scaler.scale_[prop_cols],
+                "epoch": best_epoch,
+                "val_loss_total_tail_mean": best_tail_mean,
+                "selector": {
+                    "metric": "val/loss_total",
+                    "window_k": best_window_k,
+                    "min_epoch": best_min_epoch,
+                },
+                "run_id": wandb.run.id,
+            },
+            best_path,
+        )
+        wandb.save(str(best_path))
+        wandb.run.summary["best/epoch"] = best_epoch
+        wandb.run.summary["best/val_loss_total_tail_mean"] = best_tail_mean
+        print(f"Best checkpoint: epoch {best_epoch}, tail-mean val loss {best_tail_mean:.4f}")
+    else:
+        print(
+            f"No best checkpoint saved (epochs={cfg['epochs']} < min_epoch={best_min_epoch} "
+            f"or window not filled)."
+        )
 
     fig = plot_property_accuracies(test_targets, test_preds, properties, final_mse)
     fig_path = Path(wandb.run.dir) / "accuracy_plot.png"
