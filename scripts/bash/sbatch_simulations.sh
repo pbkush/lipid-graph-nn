@@ -104,6 +104,11 @@ for (( i=0; i<N_SIMS; i++ )); do
     else
         MDRUN_EXTRA="-ntmpi 1 -ntomp ${NTOMP_VALUE}"
     fi
+    # -pin {on,off,auto} from PIN env (default "on" if unset).  On a multi-
+    # slot node mdrun's default "auto" can decline to pin if it detects
+    # another mdrun and let the OS migrate threads across cores; explicit
+    # "on" anchors threads to the cores SLURM/HIP_VISIBLE_DEVICES gave us.
+    MDRUN_EXTRA+=" -pin ${PIN:-on}"
 
     # Build run_martini_pipeline.py argument list.  CRITICAL: --mdrun-args
     # uses argparse.REMAINDER, which greedily consumes everything after it.

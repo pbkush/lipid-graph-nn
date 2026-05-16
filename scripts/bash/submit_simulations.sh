@@ -67,6 +67,7 @@ TIME_LIMIT="24:00:00"
 GPUS_PER_NODE=""
 SIMS_PER_NODE=""
 CPUS_PER_SIM=""
+PIN=""             # empty → fall through to hpc_defaults.pin (or hpc_defaults_cpu.pin)
 MEM_PER_SIM=""
 MPI_RANKS_PER_SIM=""   # CPU only; ignored on GPU partitions
 MAX_QUEUE=0            # 0 = no cap
@@ -104,6 +105,7 @@ while [[ $# -gt 0 ]]; do
         --cpus-per-sim)         CPUS_PER_SIM="$2";            shift 2 ;;
         --mem-per-sim)          MEM_PER_SIM="$2";             shift 2 ;;
         --mpi-ranks-per-sim)    MPI_RANKS_PER_SIM="$2";       shift 2 ;;
+        --pin)                  PIN="$2";                     shift 2 ;;
         --max-queue)            MAX_QUEUE="$2";               shift 2 ;;
         --completed-csv)        COMPLETED_CSV="$2";           shift 2 ;;
         --dry-run)              DRY_RUN=1;                    shift ;;
@@ -166,6 +168,23 @@ else
     # (so the user can pass it without harm), default to 1 otherwise.
     [[ -z "$MPI_RANKS_PER_SIM" ]] && MPI_RANKS_PER_SIM=1
 fi
+
+# gmx mdrun -pin {on,off,auto}: fall through to the config default for this
+# partition.  Don't go through _default(): it does exit 1 on a missing key
+# (which is fine for required fields but not here — hpc_defaults_cpu doesn't
+# declare 'pin' yet).  Query print_config_var.py directly and default to "on".
+if [[ -z "$PIN" ]]; then
+    if PIN=$(python scripts/python/print_config_var.py "${DEFAULTS_KEY}.pin" 2>/dev/null); then
+        :   # got it from config
+    else
+        PIN="on"
+    fi
+    [[ -z "$PIN" ]] && PIN="on"
+fi
+case "$PIN" in
+    on|off|auto) ;;
+    *) echo "ERROR: --pin must be one of on|off|auto, got '$PIN'" >&2; exit 1 ;;
+esac
 
 # ── Validate source exclusivity ───────────────────────────────────────────────
 N_SOURCES=0
@@ -377,6 +396,7 @@ echo "  sims-per-node  : $SIMS_PER_NODE"
 echo "  cpus-per-sim   : $CPUS_PER_SIM"
 echo "  mem-per-sim    : $MEM_PER_SIM"
 echo "  gpus-per-node  : $GPUS_PER_NODE"
+echo "  pin            : $PIN"
 echo "  prod length    : $PROD_DESC"
 echo "  Total comps    : $N_TOTAL"
 echo "  Batches        : $N_BATCHES (up to $SIMS_PER_NODE sims/node)"
@@ -423,6 +443,7 @@ for (( b=0; b<N_BATCHES; b++ )); do
         "GPUS_PER_NODE=$GPUS_PER_NODE"
         "CPUS_PER_SIM=$CPUS_PER_SIM"
         "MPI_RANKS_PER_SIM=$MPI_RANKS_PER_SIM"
+        "PIN=$PIN"
     )
     [[ -n "$PROD_NS"    ]] && ENV_PRELIST+=("PROD_NS=$PROD_NS")
     [[ -n "$NSTEPS"     ]] && ENV_PRELIST+=("NSTEPS=$NSTEPS")

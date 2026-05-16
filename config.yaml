@@ -123,6 +123,7 @@ martini_pipeline:
     cpus_per_sim: 4
     mem_per_sim: "16G"
     gpus_per_node: 8
+    pin: "on"   # gmx mdrun -pin {on,off,auto}; "on" forces explicit thread pinning
 
   hpc_defaults_cpu:
     sims_per_node: 2
