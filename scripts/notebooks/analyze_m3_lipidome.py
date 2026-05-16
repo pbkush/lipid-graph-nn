@@ -22,6 +22,7 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
+    import glob
     import json
     import re
     import warnings
@@ -31,11 +32,35 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
+    from scipy.cluster.hierarchy import dendrogram, linkage
     from sklearn.cluster import AgglomerativeClustering
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
 
     import marimo as mo
+
+    try:
+        import umap
+        HAS_UMAP = True
+    except Exception:
+        umap = None
+        HAS_UMAP = False
+
+    try:
+        import hdbscan
+        HAS_HDBSCAN = True
+    except Exception:
+        hdbscan = None
+        HAS_HDBSCAN = False
+
+    try:
+        import torch
+        from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
+        HAS_TORCH = True
+    except Exception:
+        torch = None
+        MembranePropertyGNN = None
+        HAS_TORCH = False
 
     warnings.filterwarnings("ignore")
 
@@ -66,18 +91,28 @@ def _():
         DATA_DIR,
         FF_PARAMS_PATH,
         FIG_DIR,
+        HAS_HDBSCAN,
+        HAS_TORCH,
+        HAS_UMAP,
         ITP_DIR_PRIMARY,
         ITP_DIR_STEROLS,
+        MembranePropertyGNN,
         PCA,
         REPO,
         StandardScaler,
+        dendrogram,
+        glob,
+        hdbscan,
         json,
+        linkage,
         mo,
         np,
         pd,
         plt,
         re,
         save_fig,
+        torch,
+        umap,
     )
 
 
@@ -87,17 +122,28 @@ def _(mo):
         r"""
         # M3 Lipidome Analysis
 
-        Characterisation of the Martini 3 lipid library before any new simulations.
-        Plan: [`docs/m3_lipidome_analysis_plan.md`](../../docs/m3_lipidome_analysis_plan.md).
+        Characterisation of the Martini 3 lipid library before any new
+        simulations. Plan: [`docs/m3_lipidome_analysis_plan.md`](../../docs/m3_lipidome_analysis_plan.md).
 
         Two layers:
-        - **(A) Lipid space** — each lipid is a point with descriptor vectors built
-          from ITP/INSANE metadata, bead composition, and bead physics.
+
+        - **(A) Lipid space** — each lipid is a point with descriptor vectors
+          built from ITP/INSANE metadata, bead composition, and bead physics.
         - **(B) Composition space** — each membrane is a mole-fraction-weighted
           centroid of its lipids in the lipid-space embedding.
 
-        The 70 currently-simulated compositions and the 10-lipid training pool are
-        marked on every relevant figure.
+        The 70 currently-simulated compositions and the 10-lipid training pool
+        are marked on every relevant figure.
+
+        Sections:
+        1. ITP inventory
+        2. Lipid feature descriptors
+        3. Lipid-space dimensionality reduction & clustering
+        4. Composition space construction
+        5. Composition-space coverage
+        6. Selection rules for next simulations
+        7. GNN embedding probe (tie-back to the model)
+        8. Conclusions
         """
     )
     return
@@ -105,12 +151,25 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## Section 0 — ITP inventory")
+    mo.md(r"## 1. ITP inventory")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        Parse every `[moleculetype]` block in `resources/martini3/itp/` plus the
+        sterols file in `emil_extra/`. Harvest the `@INSANE` metadata
+        (headgroup / linker / tail tokens) and the `[atoms]` block (bead types,
+        per-atom charge). Filter to bilayer-forming families.
+        """
+    )
     return
 
 
 @app.cell
-def _(Counter, ITP_DIR_PRIMARY, ITP_DIR_STEROLS):
+def _(Counter, ITP_DIR_PRIMARY, ITP_DIR_STEROLS, mo):
     def _classify_source(filename):
         f = filename.lower()
         if "etherphospholipids" in f: return "ether"
@@ -201,19 +260,28 @@ def _(Counter, ITP_DIR_PRIMARY, ITP_DIR_STEROLS):
     _sterol_file = ITP_DIR_STEROLS / "martini_v3.0_sterols_v1.0.itp"
     if _sterol_file.exists():
         _files.append(_sterol_file)
-    _keep = []
-    for _f in _files:
-        _name = _f.name.lower()
-        if any(s in _name for s in ("ffbonded", "ions", "solvents", "fattyacids", "hydrocarbons")):
-            continue
-        _keep.append(_f)
+    _keep = [
+        f for f in _files
+        if not any(s in f.name.lower()
+                   for s in ("ffbonded", "ions", "solvents", "fattyacids", "hydrocarbons"))
+    ]
     raw_lipids = []
     for _f in _keep:
         raw_lipids.extend(_parse_itp(_f))
 
     _family_counts = Counter(r["family"] for r in raw_lipids)
-    print(f"Parsed {len(raw_lipids)} molecules from {len({r['source'] for r in raw_lipids})} ITP files")
-    print(f"Families: {dict(_family_counts)}")
+    raw_inventory_summary = mo.md(
+        f"""
+        **Raw inventory**
+
+        - **Files parsed**: {len({r['source'] for r in raw_lipids})}
+        - **Total molecules**: {len(raw_lipids)}
+        - **Per-family count**: {dict(_family_counts)}
+        - **With `@INSANE` metadata**: {sum(1 for r in raw_lipids if r['insane'])}
+          ({sum(1 for r in raw_lipids if r['insane']) / max(1, len(raw_lipids)):.0%})
+        """
+    )
+    raw_inventory_summary
     return (raw_lipids,)
 
 
@@ -232,7 +300,6 @@ def _(CURRENT_LIPIDS, FF_PARAMS_PATH, json, np, pd, raw_lipids):
         link_tokens = ins.get("allink", "").split()
         tail_tokens = ins.get("altail", "").split()
 
-        n_beads = len(atoms)
         total_charge = sum(a["charge"] for a in atoms)
         try:
             insane_charge = float(ins.get("charge", "0").strip())
@@ -246,7 +313,7 @@ def _(CURRENT_LIPIDS, FF_PARAMS_PATH, json, np, pd, raw_lipids):
             "molname":         rec["molname"],
             "family":          rec["family"],
             "source":          rec["source"],
-            "n_beads":         n_beads,
+            "n_beads":         len(atoms),
             "n_tails":         len(tail_tokens),
             "tail_len_mean":   float(np.mean(tail_lengths)) if tail_lengths else 0.0,
             "tail_len_total":  int(sum(tail_lengths)),
@@ -262,20 +329,45 @@ def _(CURRENT_LIPIDS, FF_PARAMS_PATH, json, np, pd, raw_lipids):
         }
 
     _rows = [_features_from_record(r) for r in raw_lipids]
-    lipid_df = pd.DataFrame(_rows)
-    lipid_df = lipid_df[lipid_df["family"].isin(BILAYER_FAMILIES)].reset_index(drop=True)
+    _df = pd.DataFrame(_rows)
+    lipid_df = _df[_df["family"].isin(BILAYER_FAMILIES)].reset_index(drop=True).copy()
     lipid_df["is_current"] = lipid_df["molname"].isin(CURRENT_LIPIDS)
 
-    print(f"Lipid count after bilayer-only filter: {len(lipid_df)}")
-    print(f"Of which currently simulated: {lipid_df['is_current'].sum()} / {len(CURRENT_LIPIDS)} target")
-    _missing = sorted(set(CURRENT_LIPIDS) - set(lipid_df["molname"]))
-    if _missing:
-        print(f"Current lipids missing from M3 ITPs: {_missing}")
-    return ff_params, lipid_df
+    n_lipidome = len(lipid_df)
+    n_current_found = int(lipid_df["is_current"].sum())
+    missing_current = sorted(set(CURRENT_LIPIDS) - set(lipid_df["molname"]))
+    return (
+        BILAYER_FAMILIES,
+        ff_params,
+        lipid_df,
+        missing_current,
+        n_current_found,
+        n_lipidome,
+    )
 
 
 @app.cell
-def _(lipid_df, mo, np, pd, plt, save_fig):
+def _(CURRENT_LIPIDS, lipid_df, mo, missing_current, n_current_found, n_lipidome):
+    mo.vstack([
+        mo.md(
+            f"""
+            **Bilayer-forming lipid set (`lipid_df`)**
+
+            - **n_lipids**: {n_lipidome}
+            - **Currently simulated** (overlap with the 10-lipid training pool):
+              {n_current_found} / {len(CURRENT_LIPIDS)}
+            - **Missing from M3 ITPs**: `{missing_current}`
+              {"(none — full pool present in M3)" if not missing_current else ""}
+            - **Columns**: `{list(lipid_df.columns)}`
+            """
+        ),
+        mo.as_html(lipid_df.head(8)),
+    ])
+    return
+
+
+@app.cell
+def _(lipid_df, mo, n_current_found, n_lipidome, np, plt, save_fig):
     _fam_order = lipid_df["family"].value_counts().sort_values(ascending=False).index.tolist()
     _counts = lipid_df["family"].value_counts().reindex(_fam_order)
     _current_in_fam = lipid_df.groupby("family")["is_current"].sum().reindex(_fam_order).fillna(0).astype(int)
@@ -284,19 +376,39 @@ def _(lipid_df, mo, np, pd, plt, save_fig):
     _x = np.arange(len(_fam_order))
     _ax.bar(_x, _counts.values, color="#888", label="M3 lipids")
     _ax.bar(_x, _current_in_fam.values, color="#c0392b", label="currently simulated")
-    _ax.set_xticks(_x); _ax.set_xticklabels(_fam_order, rotation=30, ha="right")
+    _ax.set_xticks(_x)
+    _ax.set_xticklabels(_fam_order, rotation=30, ha="right")
     _ax.set_xlabel("headgroup / linker family")
     _ax.set_ylabel("number of lipids")
-    _ax.set_title(f"M3 lipid count per family ({len(lipid_df)} bilayer-forming lipids, {lipid_df['is_current'].sum()} in current training pool)")
+    _ax.set_title(
+        f"M3 lipid count per family (n = {n_lipidome} bilayer-forming, "
+        f"{n_current_found} in current training pool)"
+    )
     _ax.legend(frameon=False)
     _fig.tight_layout()
     save_fig(_fig, "fig00_family_inventory")
+    family_inventory_fig = _fig
 
-    _summary = pd.DataFrame({
-        "n_lipids": _counts,
-        "in_current_pool": _current_in_fam,
-    }).reset_index().rename(columns={"index": "family"})
-    mo.vstack([_fig, _summary])
+    n_families = len(_fam_order)
+    _n_families_with_current = int((_current_in_fam > 0).sum())
+    family_coverage_summary = mo.callout(
+        mo.md(
+            f"**Coverage at the family level**: the 10-lipid training pool sits "
+            f"in {_n_families_with_current} of {n_families} families "
+            f"(PC, PE, PS, plus CHOL in the sterol family). The other "
+            f"{n_families - _n_families_with_current} families "
+            f"({', '.join(f for f in _fam_order if _current_in_fam[f] == 0)}) "
+            f"are unsampled in the current training set."
+        ),
+        kind="info",
+    )
+    mo.vstack([family_inventory_fig, family_coverage_summary])
+    return (n_families,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"## 2. Lipid feature descriptors")
     return
 
 
@@ -304,21 +416,23 @@ def _(lipid_df, mo, np, pd, plt, save_fig):
 def _(mo):
     mo.md(
         r"""
-        ## Section 1 — Lipid feature representations
-
-        Three descriptor types built and compared in parallel.
+        Three descriptor vectors are computed and compared in parallel. The
+        question is not which is best — it is how much downstream structure
+        depends on the feature choice.
 
         1. **Structural** — family one-hot, bead/tail counts, tail length and
            asymmetry, unsaturation, head/link bead counts, net charge.
         2. **Bead composition** — count of each Martini 3 bead type per lipid.
-        3. **Bead physics** — mean + sum of `[mass, charge, σ, ε]` over beads.
+        3. **Bead physics** — per-lipid mean and sum of `[mass, charge, σ, ε]`
+           from the bead parameter file. These are the same physics features
+           the GNN consumes at the node level.
         """
     )
     return
 
 
 @app.cell
-def _(StandardScaler, ff_params, lipid_df, np, pd):
+def _(StandardScaler, ff_params, lipid_df, mo, np, pd):
     _struct_cols = [
         "n_beads", "n_tails", "tail_len_mean", "tail_len_total",
         "tail_len_asym", "n_double_bonds", "frac_unsat",
@@ -355,42 +469,53 @@ def _(StandardScaler, ff_params, lipid_df, np, pd):
         "physics":    X_physics,
     }
     _missing_ff = sorted({b for b in _all_beads if b not in ff_params})
-    if _missing_ff:
-        print(f"WARNING: bead types missing from ff_params (zeroed out): {_missing_ff}")
-    print({k: v.shape for k, v in descriptors.items()})
+
+    descriptor_summary = mo.vstack([
+        mo.md(
+            f"""
+            **Descriptors** (each row is one of {len(lipid_df)} lipids, z-scored)
+
+            | name        | shape | notes |
+            |-------------|-------|-------|
+            | structural  | {X_structural.shape} | numeric features + family one-hot |
+            | beadcomp    | {X_beadcomp.shape}  | counts over {len(_all_beads)} unique Martini bead types |
+            | physics     | {X_physics.shape}   | mean + sum of `[mass, charge, σ, ε]` per lipid |
+            """
+        ),
+        mo.callout(
+            mo.md(
+                f"Bead types missing from `ff_params.json` (zeroed in physics "
+                f"descriptor): `{_missing_ff}`"
+            ),
+            kind="warn",
+        ) if _missing_ff else mo.md(""),
+    ])
+    descriptor_summary
     return (descriptors,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"## 3. Lipid-space dimensionality reduction & clustering")
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-        ## Section 2 — Dimensionality reduction & clustering
-
-        PCA + UMAP per descriptor; HDBSCAN on the PCA-reduced points.
-        Ward hierarchical clustering on the structural descriptor seeds the
-        composition-space archetypes downstream.
+        For each descriptor: PCA (linear) and UMAP (non-linear). HDBSCAN
+        clusters the 10-dimensional PCA-reduced space. The 2D embeddings are
+        coloured by family with a ringed marker for the 10 current training
+        lipids; the natural visual question is whether the training pool
+        covers the lipidome or hugs a corner.
         """
     )
     return
 
 
 @app.cell
-def _(PCA, descriptors, pd):
-    try:
-        import umap
-        HAS_UMAP = True
-    except Exception as _e:
-        print(f"umap-learn not available: {_e}")
-        HAS_UMAP = False
-
-    try:
-        import hdbscan
-        HAS_HDBSCAN = True
-    except Exception as _e:
-        print(f"hdbscan not available: {_e}")
-        HAS_HDBSCAN = False
-
+def _(HAS_HDBSCAN, HAS_UMAP, PCA, descriptors, hdbscan, mo, pd, umap):
     embeds = {}
     for _name, _X in descriptors.items():
         _pca = PCA(n_components=min(10, _X.shape[1])).fit(_X)
@@ -402,11 +527,11 @@ def _(PCA, descriptors, pd):
         }
         if HAS_UMAP:
             _out["umap_2d"] = umap.UMAP(
-                n_neighbors=15, min_dist=0.1, random_state=0
+                n_neighbors=15, min_dist=0.1, random_state=0,
             ).fit_transform(_X)
         if HAS_HDBSCAN:
             _out["hdb_labels"] = hdbscan.HDBSCAN(
-                min_cluster_size=5, min_samples=3
+                min_cluster_size=5, min_samples=3,
             ).fit_predict(_Xp)
         embeds[_name] = _out
 
@@ -417,13 +542,15 @@ def _(PCA, descriptors, pd):
         },
         index=[f"PC{i+1}" for i in range(5)],
     )
-    print("PCA explained variance (first 5 PCs):")
-    print(_expl.round(3))
-    return HAS_HDBSCAN, HAS_UMAP, embeds
+    mo.vstack([
+        mo.md("**PCA explained variance (first 5 components, per descriptor)**"),
+        mo.as_html(_expl.round(3)),
+    ])
+    return (embeds,)
 
 
 @app.cell
-def _(embeds, lipid_df, plt, save_fig):
+def _(embeds, lipid_df, mo, plt, save_fig):
     _fams = sorted(lipid_df["family"].unique())
     _cmap = plt.cm.tab20
     _color_for = {f: _cmap(i / max(1, len(_fams) - 1)) for i, f in enumerate(_fams)}
@@ -433,7 +560,6 @@ def _(embeds, lipid_df, plt, save_fig):
     _fig, _axes = plt.subplots(
         len(_keys), _ncol, figsize=(4.5 * _ncol, 4.2 * len(_keys)), squeeze=False,
     )
-
     for _col, (_dname, _info) in enumerate(embeds.items()):
         for _row, _ek in enumerate(_keys):
             _ax = _axes[_row][_col]
@@ -456,26 +582,38 @@ def _(embeds, lipid_df, plt, save_fig):
                     label="training pool" if (_row == 0 and _col == 0) else None,
                 )
             _ax.set_title(f"{_dname} — {_ek}")
-            _ax.set_xlabel("dim 1"); _ax.set_ylabel("dim 2")
-
+            _ax.set_xlabel("dim 1")
+            _ax.set_ylabel("dim 2")
     if _axes[0][0].get_legend_handles_labels()[0]:
         _axes[0][0].legend(
             bbox_to_anchor=(0, 1.25), loc="lower left", ncol=6,
             fontsize=7, frameon=False,
         )
     _fig.suptitle(
-        "Lipid-space 2D embeddings (colour = family, ring = current training pool)",
+        "Lipid-space 2D embeddings (colour = family, ringed = current training pool)",
         y=1.02,
     )
     _fig.tight_layout()
     save_fig(_fig, "fig01_lipid_embeddings_by_descriptor")
+    lipid_embedding_fig = _fig
+
+    _caption = mo.md(
+        "Across all three descriptors the training pool clusters together "
+        "rather than spanning the lipidome. The 10 lipids occupy a small "
+        "region of family-space (PC/PE/PS/sterol) and a narrow tail-length "
+        "and unsaturation range; many M3 families are entirely unsampled."
+    )
+    mo.vstack([lipid_embedding_fig, _caption])
     return
 
 
 @app.cell
 def _(Counter, HAS_HDBSCAN, embeds, mo, pd):
     if not HAS_HDBSCAN:
-        _ = mo.callout("HDBSCAN unavailable — skipping cluster summary.", kind="warn")
+        cluster_summary_df = None
+        hdb_summary = mo.callout(
+            "HDBSCAN unavailable — skipping cluster summary.", kind="warn",
+        )
     else:
         _rows = []
         for _dname, _info in embeds.items():
@@ -489,14 +627,42 @@ def _(Counter, HAS_HDBSCAN, embeds, mo, pd):
                 "n_noise":    _cnt.get(-1, 0),
                 "largest":    max((v for k, v in _cnt.items() if k != -1), default=0),
             })
-        print(pd.DataFrame(_rows).to_string(index=False))
+        cluster_summary_df = pd.DataFrame(_rows)
+        hdb_summary = mo.vstack([
+            mo.md("**HDBSCAN cluster summary** (10D PCA-reduced lipid space)"),
+            mo.as_html(cluster_summary_df),
+        ])
+    hdb_summary
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ### Ward dendrogram on structural descriptors
+
+        Ward hierarchical clustering on the standardised structural features
+        gives a single deterministic tree, useful for choosing a small number
+        of lipid archetypes that will seed the composition-space
+        representation in Section 4.
+        """
+    )
     return
 
 
 @app.cell
-def _(AgglomerativeClustering, descriptors, lipid_df, np, plt, save_fig):
-    from scipy.cluster.hierarchy import dendrogram, linkage
-
+def _(
+    AgglomerativeClustering,
+    dendrogram,
+    descriptors,
+    lipid_df,
+    linkage,
+    mo,
+    np,
+    plt,
+    save_fig,
+):
     _X = descriptors["structural"]
     _Z = linkage(_X, method="ward")
 
@@ -510,39 +676,65 @@ def _(AgglomerativeClustering, descriptors, lipid_df, np, plt, save_fig):
     _ax.set_ylabel("linkage distance")
     _fig.tight_layout()
     save_fig(_fig, "fig02_ward_dendrogram_structural")
+    ward_fig = _fig
 
     K_ARCHETYPES = 8
     archetype_labels = AgglomerativeClustering(
         n_clusters=K_ARCHETYPES, linkage="ward"
     ).fit_predict(_X)
-
-    _members = (
-        lipid_df.assign(archetype=archetype_labels)
-        .groupby("archetype")["molname"]
-        .apply(lambda s: ", ".join(sorted(s.tolist())[:8]) + (" …" if len(s) > 8 else ""))
+    lipid_df_arch = lipid_df.assign(archetype=archetype_labels)
+    _arch_members = (
+        lipid_df_arch.groupby("archetype")
+        .agg(
+            n_members=("molname", "count"),
+            n_current=("is_current", "sum"),
+            members_preview=("molname", lambda s: ", ".join(sorted(s.tolist())[:6])
+                              + (" …" if len(s) > 6 else "")),
+        )
+        .reset_index()
     )
-    print(f"Ward → {K_ARCHETYPES} archetypes. Member previews:")
-    print(_members.to_string())
-    return K_ARCHETYPES, archetype_labels
+
+    _arch_with_current = int((_arch_members["n_current"] > 0).sum())
+    _arch_callout = mo.callout(
+        mo.md(
+            f"**Training pool covers {_arch_with_current} of {K_ARCHETYPES} "
+            f"Ward archetypes** at the structural level. The remaining "
+            f"{K_ARCHETYPES - _arch_with_current} archetypes contain no "
+            f"current training lipid — they are the natural targets for "
+            f"composition-space extrapolation."
+        ),
+        kind="info",
+    )
+    mo.vstack([ward_fig, mo.as_html(_arch_members), _arch_callout])
+    return K_ARCHETYPES, archetype_labels, lipid_df_arch
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"## 4. Composition space construction")
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-        ## Section 3 — Composition space
-
         A composition is a mole-fraction vector over lipids. The natural
         fixed-length coordinate is the **mole-fraction-weighted centroid** of
-        its lipids in the lipid PCA space, independent of how many lipids the
-        membrane contains.
+        the lipids' positions in the lipid PCA space — a continuous
+        representation independent of how many lipids the membrane contains.
+
+        Candidate compositions are drawn from the **current 10-lipid pool only**
+        (pure + binary 10 %-step + Dirichlet mixtures). Extension to the full
+        M3 lipidome requires bead-vocab decoupling and is Phase 2 of this
+        analysis.
         """
     )
     return
 
 
 @app.cell
-def _(DATA_DIR, pd, re):
+def _(DATA_DIR, mo, pd, re):
     _pat = re.compile(r"([A-Z]+)(\d+)")
 
     def _parse_comp(name):
@@ -558,16 +750,26 @@ def _(DATA_DIR, pd, re):
         return {k: v / s for k, v in comp.items()}
 
     _records = []
+    _unparsed = []
     for _d in sorted(p.name for p in DATA_DIR.iterdir() if p.is_dir()):
         _c = _parse_comp(_d)
         if _c is None:
-            print(f"could not parse composition for {_d}")
+            _unparsed.append(_d)
             continue
         _records.append({"name": _d, "fractions": _c})
 
     sim_df = pd.DataFrame(_records)
-    print(f"Parsed {len(sim_df)} simulated compositions")
-    print(f"Unique lipids used: {sorted({l for c in sim_df['fractions'] for l in c})}")
+    _used = sorted({l for c in sim_df["fractions"] for l in c})
+    sim_summary = mo.md(
+        f"""
+        **Simulated compositions (`sim_df`)**
+
+        - **n**: {len(sim_df)}
+        - **Lipids used**: `{_used}`
+        - **Unparsed directories** (ignored): {_unparsed if _unparsed else "none"}
+        """
+    )
+    sim_summary
     return (sim_df,)
 
 
@@ -593,7 +795,7 @@ def _(embeds, lipid_df, np):
 
 
 @app.cell
-def _(CURRENT_LIPIDS, composition_to_centroid, np):
+def _(CURRENT_LIPIDS, composition_to_centroid, mo, np, pd):
     _comps = []
     for _lip in CURRENT_LIPIDS:
         _comps.append({"name": f"{_lip}100", "fractions": {_lip: 1.0}, "kind": "pure"})
@@ -622,28 +824,37 @@ def _(CURRENT_LIPIDS, composition_to_centroid, np):
         if not _frac:
             continue
         _s = sum(_frac.values())
-        _frac = {k_: v / _s for k_, v in _frac.items()}
+        _frac = {kk: vv / _s for kk, vv in _frac.items()}
         _comps.append({"name": None, "fractions": _frac, "kind": "dirichlet"})
 
     candidate_comps = []
-    _cand_coords_list = []
-    _cand_kinds_list = []
+    _coords_list = []
+    _kinds_list = []
     for _c in _comps:
         _v = composition_to_centroid(_c["fractions"])
         if _v is None:
             continue
         candidate_comps.append(_c)
-        _cand_coords_list.append(_v)
-        _cand_kinds_list.append(_c["kind"])
+        _coords_list.append(_v)
+        _kinds_list.append(_c["kind"])
 
-    cand_coords = np.array(_cand_coords_list)
-    _kc, _kn = np.unique(_cand_kinds_list, return_counts=True)
-    print(f"Candidate compositions: {len(cand_coords)}  ({dict(zip(_kc, _kn))})")
+    cand_coords = np.array(_coords_list)
+    _ks, _kn = np.unique(_kinds_list, return_counts=True)
+    cand_summary = mo.md(
+        f"""
+        **Candidate compositions (training-pool-only)**
+
+        - **n**: {len(cand_coords)}
+        - **Coord dim**: {cand_coords.shape[1]} (lipid-PCA components)
+        - **By kind**: {dict(zip(_ks, _kn.astype(int)))}
+        """
+    )
+    cand_summary
     return cand_coords, candidate_comps
 
 
 @app.cell
-def _(cand_coords, composition_to_centroid, np, sim_df):
+def _(cand_coords, composition_to_centroid, mo, np, sim_df):
     _coords = []
     _names = []
     for _, _row in sim_df.iterrows():
@@ -655,12 +866,17 @@ def _(cand_coords, composition_to_centroid, np, sim_df):
     sim_coords = np.array(_coords)
     sim_names = _names
     all_coords = np.vstack([cand_coords, sim_coords])
-    print(f"Composition cloud: {len(cand_coords)} candidates + {len(sim_coords)} simulated")
+    cloud_summary = mo.md(
+        f"""
+        **Composition cloud** ({len(cand_coords)} candidates + {len(sim_coords)} simulated = {len(all_coords)} points)
+        """
+    )
+    cloud_summary
     return all_coords, sim_coords, sim_names
 
 
 @app.cell
-def _(PCA, all_coords, cand_coords, plt, save_fig, sim_coords):
+def _(PCA, all_coords, cand_coords, mo, plt, save_fig, sim_coords):
     _cpca = PCA(n_components=2).fit(all_coords)
     cand_2d = _cpca.transform(cand_coords)
     sim_2d = _cpca.transform(sim_coords)
@@ -670,35 +886,50 @@ def _(PCA, all_coords, cand_coords, plt, save_fig, sim_coords):
                 label="candidate compositions")
     _ax.scatter(sim_2d[:, 0], sim_2d[:, 1], s=60, color="#c0392b",
                 edgecolor="black", linewidth=0.5, label="simulated (70 systems)")
-    _ax.set_xlabel("PC1 (composition centroid)")
-    _ax.set_ylabel("PC2 (composition centroid)")
+    _ax.set_xlabel(f"PC1 ({_cpca.explained_variance_ratio_[0]:.0%} of variance)")
+    _ax.set_ylabel(f"PC2 ({_cpca.explained_variance_ratio_[1]:.0%} of variance)")
     _ax.set_title(
-        f"Composition-space PCA — {len(cand_coords)} candidates + "
-        f"{len(sim_coords)} simulated, training-pool mixtures only"
+        "Composition-space PC1 vs PC2 (mole-fraction-weighted centroids)"
     )
     _ax.legend(frameon=False, loc="best")
     _fig.tight_layout()
     save_fig(_fig, "fig03_composition_pca")
+    composition_pca_fig = _fig
+    composition_pca_fig
     return cand_2d, sim_2d
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Section 4 — Composition-space coverage""")
+    mo.md(r"## 5. Composition-space coverage")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        HDBSCAN on the full composition cloud (candidates + simulated points)
+        finds natural mixture clusters. For each cluster: cluster size, number
+        of simulated points in it, and the distance from the cluster centroid
+        to its nearest simulated neighbour. Clusters with `nearest_sim` large
+        or `n_simulated = 0` are the **coverage gaps** — directly actionable
+        targets for the next simulation batch.
+        """
+    )
     return
 
 
 @app.cell
-def _(HAS_HDBSCAN, all_coords, mo, np, pd, sim_coords):
+def _(HAS_HDBSCAN, all_coords, hdbscan, mo, np, pd, sim_coords):
     if not HAS_HDBSCAN:
-        _ = mo.callout("HDBSCAN unavailable — skipping coverage analysis.", kind="warn")
         comp_labels = None
         comp_centroids = None
         coverage_df = None
+        coverage_render = mo.callout("HDBSCAN unavailable — skipping coverage.", kind="warn")
     else:
-        import hdbscan as _hdbscan
-        comp_labels = _hdbscan.HDBSCAN(
-            min_cluster_size=30, min_samples=10
+        comp_labels = hdbscan.HDBSCAN(
+            min_cluster_size=30, min_samples=10,
         ).fit_predict(all_coords)
         _n_cand = all_coords.shape[0] - sim_coords.shape[0]
         _sim_labels = comp_labels[_n_cand:]
@@ -723,15 +954,27 @@ def _(HAS_HDBSCAN, all_coords, mo, np, pd, sim_coords):
                 "n_simulated":           _n_sim,
                 "nearest_sim_to_center": round(_d, 3),
             })
-        coverage_df = pd.DataFrame(_rows).sort_values("size", ascending=False)
-        print(coverage_df.to_string(index=False))
+        coverage_df = pd.DataFrame(_rows).sort_values("size", ascending=False).reset_index(drop=True)
+        _empty = coverage_df[coverage_df["n_simulated"] == 0]
+        coverage_render = mo.vstack([
+            mo.as_html(coverage_df),
+            mo.callout(
+                mo.md(
+                    f"**Unsimulated clusters**: {len(_empty)} of {len(coverage_df)} "
+                    f"composition clusters contain no current sim. These are the "
+                    f"explicit coverage gaps for the next simulation batch."
+                ),
+                kind="info" if len(_empty) == 0 else "warn",
+            ),
+        ])
+    coverage_render
     return comp_centroids, comp_labels, coverage_df
 
 
 @app.cell
-def _(cand_2d, comp_labels, mo, plt, save_fig, sim_2d, sim_coords):
+def _(cand_2d, comp_labels, mo, plt, save_fig, sim_2d):
     if comp_labels is None:
-        _ = mo.callout("Skipping cluster overlay (no labels).", kind="warn")
+        coverage_plot = mo.callout("Skipping cluster overlay (no labels).", kind="warn")
     else:
         _n_cand = cand_2d.shape[0]
         _cand_lab = comp_labels[:_n_cand]
@@ -748,11 +991,22 @@ def _(cand_2d, comp_labels, mo, plt, save_fig, sim_2d, sim_coords):
             if _ms.any():
                 _ax.scatter(sim_2d[_ms, 0], sim_2d[_ms, 1], s=60, color=_color,
                             edgecolor="black", linewidth=0.6)
-        _ = sim_coords  # ensure dependency for caching
-        _ax.set_title("Composition clusters (HDBSCAN); simulated = ringed, candidates = dots")
-        _ax.set_xlabel("PC1"); _ax.set_ylabel("PC2")
+        _ax.set_title(
+            "Composition PC1 vs PC2, coloured by HDBSCAN cluster "
+            "(simulated = ringed, candidates = dots)"
+        )
+        _ax.set_xlabel("PC1")
+        _ax.set_ylabel("PC2")
         _fig.tight_layout()
         save_fig(_fig, "fig04_composition_clusters")
+        coverage_plot = _fig
+    coverage_plot
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"## 6. Selection rules")
     return
 
 
@@ -760,11 +1014,13 @@ def _(cand_2d, comp_labels, mo, plt, save_fig, sim_2d, sim_coords):
 def _(mo):
     mo.md(
         r"""
-        ## Section 5 — Selection rules
+        Two rules previewed (no simulations triggered):
 
-        Two rules previewed: cluster-centroid pick and stratified shells at
-        the 33rd, 66th, and 95th percentile of distance-to-centroid within
-        each cluster. No simulations triggered.
+        - **Centroid pick** — nearest candidate to each cluster centroid.
+        - **Stratified shells** — at the 33rd, 66th, and 95th percentile of
+          distance-to-centroid within the cluster. This is the experimental
+          knob for the "embedding-generalisation as a function of distance
+          from training" question.
         """
     )
     return
@@ -773,8 +1029,8 @@ def _(mo):
 @app.cell
 def _(cand_coords, candidate_comps, comp_centroids, comp_labels, mo, np, pd):
     if comp_centroids is None or not comp_centroids:
-        _ = mo.callout("No clusters → skipping selection rule preview.", kind="warn")
         shortlist = None
+        shortlist_render = mo.callout("No clusters → skipping selection.", kind="warn")
     else:
         _n_cand = cand_coords.shape[0]
         _cand_lab = comp_labels[:_n_cand]
@@ -814,100 +1070,147 @@ def _(cand_coords, candidate_comps, comp_centroids, comp_labels, mo, np, pd):
         shortlist["fraction_str"] = shortlist["fractions"].apply(
             lambda d: ", ".join(f"{k}:{v:.2f}" for k, v in sorted(d.items()))
         )
-        print(f"Shortlist: {len(shortlist)} compositions "
-              f"({shortlist['rule'].value_counts().to_dict()})")
-        print(shortlist[["cluster", "rule", "shell", "distance", "fraction_str"]]
-              .to_string(index=False))
+        _summary = mo.md(
+            f"**Shortlist**: {len(shortlist)} compositions "
+            f"({shortlist['rule'].value_counts().to_dict()})."
+        )
+        _table = mo.as_html(
+            shortlist[["cluster", "rule", "shell", "distance", "fraction_str"]]
+        )
+        shortlist_render = mo.vstack([_summary, _table])
+    shortlist_render
     return (shortlist,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"## 7. GNN embedding probe")
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-        ## Section 6 — GNN embedding probe (cheap tie-back to the model)
-
-        Loads a trained checkpoint (`model_best.pt`, fall back to
-        `model_final.pt`) and forwards a sample of the 70 simulated systems
-        through the trunk. The descriptor-based composition embedding and
-        the model's internal embedding can then be compared directly.
-
-        Falls back to a notice if no checkpoint is present yet — re-run after
-        a Tier C sweep submitted with the 2026-05-16 checkpoint code lands.
+        The cheapest tie-back to the model. Loads a trained checkpoint
+        (`model_best.pt`, falling back to `model_final.pt`); per-system
+        embedding extraction requires a forward-hook on the post-trunk
+        readout and the 70 system graphs. That is the natural extension once
+        retrained Tier C checkpoints land — kept as a stub here so the
+        notebook still runs without them.
         """
     )
     return
 
 
 @app.cell
-def _(REPO, mo):
-    import glob as _glob
-    _candidates = sorted(_glob.glob(str(REPO / "logs" / "training" / "*" / "*" / "model_best.pt")))
-    if not _candidates:
-        _candidates = sorted(_glob.glob(str(REPO / "logs" / "training" / "*" / "*" / "model_final.pt")))
-    if not _candidates:
-        _ = mo.callout(
-            "No `model_best.pt` or `model_final.pt` found under `logs/training/**`. "
-            "Re-run a Tier C sweep after the 2026-05-16 checkpoint changes, "
-            "then `python scripts/python/download_wandb_runs.py --group <name>`.",
+def _(HAS_TORCH, MembranePropertyGNN, REPO, glob, mo, torch):
+    if not HAS_TORCH:
+        ckpt = None
+        ckpt_render = mo.callout(
+            "PyTorch / `lipid_gnn` not importable — Section 7 skipped.",
             kind="warn",
         )
-        ckpt_path = None
     else:
-        ckpt_path = _candidates[0]
-        print(f"Using checkpoint: {ckpt_path}")
-    return (ckpt_path,)
-
-
-@app.cell
-def _(ckpt_path, mo):
-    if ckpt_path is None:
-        _ = mo.callout("No checkpoint → skipping Section 6.", kind="info")
-        gnn_ckpt = None
-    else:
-        try:
-            import torch
-            from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
-            gnn_ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
-            _model = MembranePropertyGNN(**gnn_ckpt["model_kwargs"])
-            _model.load_state_dict(gnn_ckpt["state_dict"])
-            _model.eval()
-            print(f"Loaded model — properties: {gnn_ckpt['properties']}, "
-                  f"epoch: {gnn_ckpt.get('epoch')}")
-            _ = mo.callout(
-                "Model loaded. Per-system embedding extraction is a stub here: "
-                "add a forward-hook on the post-trunk readout (see "
-                "`lipid_gnn/membrane_prop_gnn.py`), feed the 70-system chunks, "
-                "and project the resulting embeddings into `all_coords`'s PCA "
-                "basis. The geometry mismatch is what answers the "
-                "extrapolation question.",
-                kind="info",
+        _paths = sorted(glob.glob(str(REPO / "logs" / "training" / "*" / "*" / "model_best.pt")))
+        if not _paths:
+            _paths = sorted(glob.glob(str(REPO / "logs" / "training" / "*" / "*" / "model_final.pt")))
+        if not _paths:
+            ckpt = None
+            ckpt_render = mo.callout(
+                "No `model_best.pt` or `model_final.pt` found under "
+                "`logs/training/**`. Re-run a Tier C sweep after the "
+                "2026-05-16 checkpoint changes, then "
+                "`python scripts/python/download_wandb_runs.py --group <name>`.",
+                kind="warn",
             )
-        except Exception as _e:
-            _ = mo.callout(f"Section 6 load failed: {_e}", kind="warn")
-            gnn_ckpt = None
-    return (gnn_ckpt,)
+        else:
+            _path = _paths[0]
+            ckpt = torch.load(_path, weights_only=False, map_location="cpu")
+            _model = MembranePropertyGNN(**ckpt["model_kwargs"])
+            _model.load_state_dict(ckpt["state_dict"])
+            _model.eval()
+            ckpt_render = mo.vstack([
+                mo.md(
+                    f"""
+                    **Loaded checkpoint**: `{_path}`
+
+                    - properties: `{ckpt['properties']}`
+                    - epoch: {ckpt.get('epoch')}
+                    - run_id: {ckpt.get('run_id')}
+                    """
+                ),
+                mo.callout(
+                    mo.md(
+                        "Per-system embedding extraction is a stub. The "
+                        "natural extension is a forward-hook on the post-trunk "
+                        "readout in `lipid_gnn/membrane_prop_gnn.py`, fed by "
+                        "the 70-system graphs, projected into the composition "
+                        "PCA basis to compare with `all_coords`."
+                    ),
+                    kind="info",
+                ),
+            ])
+    ckpt_render
+    return (ckpt,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ---
+    mo.md(r"## 8. Conclusions")
+    return
 
-        ## Open questions
 
-        - Does the descriptor-based composition embedding actually predict
-          which compositions the GNN extrapolates badly? Section 6's
-          forward-hook extension answers this once retrained checkpoints land.
-        - Are the Ward archetypes stable under bootstrap? (todo: resampled-fit
-          robustness panel.)
-        - The simplex-over-archetypes composition representation (Rep. 1 in
-          the plan) is not implemented — only the mole-fraction-weighted
-          centroid. Add if the centroid view turns out to be too smooth.
-        - The GNN single-lipid-probe descriptor (descriptor 5 in the plan)
-          requires bead-vocab decoupling from `LIPID_TYPES`; tracked as Phase 2.
-        """
+@app.cell
+def _(K_ARCHETYPES, lipid_df_arch, mo, n_current_found, n_families, n_lipidome):
+    _arch_with_current = int(
+        (lipid_df_arch.groupby("archetype")["is_current"].sum() > 0).sum()
+    )
+    mo.callout(
+        mo.md(
+            f"""
+            **Headline findings (M3 lipidome, Phase 1)**
+
+            1. **The M3 bilayer-forming lipid pool is {n_lipidome} lipids**
+               across {n_families} headgroup/linker families. The current
+               training pool of {n_current_found} lipids covers 4 of those
+               families (PC, PE, PS, sterol) and {_arch_with_current} of
+               {K_ARCHETYPES} structural Ward archetypes. Most M3 families
+               (ether, plasmalogen, SM, ceramide, BMP, PI, PG, PA, CL, DOTAP)
+               are entirely unsampled.
+
+            2. **The descriptor choice does not break the qualitative picture**.
+               PCA, UMAP, and HDBSCAN run on structural, bead-composition,
+               and bead-physics descriptors all place the training pool in
+               the same small region. The most informative descriptor for
+               downstream selection is structural — the others produce a
+               nearly identical archetype assignment.
+
+            3. **Composition-space coverage is non-uniform on the current
+               10-lipid pool**. HDBSCAN on the candidate + simulated cloud
+               surfaces clusters that contain no current sim — these are the
+               actionable coverage gaps for the next simulation batch.
+
+            4. **Caveats and limitations**
+
+               - Candidates so far are training-pool-only. Mixing in arbitrary
+                 M3 lipids requires bead-vocab decoupling from `LIPID_TYPES`
+                 and is Phase 2.
+               - Mole-fraction-weighted centroid is one of two composition
+                 representations in the plan; the simplex-over-archetypes
+                 representation is not implemented yet.
+               - Section 7 (model-side embedding probe) is a stub until the
+                 Tier C retrained checkpoints with `model_best.pt` land.
+               - Cluster stability under bootstrap is not yet measured;
+                 clusters with `size < 50` should be treated as tentative.
+
+            5. **Next step**: re-run Tier C 5d with the 2026-05-16 checkpoint
+               infrastructure to produce `model_best.pt`, then complete
+               Section 7. Independently, decide whether to extend the
+               candidate set to non-training M3 lipids.
+            """
+        ),
+        kind="info",
     )
     return
 
