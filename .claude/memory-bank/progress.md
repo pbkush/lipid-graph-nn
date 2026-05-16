@@ -17,6 +17,7 @@
 - **Tier A plan**: `docs/tier_a_4prop_plan.md` — Stage 0b → 1b → 1b' → 1c → 1d → 2b → 5b. All complete.
 - **Test suite**: 9 test files, 42 tests.
 - **Central config**: `config.yaml` + `lipid_gnn/config.py`. All runtime callers read defaults from `CONFIG`.
+- **Final-epoch model checkpointing**: `run_sweep.py` saves `model_final.pt` (state_dict + model_kwargs + properties + per-property scaler + epoch + run_id) to `wandb.run.dir` and uploads via `wandb.save()`. `download_wandb_runs.py` pulls it alongside `test_artifacts.npz`. Enables offline reload of any trained model for downstream analysis (e.g. M3 lipidome embedding probe). Only available for runs submitted after 2026-05-16; Stage 5d Tier C weights would need re-running to get the artefact.
 
 ## Tier A Status (4 properties: lipid_packing, thickness, thickness_std, variation)
 

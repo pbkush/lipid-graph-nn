@@ -317,6 +317,27 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     )
     wandb.save(str(artifacts_path))
 
+    checkpoint_path = Path(wandb.run.dir) / "model_final.pt"
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "model_kwargs": {
+                "in_channels": CONFIG.model.in_channels,
+                "hidden_dim": cfg["hidden_dim"],
+                "num_layers": cfg["num_layers"],
+                "out_dim": len(properties),
+                "comp_dim": comp_dim,
+            },
+            "properties": list(properties),
+            "scaler_mean": scaler.mean_[prop_cols],
+            "scaler_scale": scaler.scale_[prop_cols],
+            "epoch": cfg["epochs"],
+            "run_id": wandb.run.id,
+        },
+        checkpoint_path,
+    )
+    wandb.save(str(checkpoint_path))
+
     fig = plot_property_accuracies(test_targets, test_preds, properties, final_mse)
     fig_path = Path(wandb.run.dir) / "accuracy_plot.png"
     fig.savefig(fig_path)
