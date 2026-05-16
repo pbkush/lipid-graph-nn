@@ -163,8 +163,16 @@ printf '\n'
 BATCH_COUNT=0
 PREV_BENCH_JOB_ID=""    # for afterany chaining (minimises concurrent pending bench jobs)
 
-while IFS=$'\t' read -r LABEL SIMS GPUS CPUS MEM POINT_PARTITION REST; do
+while IFS=$'\t' read -r LABEL SIMS GPUS CPUS MEM POINT_PARTITION POINT_PIN REST; do
     [[ -z "$LABEL" || "$LABEL" == \#* ]] && continue
+
+    # Pin column is optional in legacy TSVs; treat absent/empty as "auto"
+    # (mdrun's pre-pin-column default) and validate explicit values.
+    POINT_PIN="${POINT_PIN:-auto}"
+    case "$POINT_PIN" in
+        on|off|auto) ;;
+        *) echo "ERROR: bad pin value '$POINT_PIN' for point $LABEL" >&2; exit 1 ;;
+    esac
 
     # CPU points keep their declared partition.  For GPU points the CLI
     # --partition is the default override (gpu_test ↔ gpu swap for dev), but
@@ -203,10 +211,11 @@ meta = {
     'cpus_per_sim': int(sys.argv[4]),
     'mem_per_sim': sys.argv[5],
     'partition': sys.argv[6],
+    'pin': sys.argv[7],
 }
-with open(sys.argv[7], 'w') as f:
+with open(sys.argv[8], 'w') as f:
     json.dump(meta, f, indent=2)
-" "$LABEL" "$SIMS" "$GPUS" "$CPUS" "$MEM" "$EFFECTIVE_PARTITION" \
+" "$LABEL" "$SIMS" "$GPUS" "$CPUS" "$MEM" "$EFFECTIVE_PARTITION" "$POINT_PIN" \
   "$POINT_DIR/point_meta.json"
 
     GRES_ARG=""
@@ -217,13 +226,13 @@ with open(sys.argv[7], 'w') as f:
     if [[ "$DRY_RUN" -eq 1 ]]; then
         # In dry-run, build a printable command-line that includes the
         # variable assignments (helps the user eyeball what gets exported).
-        printf '  [DRY RUN] BENCH_POINT_DIR=%s REFERENCE_TPRS=%s SIMS_PER_NODE=%s GPUS_PER_NODE=%s CPUS_PER_SIM=%s NSTEPS=%s ' \
-            "$POINT_DIR" "$TPRS_STR" "$SIMS" "$GPUS" "$CPUS" "$NSTEPS"
+        printf '  [DRY RUN] BENCH_POINT_DIR=%s REFERENCE_TPRS=%s SIMS_PER_NODE=%s GPUS_PER_NODE=%s CPUS_PER_SIM=%s NSTEPS=%s PIN=%s ' \
+            "$POINT_DIR" "$TPRS_STR" "$SIMS" "$GPUS" "$CPUS" "$NSTEPS" "$POINT_PIN"
         printf 'sbatch --partition=%s --time=%s --cpus-per-task=%s --mem=%s %s %s --export=ALL %s\n' \
             "$EFFECTIVE_PARTITION" "$TIME_LIMIT" "$TOTAL_CPUS" "$TOTAL_MEM" \
             "${GRES_ARG}" "${DEPENDENCY_ARG}" "$SCRIPT_DIR/sbatch_benchmark_hpc.sh"
-        printf '    label=%s  sims=%s  gpus=%s  cpus/sim=%s  mem=%s  partition=%s\n' \
-            "$LABEL" "$SIMS" "$GPUS" "$CPUS" "$TOTAL_MEM" "$EFFECTIVE_PARTITION"
+        printf '    label=%s  sims=%s  gpus=%s  cpus/sim=%s  mem=%s  partition=%s  pin=%s\n' \
+            "$LABEL" "$SIMS" "$GPUS" "$CPUS" "$TOTAL_MEM" "$EFFECTIVE_PARTITION" "$POINT_PIN"
     else
         # Compose the dependency string: afterok on Phase 1 setup jobs (so we
         # don't run benchmarks against a missing tpr) AND afterany on the
@@ -246,6 +255,7 @@ with open(sys.argv[7], 'w') as f:
             GPUS_PER_NODE="$GPUS" \
             CPUS_PER_SIM="$CPUS" \
             NSTEPS="$NSTEPS" \
+            PIN="$POINT_PIN" \
             sbatch \
                 --partition="$EFFECTIVE_PARTITION" \
                 --time="$TIME_LIMIT" \

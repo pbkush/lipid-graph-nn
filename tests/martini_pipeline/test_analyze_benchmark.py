@@ -316,11 +316,11 @@ def _run_bench_sh(args: list[str]) -> subprocess.CompletedProcess:
 
 class TestBenchmarkHshDryRun(unittest.TestCase):
     def test_dry_run_emits_one_sbatch_per_point(self):
-        """--dry-run with default 10-point GPU-only TSV → 10 [DRY RUN] sbatch lines.
+        """--dry-run with the default 12-point GPU-only TSV → 12 sbatch lines.
 
-        7 small points route to the --partition value (gpu_test); the 3 new
-        full-node 8-GPU points declare partition=gpu explicitly so the CLI
-        override is ignored for them (they cannot fit in gpu_test's 4-GPU cap).
+        7 small points route to the --partition value (gpu_test); the 3
+        full-node 8-GPU points + 2 pin-on probes declare partition=gpu
+        explicitly so the CLI override is ignored for them.
         """
         with tempfile.TemporaryDirectory() as d:
             result = _run_bench_sh([
@@ -330,10 +330,13 @@ class TestBenchmarkHshDryRun(unittest.TestCase):
             ])
         self.assertEqual(result.returncode, 0, result.stderr)
         dry_lines = [l for l in result.stdout.splitlines() if "[DRY RUN]" in l]
-        self.assertEqual(len(dry_lines), 10)
-        # 8-GPU rows must stay on the gpu partition despite the CLI override
+        self.assertEqual(len(dry_lines), 12)
+        # 5 full-node rows stay on the gpu partition despite the CLI override
         gpu_lines = [l for l in dry_lines if "--partition=gpu " in l]
-        self.assertEqual(len(gpu_lines), 3)
+        self.assertEqual(len(gpu_lines), 5)
+        # Pin-on probes carry their explicit PIN=on through the env exports
+        pin_on_lines = [l for l in dry_lines if "PIN=on" in l]
+        self.assertEqual(len(pin_on_lines), 2)
 
     def test_dry_run_with_multi_comp(self):
         """Two reference comps → two REFERENCE_TPRS entries in export string."""

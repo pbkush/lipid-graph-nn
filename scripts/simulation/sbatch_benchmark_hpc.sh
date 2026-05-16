@@ -99,6 +99,10 @@ for (( i=0; i<N_SIMS; i++ )); do
     else
         MDRUN_ARGS+=(-ntmpi 1)
     fi
+    # -pin {on,off,auto} from PIN env (set by benchmark_hpc.sh from the TSV's
+    # pin column).  Default "auto" preserves the historical pre-pin-column
+    # regime so old bench results stay comparable.
+    MDRUN_ARGS+=(-pin "${PIN:-auto}")
 
     echo "  [slot $i]  $(basename "$(dirname "$TPR")")  → $SLOT_DIR/bench.log"
 

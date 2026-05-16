@@ -158,6 +158,11 @@ class MartiniPipelineHpcDefaultsConfig:
     cpus_per_sim: int
     mem_per_sim: str
     gpus_per_node: int
+    # gmx mdrun -pin {on,off,auto}.  Default "on" enables explicit OpenMP
+    # thread pinning, which is recommended on multi-slot GPU nodes where
+    # mdrun's default "auto" can refuse to pin if it detects another mdrun
+    # process and let the OS migrate threads across cores.
+    pin: str = "on"
 
 
 @dataclass(frozen=True)
@@ -267,11 +272,18 @@ def _build_martini_pipeline_hpc_defaults(
 ) -> Optional[MartiniPipelineHpcDefaultsConfig]:
     if raw is None:
         return None
+    pin = str(raw.get("pin", "on")).lower()
+    if pin not in {"on", "off", "auto"}:
+        raise ValueError(
+            f"martini_pipeline.hpc_defaults.pin must be one of "
+            f"'on'|'off'|'auto', got {pin!r}"
+        )
     return MartiniPipelineHpcDefaultsConfig(
         sims_per_node=int(raw.get("sims_per_node", 4)),
         cpus_per_sim=int(raw.get("cpus_per_sim", 8)),
         mem_per_sim=str(raw.get("mem_per_sim", "16G")),
         gpus_per_node=int(raw.get("gpus_per_node", 8)),
+        pin=pin,
     )
 
 

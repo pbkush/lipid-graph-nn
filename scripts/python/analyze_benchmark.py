@@ -47,6 +47,8 @@ class PointResult:
     # keep GPU points (without these fields in point_meta.json) backward-compatible.
     mpi_ranks_per_sim: int = 1
     device: str = "gpu"
+    # Pin-axis extension (Decision 65); pre-pin-column points default to "auto".
+    pin: str = "auto"
     slot_ns_per_day: list = field(default_factory=list)
     slot_wall_t_s: list = field(default_factory=list)
     aggregate_ns_per_day: float = 0.0
@@ -127,6 +129,7 @@ def load_point(point_dir: Path) -> PointResult:
         partition=meta["partition"],
         mpi_ranks_per_sim=meta.get("mpi_ranks_per_sim", 1),
         device=meta.get("device", "gpu"),
+        pin=meta.get("pin", "auto"),
         n_slots_total=meta["sims_per_node"],
     )
 
@@ -236,6 +239,7 @@ def to_dataframe(points: list[PointResult]) -> pd.DataFrame:
             "mpi_ranks_per_sim":          p.mpi_ranks_per_sim,
             "cpus_per_sim":               p.cpus_per_sim,
             "mem_per_sim":                p.mem_per_sim,
+            "pin":                        p.pin,
             "aggregate_ns_per_day":       _r(p.aggregate_ns_per_day, 2),
             "max_wall_t_s":               _r(p.max_wall_t_s, 1),
             "node_hours":                 _r(p.node_hours, 4),
@@ -271,6 +275,7 @@ def _rec_yaml(rec: PointResult) -> str:
         f"    cpus_per_sim: {rec.cpus_per_sim}\n"
         f'    mem_per_sim: "{rec.mem_per_sim}"\n'
         f"    gpus_per_node: {rec.gpus_per_node}\n"
+        f'    pin: "{rec.pin}"\n'
     )
 
 
