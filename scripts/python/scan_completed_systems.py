@@ -121,6 +121,16 @@ def main() -> int:
         "--status-filter", nargs="+", default=None,
         help="Include only rows whose status is in this list (default: include all)",
     )
+    parser.add_argument(
+        "--merge-with", default=None, metavar="CSV",
+        help="Union the scan with rows from an existing CSV.  Useful when "
+             "rescanning on HPC where the legacy data lives only on the "
+             "local machine — pass the previous done.csv here and the legacy "
+             "rows survive even though they aren't on disk at any scanned "
+             "root.  Freshly scanned rows take precedence on canonical-name "
+             "collisions (status may have changed since the merge CSV was "
+             "written).  Status filter, if given, applies to merged rows too.",
+    )
     args = parser.parse_args()
 
     roots = [Path(r) for r in args.output_roots] if args.output_roots else _default_output_roots()
@@ -128,19 +138,75 @@ def main() -> int:
         print("ERROR: no output roots configured and none given via --output-roots", file=sys.stderr)
         return 1
 
-    all_rows: list[dict] = []
-    canonicals_seen: set[str] = set()  # dedupe across roots, first-seen wins
+    # First, do the fresh scan into an indexable dict (canonical_name → row).
+    # Track scan order separately so net-new rows can be tail-appended in the
+    # order they were discovered.
+    scanned: dict[str, dict] = {}
+    scan_order: list[str] = []
     for root in roots:
         if not root.is_dir():
             print(f"  INFO: skipping non-existent root {root}", file=sys.stderr)
             continue
         for row in scan_root(root):
-            if row["canonical_name"] in canonicals_seen:
+            name = row["canonical_name"]
+            if name in scanned:
                 continue
             if args.status_filter and row["status"] not in args.status_filter:
                 continue
-            canonicals_seen.add(row["canonical_name"])
-            all_rows.append(row)
+            scanned[name] = row
+            scan_order.append(name)
+
+    # Compose the output.  Without --merge-with, just take the fresh scan in
+    # discovery order.  With --merge-with, preserve the existing CSV's row
+    # order as the base (so a diff against the previous file isolates the new
+    # additions cleanly): walk the merge CSV, overlay any fresh-scan row
+    # in place when the canonical name matches, then tail-append truly net-new
+    # fresh-scan rows.  The status_filter still applies to merge-only rows.
+    all_rows: list[dict] = []
+    merged_in = 0
+    overlayed = 0
+    if args.merge_with:
+        merge_path = Path(args.merge_with)
+        if not merge_path.is_file():
+            print(f"ERROR: --merge-with {merge_path} does not exist", file=sys.stderr)
+            return 1
+        with open(merge_path, newline="") as fh:
+            reader = csv.DictReader(fh)
+            required = {"canonical_name", "source_dir", "source_root", "status", "has_prun_xtc"}
+            missing = required - set(reader.fieldnames or [])
+            if missing:
+                print(f"ERROR: --merge-with {merge_path} missing columns: "
+                      f"{sorted(missing)}", file=sys.stderr)
+                return 1
+            seen_in_merge: set[str] = set()
+            for row in reader:
+                name = (row.get("canonical_name") or "").strip()
+                if not name or name in seen_in_merge:
+                    continue
+                seen_in_merge.add(name)
+                if name in scanned:
+                    # Fresh scan supersedes the merged row (status may have
+                    # changed since the CSV was written) but the *position*
+                    # stays where the old CSV had it.
+                    all_rows.append(scanned[name])
+                    overlayed += 1
+                else:
+                    # Merge-only row: keep it as-is, subject to status_filter.
+                    if args.status_filter and row["status"] not in args.status_filter:
+                        continue
+                    all_rows.append({k: row.get(k, "") for k in [
+                        "canonical_name", "source_dir", "source_root",
+                        "status", "has_prun_xtc",
+                    ]})
+                    merged_in += 1
+        # Tail-append fresh-scan rows that weren't in the merge CSV — these
+        # are the new additions that will appear at the bottom of a diff.
+        for name in scan_order:
+            if name not in seen_in_merge:
+                all_rows.append(scanned[name])
+    else:
+        for name in scan_order:
+            all_rows.append(scanned[name])
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,7 +220,13 @@ def main() -> int:
     by_status: dict[str, int] = {}
     for row in all_rows:
         by_status[row["status"]] = by_status.get(row["status"], 0) + 1
-    print(f"Wrote {len(all_rows)} rows to {out_path}")
+    if args.merge_with:
+        new_rows = len(all_rows) - merged_in - overlayed
+        merge_note = (f" (overlayed {overlayed} + kept {merged_in} from "
+                      f"{args.merge_with} + {new_rows} new)")
+    else:
+        merge_note = ""
+    print(f"Wrote {len(all_rows)} rows to {out_path}{merge_note}")
     for s, n in sorted(by_status.items()):
         print(f"  {s}: {n}")
     return 0
