@@ -270,7 +270,12 @@ _REGISTRY_DATA: dict[str, LipidEntry] = {
         LipidEntry(
             name="CHOL", resname="CHOL", itp_file=_STEROL_ITP, moleculetype="CHOL",
             beads=("ROH", "R1", "R2", "R3", "R4", "R5", "R6", "C1", "C2"),
-            family="sterol", insane_keyword="CHOL",
+            family="sterol",
+            # insane's default "CHOL" key is the legacy 8-bead Martini 2
+            # topology; "M3.CHOL" selects the 9-bead M3 variant matching
+            # martini_v3.0.0_sterols_v1.itp.  insane strips the "M3." prefix
+            # when writing the gro/top, so resname stays "CHOL".
+            insane_keyword="M3.CHOL",
         ),
     ]
 }

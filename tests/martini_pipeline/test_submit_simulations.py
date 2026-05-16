@@ -69,14 +69,15 @@ class TestPackingExplicit(unittest.TestCase):
                         if "[DRY RUN]" in l and " sbatch " in l]
         self.assertEqual(len(sbatch_lines), 3)
 
-    def test_sims_per_node_default_4(self):
-        """Default --sims-per-node reads 4 from config."""
+    def test_sims_per_node_default_from_config(self):
+        """Default --sims-per-node reads from config.yaml hpc_defaults.sims_per_node."""
         comps = ["DPPC100", "DIPC100", "DOPC100", "DOPE100", "POPC100"]
         result = _run(
             ["--compositions"] + comps + ["--prod-ns", "100", "--dry-run"]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("sims-per-node  : 4", result.stdout)
+        # Post-benchmark default is 8 (was 4 pre-benchmark, see Decision 63).
+        self.assertIn("sims-per-node  : 8", result.stdout)
 
     def test_resource_scaling(self):
         """--sims-per-node 4 --cpus-per-sim 8 --mem-per-sim 16G → 32 cpus, 64G."""
