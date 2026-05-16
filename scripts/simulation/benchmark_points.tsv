@@ -14,7 +14,8 @@
 #                      module on gpu nodes.  Add a CPU row back via an explicit
 #                      points file if needed later.
 #
-# gpu_test cap: max 4 GPUs per job.  All rows respect this limit.
+# gpu_test cap: max 4 GPUs per job — points with gpus_per_node>4 declare
+# partition=gpu (full node) so the orchestrator can submit them there.
 #
 1_gpu_1sim_cpu16	1	1	16	16G	gpu_test
 2_gpu_2sim_cpu8	2	2	8	16G	gpu_test
@@ -23,3 +24,10 @@
 4_gpu_4sim_cpu16	4	4	16	16G	gpu_test
 2_sim_1gpu_share	2	1	8	16G	gpu_test
 8_sim_4gpu_pack	8	4	4	16G	gpu_test
+# 8-GPU full-node points (must run on the gpu partition; gpu_test caps at 4).
+# 8sim_8gpu_cpu8 is the natural production analogue — one sim per GPU at the
+# default cpus_per_sim=8.  16sim_8gpu_share oversubscribes 2 sims/GPU for
+# throughput comparison; 8sim_8gpu_cpu4 probes thread sensitivity at 1:1.
+8_sim_8gpu_cpu8	8	8	8	16G	gpu
+8_sim_8gpu_cpu4	8	8	4	16G	gpu
+16_sim_8gpu_share	16	8	4	16G	gpu
