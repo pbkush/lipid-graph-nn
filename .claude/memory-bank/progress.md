@@ -119,7 +119,7 @@ Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's see
 | --- | --- | --- |
 | 1–9 — pipeline build, MDP audit, sanity checks | done | DIPC100 smoke + POPC100 sanity passed earlier |
 | 10a — GPU production routing (`gpu`/`gpu_test`) | done | `sbatch_simulations.sh`; 8 sims/node, HIP pinning |
-| 10b — GPU benchmark sweep | done | `hpc_defaults_gpu` calibrated; ROCm-built gmx 2025.4 |
+| 10 — GPU benchmark sweep | done (2026-05-16) | Winner `8_sim_8gpu_cpu4` (41,909 ns/day agg, ~5,240/slot). `hpc_defaults`: sims=8, gpus=8, cpus_per_sim=4, mem=16G. cpus_per_sim=8 is 15 % slower (not CPU-thread limited); 16 sims/8 GPUs gives higher aggregate but −36 % per slot. **Recommended 1 µs walltime: 8 h.** |
 | 10c — general1 CPU production routing | done | `sbatch_simulations_general1.sh` + `_gmx_mpi_wrapper.sh`; spack openmpi/GROMACS-2022; calibrated `hpc_defaults_cpu` (sims=2, ranks=1, cpus=20, mem=16G; ~13 200 ns/day/node) |
 | 11a — subgoal 3a popc_interpolation, 1 µs | **running** (2026-05-15) | 77 systems at 10 % step on `general1`, 48 h walltime; ETA ~65 h per slot — resubmit likely |
 | 11b — subgoal 3b DPPC/DOPC corners | pending | After 3a lands |

@@ -118,9 +118,9 @@ martini_pipeline:
 
   hpc_output_subpath: martini_pipeline   # appended to /work/$GROUP/$USER/$work_subpath/
 
-  hpc_defaults:                          # conservative pre-benchmark values; step 10 overwrites
-    sims_per_node: 4
-    cpus_per_sim: 8
+  hpc_defaults:
+    sims_per_node: 8
+    cpus_per_sim: 4
     mem_per_sim: "16G"
     gpus_per_node: 8
 
