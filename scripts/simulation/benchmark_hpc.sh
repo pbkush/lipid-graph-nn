@@ -166,8 +166,14 @@ PREV_BENCH_JOB_ID=""    # for afterany chaining (minimises concurrent pending be
 while IFS=$'\t' read -r LABEL SIMS GPUS CPUS MEM POINT_PARTITION REST; do
     [[ -z "$LABEL" || "$LABEL" == \#* ]] && continue
 
-    # CPU points keep their declared partition; GPU points use the CLI --partition
+    # CPU points keep their declared partition.  For GPU points the CLI
+    # --partition is the default override (gpu_test ↔ gpu swap for dev), but
+    # any row that explicitly declares a non-gpu_test partition (e.g. gpu for
+    # full-node 8-GPU points) is honoured as-is — otherwise an 8-GPU row would
+    # silently get redirected to gpu_test and tripped by the 4-GPU cap below.
     if [[ "$GPUS" == "0" ]]; then
+        EFFECTIVE_PARTITION="$POINT_PARTITION"
+    elif [[ "$POINT_PARTITION" != "gpu_test" ]]; then
         EFFECTIVE_PARTITION="$POINT_PARTITION"
     else
         EFFECTIVE_PARTITION="$PARTITION"
