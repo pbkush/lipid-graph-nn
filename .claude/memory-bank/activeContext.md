@@ -2,6 +2,8 @@
 
 ## Current Work Focus
 
+**Martini pipeline step 10 GPU benchmark — `hpc_defaults` locked (2026-05-16)** — 10-point sweep done. Winner `8_sim_8gpu_cpu4`: 41,909 ns/day aggregate (~5,240 ns/day per slot), score 8.6 M ns·day/node·hour. Final GPU defaults: `sims_per_node=8, gpus_per_node=8, cpus_per_sim=4, mem_per_sim=16G`. Notable: `cpus_per_sim=8` is 15 % slower than 4 (MI210s aren't CPU-thread limited here); `16_sim_8gpu_share` has higher aggregate throughput (53,730 ns/day) but per-slot drops 36 % — not worth the 2× IO cost. **Recommended `--time` for 1 µs on GPU: 8 h** (raw 4.6 h × 1.7 margin). Step 10 closed.
+
 **Martini pipeline step 10c — general1 CPU production live (2026-05-15)** — `popc_interpolation` grid submitted on Goethe-HLR `general1` (CPU partition, no GPUs) for 1 µs (`--prod-ns 1000`) with 48 h walltime. Production routing on the CPU partition is fully wired: `submit_simulations.sh` dispatches to `sbatch_simulations_general1.sh` (spack openmpi + GROMACS-2022, `_gmx_mpi_wrapper.sh` shim) when `--partition general1` is set. Calibrated `hpc_defaults_cpu`: `sims_per_node=2`, `mpi_ranks_per_sim=1`, `cpus_per_sim=20`, `mem=16G`. Aggregate ~13 200 ns/day per node at the chosen point. Mid-run estimate from checkpoint deltas: ~22 ns/day per slot → ~65 h for 1 µs (over 48 h budget). Resubmit-with-`-cpi` may be needed for some slots.
 
 **Goal framework (refactored 2026-05-13)** — Composition-coverage work split into sub-deliverables: **3a** `popc_interpolation` (POPC-anchored binaries at 10 % step; 77 systems total — current focus), **3b** DPPC/DOPC corner extrapolation, **3c/3d** broader extension after lipid-pool growth (step 12). Tracked in `docs/martini_pipeline_plan.md` §1.
