@@ -92,7 +92,13 @@ MD Trajectory (.tpr + .xtc/.trr)
   - `general1` (CPU) → `sbatch_simulations_general1.sh` (spack openmpi + GROMACS-2022 via `_gmx_mpi_wrapper.sh` shim, OpenMP thread pinning, calibrated `hpc_defaults_cpu`: 2 sims/node, 1 MPI rank, 20 OMP threads, 16G mem).
   - Unknown partition → fail-fast.
 
-  CLI flags worth knowing: `--missing-from-grid NAME` (e.g. `popc_interpolation`), `--completed-csv PATH` (skip systems whose `canonical_name` is in the CSV — used to avoid re-running legacy data without uploading it to HPC), `--prod-ns NS`, `--time HH:MM:SS`, `--partition`, `--mpi-ranks-per-sim`. Per-partition QOS caps enforced (general1=40, gpu_test=2).
+  CLI flags worth knowing — work-source flags are mutually exclusive:
+  - `--compositions COMP1 COMP2 ...` — explicit list.
+  - `--missing-from-grid NAME` — grid-driven (e.g. `popc_interpolation`).
+  - `--queue-file PATH` — read from a plain text file.
+  - `--from-csv PATH` — read `canonical_name` column from a CSV.  Inverse of `--completed-csv`: the CSV IS the work list.  Use case: resimulate the legacy 70-system corpus with the modern M3 ITPs (`--from-csv resources/done.csv`) so all data shares one set of itp definitions.
+
+  Plus the orthogonal filters / sizing flags: `--completed-csv PATH` (skip systems whose `canonical_name` is in the CSV — used to avoid re-running legacy data without uploading it to HPC), `--prod-ns NS`, `--time HH:MM:SS`, `--partition`, `--mpi-ranks-per-sim`, `--pin {on,off,auto}` (gmx mdrun thread pinning; default from `hpc_defaults.pin`, "on" if absent). Per-partition QOS caps enforced (general1=40, gpu_test=2).
 
   Env propagation uses **env-file-via-positional-arg**: orchestrator writes `logs/simulations/submit_env.<tmp>.sh` with `export VAR=$'...'` lines and passes the path as `$1` to the sbatch worker; SLURM `--export=ALL,VAR=...` silently drops entries on Goethe-HLR. Workers source `$1` on entry, then re-source defensively after `module load`. `--mdrun-args` is always placed LAST in `SIM_ARGS` (pipeline CLI used to take it as `argparse.REMAINDER`, which greedily absorbed any following flag; CLI now takes a single string, regression test enforced).
 
