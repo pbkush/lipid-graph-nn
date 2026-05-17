@@ -1,8 +1,9 @@
 #!/bin/bash
 # submit_simulations.sh — orchestrator for Martini 3 bilayer simulations on Goethe-HLR.
 #
-# Resolves the composition list (explicit --compositions, --missing-from-grid, or
-# --queue-file), packs compositions into SLURM batches, and submits one sbatch job
+# Resolves the composition list (explicit --compositions, --missing-from-grid,
+# --queue-file, or --from-csv), packs compositions into SLURM batches, and
+# submits one sbatch job
 # per batch.  All simulation knobs are frozen at submission time (no config drift
 # during queue wait) — mirroring the submit_sweep.sh / sbatch_sweep.sh pattern.
 #
@@ -17,6 +18,13 @@
 #
 #   # Read a pre-built queue file (from print_work_queue.py --format lines):
 #   bash scripts/bash/submit_simulations.sh --queue-file /tmp/queue.txt --nsteps 10000000
+#
+#   # Resimulate the legacy 70-system corpus with the modern M3 ITPs:
+#   bash scripts/bash/submit_simulations.sh --from-csv resources/done.csv \
+#       --prod-ns 1000 --partition gpu --time 8:00:00
+#   # (inverse of --completed-csv: the CSV's canonical_name column IS the work
+#   #  list, not the skip list.  Useful for standardising all simulations to
+#   #  the same ITP definitions.)
 #
 #   # CPU partition (general1):
 #   bash scripts/bash/submit_simulations.sh --compositions DPPC100 --prod-ns 100 \
@@ -48,6 +56,7 @@ LEGACY_DATA_DIR="${LEGACY_DATA_DIR:-$(python scripts/python/print_config_var.py 
 COMPOSITIONS=()
 MISSING_GRID=""
 QUEUE_FILE=""
+FROM_CSV=""
 LIPIDS=()
 STEP=10
 
@@ -84,6 +93,7 @@ while [[ $# -gt 0 ]]; do
             done ;;
         --missing-from-grid)    MISSING_GRID="$2";           shift 2 ;;
         --queue-file)           QUEUE_FILE="$2";              shift 2 ;;
+        --from-csv)             FROM_CSV="$2";                shift 2 ;;
         --lipids)
             shift
             while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
@@ -191,13 +201,14 @@ N_SOURCES=0
 [[ "${#COMPOSITIONS[@]}" -gt 0 ]] && N_SOURCES=$(( N_SOURCES + 1 )) || true
 [[ -n "$MISSING_GRID" ]]          && N_SOURCES=$(( N_SOURCES + 1 )) || true
 [[ -n "$QUEUE_FILE" ]]            && N_SOURCES=$(( N_SOURCES + 1 )) || true
+[[ -n "$FROM_CSV" ]]              && N_SOURCES=$(( N_SOURCES + 1 )) || true
 
 if [[ "$N_SOURCES" -gt 1 ]]; then
-    echo "ERROR: --compositions, --missing-from-grid, and --queue-file are mutually exclusive" >&2
+    echo "ERROR: --compositions, --missing-from-grid, --queue-file, and --from-csv are mutually exclusive" >&2
     exit 1
 fi
 if [[ "$N_SOURCES" -eq 0 ]]; then
-    echo "ERROR: one of --compositions, --missing-from-grid, or --queue-file is required" >&2
+    echo "ERROR: one of --compositions, --missing-from-grid, --queue-file, or --from-csv is required" >&2
     echo "       Run with --help for usage examples." >&2
     exit 1
 fi
@@ -258,6 +269,28 @@ elif [[ -n "$QUEUE_FILE" ]]; then
         exit 1
     fi
     readarray -t COMPOSITIONS < <(grep -v '^\s*#' "$QUEUE_FILE" | grep -v '^\s*$')
+elif [[ -n "$FROM_CSV" ]]; then
+    # Inverse of --completed-csv: use the canonical_name column AS the work
+    # list, not as the skip list.  Designed for resimulating the legacy
+    # 70-system corpus with the modern M3 ITPs (done.csv from
+    # scan_completed_systems.py is the natural input), but works for any
+    # CSV with a canonical_name column.
+    if [[ ! -f "$FROM_CSV" ]]; then
+        echo "ERROR: --from-csv $FROM_CSV does not exist" >&2
+        exit 1
+    fi
+    readarray -t COMPOSITIONS < <(python -c "
+import csv, sys
+with open(sys.argv[1]) as fh:
+    reader = csv.DictReader(fh)
+    if 'canonical_name' not in (reader.fieldnames or []):
+        print('ERROR: --from-csv missing required column: canonical_name', file=sys.stderr)
+        sys.exit(2)
+    for row in reader:
+        name = (row.get('canonical_name') or '').strip()
+        if name:
+            print(name)
+" "$FROM_CSV") || { echo "ERROR: failed to read --from-csv $FROM_CSV" >&2; exit 1; }
 fi
 
 # ── Filter against --completed-csv (if given) ────────────────────────────────
@@ -376,8 +409,11 @@ EOF
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-SOURCE_DESC="${MISSING_GRID:+"missing-from-grid ($MISSING_GRID)"}${QUEUE_FILE:+"queue-file ($QUEUE_FILE)"}${MISSING_GRID:+}${QUEUE_FILE:+}"
-[[ "${#COMPOSITIONS[@]}" -gt 0 && -z "$MISSING_GRID" && -z "$QUEUE_FILE" ]] && SOURCE_DESC="explicit --compositions"
+SOURCE_DESC=""
+[[ -n "$MISSING_GRID" ]] && SOURCE_DESC="missing-from-grid ($MISSING_GRID)"
+[[ -n "$QUEUE_FILE"   ]] && SOURCE_DESC="queue-file ($QUEUE_FILE)"
+[[ -n "$FROM_CSV"     ]] && SOURCE_DESC="from-csv ($FROM_CSV)"
+[[ -z "$SOURCE_DESC"  ]] && SOURCE_DESC="explicit --compositions"
 
 PROD_DESC=""
 [[ -n "$PROD_NS" ]] && PROD_DESC="${PROD_NS} ns"
