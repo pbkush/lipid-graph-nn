@@ -57,6 +57,7 @@ COMPOSITIONS=()
 MISSING_GRID=""
 QUEUE_FILE=""
 FROM_CSV=""
+RENAME_LIPIDS=()   # repeated OLD=NEW pairs; applied to every composition
 LIPIDS=()
 STEP=10
 
@@ -94,6 +95,7 @@ while [[ $# -gt 0 ]]; do
         --missing-from-grid)    MISSING_GRID="$2";           shift 2 ;;
         --queue-file)           QUEUE_FILE="$2";              shift 2 ;;
         --from-csv)             FROM_CSV="$2";                shift 2 ;;
+        --rename-lipid)         RENAME_LIPIDS+=("$2");        shift 2 ;;
         --lipids)
             shift
             while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
@@ -291,6 +293,44 @@ with open(sys.argv[1]) as fh:
         if name:
             print(name)
 " "$FROM_CSV") || { echo "ERROR: failed to read --from-csv $FROM_CSV" >&2; exit 1; }
+fi
+
+# ── Apply --rename-lipid (if given) ───────────────────────────────────────────
+# Lipid-name remapping for in-flight migration of older composition vocabularies.
+# Motivating use case: the legacy 70-system corpus uses "DIPC", but the modern
+# M3-Lipid-Parameters set calls the same di-C18:2 PC lipid "DLPC".  Pairing
+# --from-csv resources/done.csv with --rename-lipid DIPC=DLPC resimulates the
+# old systems and writes outputs under DLPC* directories so future code uses
+# one consistent name.
+#
+# Implementation: textual token-level substitution followed by parse_name
+# recanonicalisation (so composition ordering is correct after the rename).
+if [[ "${#RENAME_LIPIDS[@]}" -gt 0 ]]; then
+    # Validate format and build a python dict expression.
+    RENAME_PAIRS_PY="{"
+    for pair in "${RENAME_LIPIDS[@]}"; do
+        if [[ ! "$pair" =~ ^[A-Z]+=[A-Z]+$ ]]; then
+            echo "ERROR: --rename-lipid must be OLD=NEW (uppercase letters only), got '$pair'" >&2
+            exit 1
+        fi
+        old="${pair%%=*}"; new="${pair#*=}"
+        RENAME_PAIRS_PY+="'$old':'$new',"
+    done
+    RENAME_PAIRS_PY+="}"
+
+    readarray -t COMPOSITIONS < <(python -c "
+import re, sys
+sys.path.insert(0, '$PWD')
+from lipid_gnn.martini_pipeline.composition import parse_name
+RENAME = $RENAME_PAIRS_PY
+TOKEN_RE = re.compile(r'([A-Z]+)(\d+)')
+for comp in sys.argv[1:]:
+    renamed = TOKEN_RE.sub(lambda m: RENAME.get(m.group(1), m.group(1)) + m.group(2), comp)
+    # Recanonicalise (token ordering may change after rename — e.g. DIPC50_POPC50
+    # canonicalises differently than DLPC50_POPC50 due to alpha tiebreak).
+    print(parse_name(renamed).name)
+" "${COMPOSITIONS[@]}") || { echo "ERROR: --rename-lipid pass failed" >&2; exit 1; }
+    echo "INFO: --rename-lipid applied ${#RENAME_LIPIDS[@]} rule(s): ${RENAME_LIPIDS[*]}" >&2
 fi
 
 # ── Filter against --completed-csv (if given) ────────────────────────────────

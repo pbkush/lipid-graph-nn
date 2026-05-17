@@ -124,16 +124,19 @@ Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's see
 | 10c — general1 CPU production routing | done | `sbatch_simulations_general1.sh` + `_gmx_mpi_wrapper.sh`; spack openmpi/GROMACS-2022; calibrated `hpc_defaults_cpu` (sims=2, ranks=1, cpus=20, mem=16G; ~13 200 ns/day/node) |
 | 11a — subgoal 3a popc_interpolation, 1 µs | **running** (2026-05-15) | 77 systems at 10 % step on `general1`, 48 h walltime; ETA ~65 h per slot — resubmit likely |
 | 11b — subgoal 3b DPPC/DOPC corners | pending | After 3a lands |
+| 11e — resimulate legacy 70-system corpus with M3 ITPs | option | `submit_simulations.sh --from-csv resources/done.csv`; standardises all simulations to one set of itp definitions |
 | 12 — extend lipid pool beyond current 10 | future | Unlocks 3c/3d |
 
-**Pipeline tooling this session**:
+**Pipeline tooling**:
 
-- `scan_completed_systems.py` — CSV scanner for "already simulated" systems (canonicalises legacy non-canonical dir names).
-- `submit_simulations.sh --completed-csv PATH` — filter via CSV `canonical_name` column.
-- `projected_finish.py` — mid-run ETA report from `Writing checkpoint` lines (GROMACS only writes final `Performance:` after success).
+- `scan_completed_systems.py` — CSV scanner; canonicalises legacy non-canonical dir names; resolves `sim_ns` via three-tier lookup (`actual` from `Statistics over N steps` line, then `requested_manifest`, then `requested_log`); flags `--min-ns`, `--require-actual`, `--merge-with` (order-preserving union for diff-friendly updates).
+- `submit_simulations.sh`: `--completed-csv` (skip already-done), `--from-csv` (use CSV as work list, e.g. for resimulating legacy data with new ITPs), `--pin {on,off,auto}` (gmx mdrun thread pinning).
+- `projected_finish.py` — mid-run ETA from `Writing checkpoint` lines (GROMACS only writes final `Performance:` after success). Recurses with `rglob` so it works on parent dirs.
+- `analyze_benchmark.py --cpu` for device-aware recommendation + `hpc_defaults_cpu` YAML emit; `pin` column carried through to recommended YAML.
 - Partition dispatch + QOS caps (general1=40 jobs, gpu_test=2 jobs) in `submit_simulations.sh`.
-- `analyze_benchmark.py --cpu` for device-aware recommendation + `hpc_defaults_cpu` YAML emit.
 - Env propagation refactored to env-file-via-positional-arg (SLURM `--export` silently drops entries on Goethe-HLR).
+- **CHOL fix (2026-05-17)**: registry `insane_keyword="M3.CHOL"` instead of `"CHOL"` (insane's default is the legacy 8-bead M2 topology; M3 ITP has 9 beads → grompp atom-count mismatch on every CHOL-containing system).
+- **DIPC → DLPC migration (2026-05-17)**: DLPC added as parallel registry entry (same physics as DIPC; modern M3 token). `submit_simulations.sh --rename-lipid DIPC=DLPC` (repeatable, `OLD=NEW`) rewrites composition tokens in-flight; recanonicalises so alpha-tiebreak order stays right. Pair with `--from-csv resources/done.csv` to migrate legacy 70-system corpus to `DLPC*` output dirs. LIPID_TYPES + existing training data unchanged.
 
 ## What's Left to Build
 
