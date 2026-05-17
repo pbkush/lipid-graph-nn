@@ -221,6 +221,20 @@ _REGISTRY_DATA: dict[str, LipidEntry] = {
             insane_alhead="C P", insane_allink="G G",
             insane_altail="CDDC CDDC", insane_alcharge=0.0,
         ),
+        # DLPC is the modern M3 name for the same di-C18:2 PC lipid that legacy
+        # code (incl. the 70-system corpus) calls DIPC.  Adding it as a separate
+        # entry lets new compositions use the new name while DIPC stays usable
+        # for backwards compatibility with the existing training data + LIPID_TYPES
+        # vocabulary.  When migrating, pair --from-csv with
+        # --rename-lipid DIPC=DLPC so new sims land in DLPC* output dirs.
+        LipidEntry(
+            name="DLPC", resname="DLPC", itp_file="martini_v3.0.0_phospholipids_PC_v2.itp",
+            moleculetype="DLPC",
+            beads=("NC3", "PO4", "GL1", "GL2", "C1A", "D2A", "D3A", "C4A", "C1B", "D2B", "D3B", "C4B"),
+            family="phospholipid", insane_keyword="DLPC",
+            insane_alhead="C P", insane_allink="G G",
+            insane_altail="CDDC CDDC", insane_alcharge=0.0,
+        ),
         LipidEntry(
             name="DOPC", resname="DOPC", itp_file=_PHOSPHOLIPID_ITP, moleculetype="DOPC",
             beads=("NC3", "PO4", "GL1", "GL2", "C1A", "D2A", "C3A", "C4A", "C1B", "D2B", "C3B", "C4B"),

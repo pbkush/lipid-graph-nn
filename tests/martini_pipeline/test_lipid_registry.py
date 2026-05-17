@@ -23,7 +23,11 @@ _NODE_MAPPING_PATH = os.path.join(_REPO_ROOT, "resources", "martini_ff_node_mapp
 _HAS_LEGACY_ITP = os.path.isdir(_LEGACY_ITP_DIR)
 _HAS_NODE_MAPPING = os.path.isfile(_NODE_MAPPING_PATH)
 
-_DEFAULT_LIPIDS = {"DIPC", "DOPC", "DPPC", "POPC", "DOPE", "DPPE", "POPE", "DOPS", "POPS", "CHOL"}
+_DEFAULT_LIPIDS = {"DIPC", "DLPC", "DOPC", "DPPC", "POPC", "DOPE", "DPPE", "POPE", "DOPS", "POPS", "CHOL"}
+# DLPC is the modern M3 name for the same di-C18:2 PC lipid called DIPC in the
+# legacy 70-system corpus.  Both registry entries point at the same itp_file /
+# moleculetype / beads — only the user-facing token differs, so the canonical
+# composition names can migrate via submit_simulations.sh --rename-lipid.
 
 
 def _fake_entry(**overrides) -> LipidEntry:
@@ -276,10 +280,11 @@ def test_check_resources_combined_all_pass(tmp_path):
 )
 @pytest.mark.parametrize(
     "name",
-    # DIPC excluded: registry now points to v2 ITP (DLPC moleculetype),
-    # while legacy data uses v1 (DIPC moleculetype).  See lipid_registry.py
-    # comment on the DIPC entry and Decision 49 in martini_pipeline_plan.md.
-    sorted(_DEFAULT_LIPIDS - {"DIPC"}),
+    # DIPC and DLPC excluded: both registry entries point to the v2 ITP
+    # (DLPC moleculetype, 12 beads), while the legacy ITP set uses v1
+    # (DIPC moleculetype).  Same root cause; see lipid_registry.py comment
+    # on the DIPC/DLPC entries and Decision 49 in martini_pipeline_plan.md.
+    sorted(_DEFAULT_LIPIDS - {"DIPC", "DLPC"}),
 )
 def test_check_resources_legacy_integration(name):
     entry = get_lipid(name)
