@@ -1,5 +1,22 @@
 # Active Context
 
+## Currently Running / Pending on HPC (2026-05-17)
+
+| Stream | Where | State | Notes |
+| --- | --- | --- | --- |
+| Subgoal 3a — `popc_interpolation` 1 µs | `general1` (CPU) | running | 77 POPC-anchored binaries at 10 % step; 48 h walltime, ETA ~65 h per slot — resubmit-with-`-cpi` likely on some slots |
+| Subgoal 3b — DPPC/DOPC corner extrapolation | `gpu` | running | `pin=auto` (pre-`--pin` infrastructure); will not benefit from the new mdrun thread-pinning |
+| CHOL-containing combinations | `gpu` | **failed** | grompp atom-count mismatch from insane's legacy 8-bead CHOL vs M3 9-bead ITP. Fixed at registry level (`insane_keyword="M3.CHOL"`); waiting for the new GPU benchmark to land before resubmitting these. |
+| GPU benchmark with `pin=on` probe rows | `gpu` | pending | TSV has two new rows `8_sim_8gpu_cpu4_pin_on` and `8_sim_8gpu_cpu8_pin_on`; compare against current winner (cpu4, pin=auto). |
+
+**Planned sequence once the new GPU benchmark lands**:
+
+1. **Rerun CHOL compositions** on GPU with the M3.CHOL fix + new pin-aware defaults.
+2. **Rerun the legacy 70-system corpus** under the modern M3 ITPs via `submit_simulations.sh --from-csv resources/done.csv --rename-lipid DIPC=DLPC --completed-csv resources/redone.csv`. Standardises every output to one set of itp definitions (avoids future mapping conflicts).
+3. **Compare new vs. legacy** for the 70-system corpus — sanity-check that property labels (lipid_packing / thickness / variation / persistence / diffusivity / compressibility) are within expected noise of the legacy values, so the relabel doesn't silently change the regression targets. Comparison notebook drafted at [scripts/notebooks/compare_legacy_vs_new_m3.py](../../scripts/notebooks/compare_legacy_vs_new_m3.py) — paired on `canonical_name`, six path widgets (legacy/new property-pickle dirs, run roots, ITP dirs), default new paths `results/properties_m3_rerun/` and `data/membrane_only_m3_rerun/`. Sections: (1) coverage, (2) ITP SHA-1 diff, (3) per-property paired summary + scatter/Bland–Altman/KDE/movers/Δ-correlation, (4) EDR observables behind a heavy-step switch (means/stds/drift over last 50 %, panedr), (5) composition-space PCA with per-property Δ overlay, (6) mechanical retraining trigger (`|paired_t|>3` or `frac_|d|>sd_legacy>0.5` on any active prop). Built per `marimo-data-analysis` skill.
+4. **Re-run preprocessing** (`MartiniHeteroGraphBuilder` → chunk pt files) on the new trajectories.
+5. **Retrain the best Tier C config** (lr=3e-5, wd=1e-3, h=128, l=2, e=200; 7 active properties) on the regenerated dataset and confirm Stage 5d's R² band holds.
+
 ## Current Work Focus
 
 **Next phase — M3 lipidome analysis (2026-05-16)**. Plan at [docs/m3_lipidome_analysis_plan.md](../../docs/m3_lipidome_analysis_plan.md) for a marimo notebook `scripts/notebooks/analyze_m3_lipidome.py` characterising the full M3 lipid library (vendored `resources/martini3/itp/`, 32 ITP collections) before any new simulations. Two layers: **(A) lipid space** — descriptor panel (structural / bead-composition / bead-physics / optional graph-topology / deferred GNN single-lipid probe) × DR-clustering panel (PCA, MDS, UMAP, t-SNE, HDBSCAN, Ward); **(B) composition space** — simplex over lipid archetypes plus mole-fraction-weighted embedding centroid. Section 6 ties it back to the GNN: post-trunk embedding of the current 70 systems vs the descriptor-based composition embedding (disagreement = where extrapolation will be hardest). Output: shortlist of ~20–40 candidate compositions via a stratified-shells selection rule, feeding the martini_pipeline (subgoal 3a/3b coverage work). Defaults assumed: bilayer-forming-only scope, bead-composition + structural as primary lipid descriptor, stratified shells as the selection rule. Phase 1 deliverable; the GNN single-lipid-probe descriptor is Phase 2 (needs bead vocab decoupled from `LIPID_TYPES`).
