@@ -346,7 +346,8 @@ def _(mo):
     ## 2 — Property Definitions
 
     Eight scalars are computed per composition by
-    `lipid_gnn.functions_emil.calculate_properties.compute_properties`
+    `lipid_gnn.properties.compute_all` (replaces the legacy
+    `functions_emil.calculate_properties.compute_properties`)
     over frames `[50:667]` (≈1 µs of production, `dt = 1.5 ns`).
 
     | Name | Definition | Units |

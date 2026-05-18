@@ -10,7 +10,7 @@ import numpy as np
 
 from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import preprocess_and_save
-from lipid_gnn.functions_emil.functions import pkl_load
+from lipid_gnn.io import pkl_load
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 
 AVAILABLE_PROPERTIES = CONFIG.vocab.all_properties

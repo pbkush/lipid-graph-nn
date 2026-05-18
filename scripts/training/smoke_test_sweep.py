@@ -21,7 +21,7 @@ sys.path.append(str(root_dir))
 from lipid_gnn.config import CONFIG
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder, LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
-from lipid_gnn.functions_emil.functions import pkl_load
+from lipid_gnn.io import pkl_load
 
 # Paths are sourced from the central config.
 DATA_DIR             = CONFIG.paths.data_dir

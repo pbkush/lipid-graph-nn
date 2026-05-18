@@ -18,10 +18,7 @@ try:
 except ImportError:
     pass
 
-try:
-    from lipid_gnn.functions_emil.functions import pkl_load
-except ImportError:
-    pass
+from lipid_gnn.io import pkl_load
 
 
 class MartiniDiskDataset(IterableDataset):

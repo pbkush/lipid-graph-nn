@@ -55,7 +55,57 @@ Plan: [docs/functions_emil_cleanup_plan.md](../../docs/functions_emil_cleanup_pl
 2. **Audit** the kept functions for logical bugs — *especially* property-calculation correctness. §2 of the plan lists 12 issues; the load-bearing ones: identical upper/lower leaflet branch (persistence & diffusivity always sample lower leaflet), persistence residue-index lookup is mis-indexed against the wrong array, persistence "still in contact at +lag" check intersects incompatible index spaces, `compute_bending_modulus` is fed the half-thickness field instead of the midplane, `compressibility` is a mislabelled thickness-inhomogeneity (not `K_A`), PO4-only leaflet cutoff biases CHOL systems, RNG is unseeded → labels are non-reproducible.
 3. **Rewrite** into new project-grade modules: `lipid_gnn/properties.py` (per-property functions + `compute_all` orchestrator + `legacy=True/False` switch), `lipid_gnn/io.py` (replaces the `pkl_load`/`pkl_save` wrappers), `scripts/python/compute_properties.py` CLI (replaces the emil notebook), `tests/test_properties.py` (POPC100 regression against properties.md). Then delete `lipid_gnn/functions_emil/` entirely. Migration order in §3 of the plan.
 
-Status — **plan written 2026-05-18, execution not started.** Do not begin without explicit go-ahead. Open decisions (logged in §4 of the plan): recompute 70-system labels or stay bug-compatible; rename `compressibility` or compute real `K_A`; fix or permanently drop `bending_modulus`; fold the `project_insane_legacy_cleanup` task into step 5 of this cleanup or keep separate.
+**Decisions resolved 2026-05-18** (decision log §4 of the plan):
+
+- **Recompute 70-system labels** after the bug fixes land — fresh `results/properties_v2/` next to the preserved bugged `results/properties/`. Couples to the pending Tier C retraining-with-weight-saving and the M3-ITP resimulation.
+- **Rename `compressibility` → `thickness_inhomogeneity`** everywhere (label, plots, properties.md, notebooks). Real `K_A` deferred.
+- **Fix `bending_modulus`** (use midplane `(upper + lower) / 2`); re-evaluate whether the fixed property is trainable on the regenerated labels — if yes, candidate 8th property; if still noise-dominated, the permanent drop stands.
+
+**Two new sections added to the plan**:
+
+- §3 candidate **new properties** for orthogonal-signal coverage (the embedding's diet is currently dominated by geometry + short-time dynamics + inhomogeneity). Recommended v1 additions: tail order `S_CC`, hexatic order `ψ₆`, headgroup tilt, surface tension γ from EDR, q-resolved undulation amplitudes `⟨|h(q)|²⟩` (which also serves the EFA-reopening agenda). Pairwise-Pearson redundancy check on the 70-system labels gates inclusion. Deferred: interdigitation, g_AB(r), lateral pressure profile.
+- §3 **mock tests** for property correctness — synthetic constructed trajectories with analytic answers, one per pitfall. Highlights: flat / corrugated bilayer (thickness + std), triangular lattice and Poisson points (Voronoi CV + PBC), identity / decoupled / known-fraction trajectories (persistence — exercises bugs #2/#3), ballistic single-vector displacement (diffusivity — exercises bug #9), Lx+ε boundary crossing (PBC unwrap), symmetric vs CHOL-asymmetric leaflet split (exercises bug #6), sinusoidal midplane (bending_modulus — exercises bug #4) and counter-undulating peristaltic-null (also bug #4 regression), RNG reproducibility (bug #8). Each mock test maps 1-to-1 to a numbered §2 bug.
+
+**`insane.py` legacy cleanup folded in 2026-05-18.** Step 5 of the migration order also deletes the four other legacy `insane.py` copies enumerated in `project_insane_legacy_cleanup`: two under `colab_lipid_gnn_subset/lipid_gnn/functions_emil/` (incl. `.ipynb_checkpoints`) and one under `build/lib/lipid_gnn/functions_emil/`. Simplest sweep: remove the whole `colab_lipid_gnn_subset/lipid_gnn/functions_emil/` subtree (legacy Colab reference, no longer the active training path) and `build/` (regenerated on `pip install`). The `project_insane_legacy_cleanup` memo is closed as subsumed once step 5 lands.
+
+**Two final decisions resolved 2026-05-18**:
+
+- **Keep `legacy=True` for now.** Ship as a runtime switch (not just a test fixture) alongside `legacy=False`. Re-evaluate after the regenerated labels are validated and the three-way comparison notebook lands.
+- **No new properties in v1.** §3 candidate-new-properties section stays as a parking-lot for the follow-on task. v1 ships exactly the existing 8 properties under bug-fixed implementations; `bending_modulus` is re-evaluated for trainability post-fix.
+
+Status — **plan complete and ready to execute 2026-05-18.** All §4 decisions resolved. Do not begin without explicit go-ahead.
+
+### Migration executed 2026-05-18 (steps 1–3 + tests of plan §3)
+
+- **Step 1** — [lipid_gnn/io.py](../../lipid_gnn/io.py) ships `pkl_load` / `pkl_save` (thin pickle wrapper, no glob, no `nglview`/`cv2` imports). The 3 in-project import sites — [lipid_gnn/dataset.py](../../lipid_gnn/dataset.py), [scripts/training/prepare_colab_subset.py](../../scripts/training/prepare_colab_subset.py), [scripts/training/smoke_test_sweep.py](../../scripts/training/smoke_test_sweep.py) — switched from `lipid_gnn.functions_emil.functions` to `lipid_gnn.io`.
+- **Step 2** — [lipid_gnn/properties.py](../../lipid_gnn/properties.py) implements all 8 bug-fixed properties + `compute_all` orchestrator with `legacy=True/False` switch. Bug fixes landed: #1 (real upper/lower leaflet split), #2 (`other_indices[j]` instead of positional index for persistence residue lookup), #3 (recompute contacts at +lag instead of intersecting incompatible index spaces), #4 (midplane = `(upper + lower)/2` for bending modulus, not the half-thickness), #6 (full head-bead set for leaflet cutoff, not PO4-only), #8 (RNG seed kwarg → reproducible labels), #9 (single-lipid lab-frame MSD with PBC unwrap, not pair-relative pivot), #10 (periodic Voronoi via 9-image replication, no bbox clipping), #11 (grid params are kwargs), #12 (`curve_fit` with `p0=[1.0]`). Property rename: `compressibility` → `thickness_inhomogeneity` (the legacy key remains as a value alias so downstream code keeps working).
+- **Step 3** — [scripts/python/compute_properties.py](../../scripts/python/compute_properties.py) CLI replaces the emil notebook. Default `--out-dir results/properties_v2/` preserves the historical `results/properties/` untouched.
+- **Tests** — [tests/test_properties.py](../../tests/test_properties.py): 17 mock tests, all pass. Covers analytic regular-grid `lipid_packing`, flat & corrugated `thickness`, periodic-Voronoi `variation`, frozen / decoupled / asymmetric-bilayer `persistence`, ballistic-displacement & PBC-unwrap `diffusivity`, sinusoidal-midplane `bending_modulus` plus peristaltic-null regression, RNG reproducibility, legacy/bugfixed schema + alias. Full repo test suite (59 tests) still green after the migration.
+- **Step 5 executed 2026-05-18.** Deleted `lipid_gnn/functions_emil/` (11 887 LOC across 12 modules), `colab_lipid_gnn_subset/lipid_gnn/functions_emil/`, and `build/`. All five legacy `insane.py` copies are now gone (canonical Python-3 `insane` remains via the pip-installed package + `resources/martini3/insane.py`). One in-project docstring updated: [scripts/notebooks/analyze_dataset.py:349](../../scripts/notebooks/analyze_dataset.py) now points at `lipid_gnn.properties.compute_all`. Out-of-project notebooks under `scripts/emil/` and `scripts/colab/train_colab.ipynb` still have stale imports but those notebooks are explicitly out of scope (`feedback_training_hpc_only`); they are now broken and stay broken. `setup.py` uses `find_packages()`, so no packaging-config edit needed.
+- **Verification**: full repo test suite green — 567 passed, 7 skipped (59 in core + 508 in `martini_pipeline`).
+- **Held back per instruction**: step 4 (label regeneration on real trajectories — needs HPC).
+
+## New task — three-way property + model comparison notebook (2026-05-18)
+
+Follow-on to the cleanup plan. Once the property pipeline rewrite lands and the new Tier C training-with-checkpoint-saving runs are submitted, build a marimo notebook `scripts/notebooks/compare_bugfix_three_way.py` per the `marimo-data-analysis` skill. Two parallel comparisons.
+
+**Property comparison** — three label sets on the 70-composition corpus:
+
+1. **`bugged_legacy_traj`** — current `results/properties/` (legacy `functions_emil` code on legacy GMX-2 trajectories).
+2. **`bugfixed_legacy_traj`** — new `lipid_gnn/properties.py` (post-cleanup) re-run on the same legacy trajectories. Isolates the *bug-fix* effect on each property.
+3. **`bugfixed_m3_traj`** — new `lipid_gnn/properties.py` re-run on the M3-ITP resimulated trajectories (the `--from-csv resources/done.csv --rename-lipid DIPC=DLPC` pass). Isolates the *force-field / trajectory* effect on top of (2).
+
+Pairs on `canonical_name`. Reuse the section layout from [scripts/notebooks/compare_legacy_vs_new_m3.py](../../scripts/notebooks/compare_legacy_vs_new_m3.py): coverage, per-property paired summary (mean / std / t-test / signed Δ), scatter / Bland–Altman / KDE per property, top-N movers, composition-space PCA with Δ overlay. New section that the legacy notebook doesn't have: **per-property variance decomposition** — for each property, partition `Var(label) = Var(bug-fix) + Var(FF) + interaction` across the 70 systems, so the relative magnitude of "bugs vs. force-field" is visible at a glance.
+
+**Model comparison** — three GNN models trained on the three label sets:
+
+1. **`model_bugged_legacy`** — the existing Tier C 5d models (seeds {0,1,4,5,6,8}) downloaded from W&B. No retraining; just final-epoch `model_final.pt` artefacts.
+2. **`model_bugfixed_legacy`** — new Tier C run on `bugfixed_legacy_traj` labels. Same locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`), same 6 seeds. New W&B group e.g. `stage_5d_tier_c_bugfix_legacy_traj`.
+3. **`model_bugfixed_m3`** — new Tier C run on `bugfixed_m3_traj` labels. Same setup. New W&B group e.g. `stage_5d_tier_c_bugfix_m3_traj`.
+
+Per-property test MSE / pooled R² for all three models in a single table; paired t-tests across the same train/test split-system membership; per-system error scatter to localise where the new labels help vs hurt. Confirms (or refutes) that bug fixes preserve GNN performance and that the new M3 trajectories don't silently move targets out of the achievable band.
+
+Status — **task captured 2026-05-18, blocked on:** (a) cleanup plan execution → new property pipeline lands; (b) regeneration of `results/properties_v2/` on both trajectory sets; (c) two new Tier C training runs land with `model_final.pt` artefacts. Do not start before all three are in place. Decision deferred until then: whether the comparison includes the candidate new properties (`S_CC` etc.) — if any are added to the active set before this notebook, plumb them through.
 
 ## Currently Running / Pending on HPC (2026-05-17)
 
