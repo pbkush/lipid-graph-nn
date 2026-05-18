@@ -1,5 +1,62 @@
 # Active Context
 
+## Design notes — protein+membrane extension & EFA reopened (2026-05-18)
+
+New design doc at [docs/protein_membrane_embedding_thoughts.md](../../docs/protein_membrane_embedding_thoughts.md).
+Working notes for the long-term scientific goal (protein+membrane embedding,
+`projectbrief.md`). Ten sections; substantive decisions:
+
+- **Scope flavour (§1)**: (A) inference-only on locked Tier C, (B) fine-tune
+  with new local labels, (C) pure structural probe. Doc argues (A) first.
+- **Protein pair (§2)**: WALP + β2AR recommended (cheap probe + M3-validated
+  GPCR with documented CHOL fingerprint). Souza et al. 2021 *Nat. Methods* is
+  the M3 protein-FF reference. Optionally OmpA for β-barrel coverage.
+- **Compositions (§3)**: stay inside the 70-system training corpus so every
+  protein+membrane system has a matched pure-bilayer training reference.
+- **CG topology cost (§4)**: routine via `martinize2` + ElNeDyn / Go. The
+  *engineering* lift is the bead-vocabulary extension in `lipid_graph.py` /
+  `ff_node_mapping.json` / `MembranePropertyGNN`, not the simulations.
+- **Sweep size (§5)**: 2 proteins × 3 compositions = 6 systems. Same bead-
+  count scale as current corpus — no HPC re-benchmark.
+- **Length (§7)**: 2 µs / system for v1. Total cost ~1 GPU-node-day.
+- **EFA reopened (§8)** — see next entry.
+- **Phasing (§10)**: Phase 0 bead vocab → Phase 1 WALP/POPC smoke test →
+  Phase 2 6-system factorial inference → Phase 3 (optional) fine-tune.
+
+Six open followups in §9 (scope flavour, protein pick, label question,
+when to extend bead vocab, lipidome-shortlist coupling, EFA gate) before
+any simulation is submitted.
+
+**EFA status reopened** — [docs/efa_spatial_layer_future.md](../../docs/efa_spatial_layer_future.md)
+predates Tier C and its motivating-target list is stale:
+
+- `bending_modulus` **permanently dropped** (label noise, not architecture).
+- `compressibility` Tier C 5d pooled test R² = 0.88 — receptive-field upper-
+  bound argument falsified empirically. EFA's headline acid-test target is
+  gone on the membrane-only side.
+- New strongest motivation is the **protein extension**: inhomogeneity +
+  oriented inclusion + bilayer long-wavelength response = textbook
+  global-mixing regime; SE(3) equivariance becomes salient once an oriented
+  protein coexists with the bilayer normal.
+- Test order unchanged from efa-doc: (f) deeper MP → (c) readout-only EFA →
+  (b) per-layer parallel. But **acceptance criterion must be redefined** —
+  candidate gates: embedding-quality metrics, DPPC/DOPC corner error-tail
+  reduction, or a new `S(q_min)` architectural-probe label (preferred —
+  same observable also serves as a scenario-(B) protein label, sharing
+  infra).
+
+---
+
+## New task — `functions_emil/` cleanup (2026-05-18)
+
+Plan: [docs/functions_emil_cleanup_plan.md](../../docs/functions_emil_cleanup_plan.md). Goal — systematically prune and rewrite `lipid_gnn/functions_emil/` (11,887 LOC, mostly inherited TPS/FE-NN code). Three subtasks:
+
+1. **Categorise** every module + top-level symbol into three bins: **used**, **not used**, and **possibly useful in the future**. `scripts/emil/general/` and `scripts/emil/free_energy_nn_paper/` notebooks are out-of-project. First-pass survey in §1 + §1b of the plan: **two modules kept now** — `functions.py` (`pkl_load`/`pkl_save`, 3 in-project callers) and `calculate_properties.py` (`compute_properties`, source of every training label in `results/properties/`). The other 10 modules (~11 200 LOC) are not currently reachable from in-project code; most go to the "drop outright" bin, with the §1b "possibly useful" exceptions earmarked for **read-and-port-the-idea, then delete**: `compute_com_dist` and `DRMSD` (protein+membrane primitives), `properties_nn.Network` + train/eval loop (stronger FFNN baseline than the current Ridge), `bilayer_builder` (read-only reference for protein-placement when the protein+membrane phase begins), `utils.compute_autocorrelation` (property-convergence diagnostics), `utils.recover_trr` (long-simulation robustness), `utils.weighted_quantile`, plus composition-string parsers in `properties_nn` pending overlap-check with `martini_pipeline.canonical_name`.
+2. **Audit** the kept functions for logical bugs — *especially* property-calculation correctness. §2 of the plan lists 12 issues; the load-bearing ones: identical upper/lower leaflet branch (persistence & diffusivity always sample lower leaflet), persistence residue-index lookup is mis-indexed against the wrong array, persistence "still in contact at +lag" check intersects incompatible index spaces, `compute_bending_modulus` is fed the half-thickness field instead of the midplane, `compressibility` is a mislabelled thickness-inhomogeneity (not `K_A`), PO4-only leaflet cutoff biases CHOL systems, RNG is unseeded → labels are non-reproducible.
+3. **Rewrite** into new project-grade modules: `lipid_gnn/properties.py` (per-property functions + `compute_all` orchestrator + `legacy=True/False` switch), `lipid_gnn/io.py` (replaces the `pkl_load`/`pkl_save` wrappers), `scripts/python/compute_properties.py` CLI (replaces the emil notebook), `tests/test_properties.py` (POPC100 regression against properties.md). Then delete `lipid_gnn/functions_emil/` entirely. Migration order in §3 of the plan.
+
+Status — **plan written 2026-05-18, execution not started.** Do not begin without explicit go-ahead. Open decisions (logged in §4 of the plan): recompute 70-system labels or stay bug-compatible; rename `compressibility` or compute real `K_A`; fix or permanently drop `bending_modulus`; fold the `project_insane_legacy_cleanup` task into step 5 of this cleanup or keep separate.
+
 ## Currently Running / Pending on HPC (2026-05-17)
 
 | Stream | Where | State | Notes |
