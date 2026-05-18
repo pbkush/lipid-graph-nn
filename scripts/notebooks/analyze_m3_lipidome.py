@@ -16,7 +16,7 @@
 
 import marimo
 
-__generated_with = "0.23.3"
+__generated_with = "0.23.6"
 app = marimo.App(width="medium")
 
 
@@ -90,7 +90,6 @@ def _():
         Counter,
         DATA_DIR,
         FF_PARAMS_PATH,
-        FIG_DIR,
         HAS_HDBSCAN,
         HAS_TORCH,
         HAS_UMAP,
@@ -118,53 +117,51 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        # M3 Lipidome Analysis
+    mo.md(r"""
+    # M3 Lipidome Analysis
 
-        Characterisation of the Martini 3 lipid library before any new
-        simulations. Plan: [`docs/m3_lipidome_analysis_plan.md`](../../docs/m3_lipidome_analysis_plan.md).
+    Characterisation of the Martini 3 lipid library before any new
+    simulations. Plan: [`docs/m3_lipidome_analysis_plan.md`](../../docs/m3_lipidome_analysis_plan.md).
 
-        Two layers:
+    Two layers:
 
-        - **(A) Lipid space** — each lipid is a point with descriptor vectors
-          built from ITP/INSANE metadata, bead composition, and bead physics.
-        - **(B) Composition space** — each membrane is a mole-fraction-weighted
-          centroid of its lipids in the lipid-space embedding.
+    - **(A) Lipid space** — each lipid is a point with descriptor vectors
+      built from ITP/INSANE metadata, bead composition, and bead physics.
+    - **(B) Composition space** — each membrane is a mole-fraction-weighted
+      centroid of its lipids in the lipid-space embedding.
 
-        The 70 currently-simulated compositions and the 10-lipid training pool
-        are marked on every relevant figure.
+    The 70 currently-simulated compositions and the 10-lipid training pool
+    are marked on every relevant figure.
 
-        Sections:
-        1. ITP inventory
-        2. Lipid feature descriptors
-        3. Lipid-space dimensionality reduction & clustering
-        4. Composition space construction
-        5. Composition-space coverage
-        6. Selection rules for next simulations
-        7. GNN embedding probe (tie-back to the model)
-        8. Conclusions
-        """
-    )
+    Sections:
+    1. ITP inventory
+    2. Lipid feature descriptors
+    3. Lipid-space dimensionality reduction & clustering
+    4. Composition space construction
+    5. Composition-space coverage
+    6. Selection rules for next simulations
+    7. GNN embedding probe (tie-back to the model)
+    8. Conclusions
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 1. ITP inventory")
+    mo.md(r"""
+    ## 1. ITP inventory
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        Parse every `[moleculetype]` block in `resources/martini3/itp/` plus the
-        sterols file in `emil_extra/`. Harvest the `@INSANE` metadata
-        (headgroup / linker / tail tokens) and the `[atoms]` block (bead types,
-        per-atom charge). Filter to bilayer-forming families.
-        """
-    )
+    mo.md(r"""
+    Parse every `[moleculetype]` block in `resources/martini3/itp/` plus the
+    sterols file in `emil_extra/`. Harvest the `@INSANE` metadata
+    (headgroup / linker / tail tokens) and the `[atoms]` block (bead types,
+    per-atom charge). Filter to bilayer-forming families.
+    """)
     return
 
 
@@ -336,18 +333,18 @@ def _(CURRENT_LIPIDS, FF_PARAMS_PATH, json, np, pd, raw_lipids):
     n_lipidome = len(lipid_df)
     n_current_found = int(lipid_df["is_current"].sum())
     missing_current = sorted(set(CURRENT_LIPIDS) - set(lipid_df["molname"]))
-    return (
-        BILAYER_FAMILIES,
-        ff_params,
-        lipid_df,
-        missing_current,
-        n_current_found,
-        n_lipidome,
-    )
+    return ff_params, lipid_df, missing_current, n_current_found, n_lipidome
 
 
 @app.cell
-def _(CURRENT_LIPIDS, lipid_df, mo, missing_current, n_current_found, n_lipidome):
+def _(
+    CURRENT_LIPIDS,
+    lipid_df,
+    missing_current,
+    mo,
+    n_current_found,
+    n_lipidome,
+):
     mo.vstack([
         mo.md(
             f"""
@@ -408,26 +405,26 @@ def _(lipid_df, mo, n_current_found, n_lipidome, np, plt, save_fig):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 2. Lipid feature descriptors")
+    mo.md(r"""
+    ## 2. Lipid feature descriptors
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        Three descriptor vectors are computed and compared in parallel. The
-        question is not which is best — it is how much downstream structure
-        depends on the feature choice.
+    mo.md(r"""
+    Three descriptor vectors are computed and compared in parallel. The
+    question is not which is best — it is how much downstream structure
+    depends on the feature choice.
 
-        1. **Structural** — family one-hot, bead/tail counts, tail length and
-           asymmetry, unsaturation, head/link bead counts, net charge.
-        2. **Bead composition** — count of each Martini 3 bead type per lipid.
-        3. **Bead physics** — per-lipid mean and sum of `[mass, charge, σ, ε]`
-           from the bead parameter file. These are the same physics features
-           the GNN consumes at the node level.
-        """
-    )
+    1. **Structural** — family one-hot, bead/tail counts, tail length and
+       asymmetry, unsaturation, head/link bead counts, net charge.
+    2. **Bead composition** — count of each Martini 3 bead type per lipid.
+    3. **Bead physics** — per-lipid mean and sum of `[mass, charge, σ, ε]`
+       from the bead parameter file. These are the same physics features
+       the GNN consumes at the node level.
+    """)
     return
 
 
@@ -496,21 +493,21 @@ def _(StandardScaler, ff_params, lipid_df, mo, np, pd):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 3. Lipid-space dimensionality reduction & clustering")
+    mo.md(r"""
+    ## 3. Lipid-space dimensionality reduction & clustering
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        For each descriptor: PCA (linear) and UMAP (non-linear). HDBSCAN
-        clusters the 10-dimensional PCA-reduced space. The 2D embeddings are
-        coloured by family with a ringed marker for the 10 current training
-        lipids; the natural visual question is whether the training pool
-        covers the lipidome or hugs a corner.
-        """
-    )
+    mo.md(r"""
+    For each descriptor: PCA (linear) and UMAP (non-linear). HDBSCAN
+    clusters the 10-dimensional PCA-reduced space. The 2D embeddings are
+    coloured by family with a ringed marker for the 10 current training
+    lipids; the natural visual question is whether the training pool
+    covers the lipidome or hugs a corner.
+    """)
     return
 
 
@@ -638,16 +635,14 @@ def _(Counter, HAS_HDBSCAN, embeds, mo, pd):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ### Ward dendrogram on structural descriptors
+    mo.md(r"""
+    ### Ward dendrogram on structural descriptors
 
-        Ward hierarchical clustering on the standardised structural features
-        gives a single deterministic tree, useful for choosing a small number
-        of lipid archetypes that will seed the composition-space
-        representation in Section 4.
-        """
-    )
+    Ward hierarchical clustering on the standardised structural features
+    gives a single deterministic tree, useful for choosing a small number
+    of lipid archetypes that will seed the composition-space
+    representation in Section 4.
+    """)
     return
 
 
@@ -656,8 +651,8 @@ def _(
     AgglomerativeClustering,
     dendrogram,
     descriptors,
-    lipid_df,
     linkage,
+    lipid_df,
     mo,
     np,
     plt,
@@ -706,30 +701,30 @@ def _(
         kind="info",
     )
     mo.vstack([ward_fig, mo.as_html(_arch_members), _arch_callout])
-    return K_ARCHETYPES, archetype_labels, lipid_df_arch
+    return K_ARCHETYPES, lipid_df_arch
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 4. Composition space construction")
+    mo.md(r"""
+    ## 4. Composition space construction
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        A composition is a mole-fraction vector over lipids. The natural
-        fixed-length coordinate is the **mole-fraction-weighted centroid** of
-        the lipids' positions in the lipid PCA space — a continuous
-        representation independent of how many lipids the membrane contains.
+    mo.md(r"""
+    A composition is a mole-fraction vector over lipids. The natural
+    fixed-length coordinate is the **mole-fraction-weighted centroid** of
+    the lipids' positions in the lipid PCA space — a continuous
+    representation independent of how many lipids the membrane contains.
 
-        Candidate compositions are drawn from the **current 10-lipid pool only**
-        (pure + binary 10 %-step + Dirichlet mixtures). Extension to the full
-        M3 lipidome requires bead-vocab decoupling and is Phase 2 of this
-        analysis.
-        """
-    )
+    Candidate compositions are drawn from the **current 10-lipid pool only**
+    (pure + binary 10 %-step + Dirichlet mixtures). Extension to the full
+    M3 lipidome requires bead-vocab decoupling and is Phase 2 of this
+    analysis.
+    """)
     return
 
 
@@ -795,7 +790,7 @@ def _(embeds, lipid_df, np):
 
 
 @app.cell
-def _(CURRENT_LIPIDS, composition_to_centroid, mo, np, pd):
+def _(CURRENT_LIPIDS, composition_to_centroid, mo, np):
     _comps = []
     for _lip in CURRENT_LIPIDS:
         _comps.append({"name": f"{_lip}100", "fractions": {_lip: 1.0}, "kind": "pure"})
@@ -872,11 +867,11 @@ def _(cand_coords, composition_to_centroid, mo, np, sim_df):
         """
     )
     cloud_summary
-    return all_coords, sim_coords, sim_names
+    return all_coords, sim_coords
 
 
 @app.cell
-def _(PCA, all_coords, cand_coords, mo, plt, save_fig, sim_coords):
+def _(PCA, all_coords, cand_coords, plt, save_fig, sim_coords):
     _cpca = PCA(n_components=2).fit(all_coords)
     cand_2d = _cpca.transform(cand_coords)
     sim_2d = _cpca.transform(sim_coords)
@@ -901,22 +896,22 @@ def _(PCA, all_coords, cand_coords, mo, plt, save_fig, sim_coords):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 5. Composition-space coverage")
+    mo.md(r"""
+    ## 5. Composition-space coverage
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        HDBSCAN on the full composition cloud (candidates + simulated points)
-        finds natural mixture clusters. For each cluster: cluster size, number
-        of simulated points in it, and the distance from the cluster centroid
-        to its nearest simulated neighbour. Clusters with `nearest_sim` large
-        or `n_simulated = 0` are the **coverage gaps** — directly actionable
-        targets for the next simulation batch.
-        """
-    )
+    mo.md(r"""
+    HDBSCAN on the full composition cloud (candidates + simulated points)
+    finds natural mixture clusters. For each cluster: cluster size, number
+    of simulated points in it, and the distance from the cluster centroid
+    to its nearest simulated neighbour. Clusters with `nearest_sim` large
+    or `n_simulated = 0` are the **coverage gaps** — directly actionable
+    targets for the next simulation batch.
+    """)
     return
 
 
@@ -968,7 +963,7 @@ def _(HAS_HDBSCAN, all_coords, hdbscan, mo, np, pd, sim_coords):
             ),
         ])
     coverage_render
-    return comp_centroids, comp_labels, coverage_df
+    return comp_centroids, comp_labels
 
 
 @app.cell
@@ -1006,23 +1001,23 @@ def _(cand_2d, comp_labels, mo, plt, save_fig, sim_2d):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 6. Selection rules")
+    mo.md(r"""
+    ## 6. Selection rules
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        Two rules previewed (no simulations triggered):
+    mo.md(r"""
+    Two rules previewed (no simulations triggered):
 
-        - **Centroid pick** — nearest candidate to each cluster centroid.
-        - **Stratified shells** — at the 33rd, 66th, and 95th percentile of
-          distance-to-centroid within the cluster. This is the experimental
-          knob for the "embedding-generalisation as a function of distance
-          from training" question.
-        """
-    )
+    - **Centroid pick** — nearest candidate to each cluster centroid.
+    - **Stratified shells** — at the 33rd, 66th, and 95th percentile of
+      distance-to-centroid within the cluster. This is the experimental
+      knob for the "embedding-generalisation as a function of distance
+      from training" question.
+    """)
     return
 
 
@@ -1079,27 +1074,27 @@ def _(cand_coords, candidate_comps, comp_centroids, comp_labels, mo, np, pd):
         )
         shortlist_render = mo.vstack([_summary, _table])
     shortlist_render
-    return (shortlist,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"## 7. GNN embedding probe")
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        The cheapest tie-back to the model. Loads a trained checkpoint
-        (`model_best.pt`, falling back to `model_final.pt`); per-system
-        embedding extraction requires a forward-hook on the post-trunk
-        readout and the 70 system graphs. That is the natural extension once
-        retrained Tier C checkpoints land — kept as a stub here so the
-        notebook still runs without them.
-        """
-    )
+    mo.md(r"""
+    ## 7. GNN embedding probe
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The cheapest tie-back to the model. Loads a trained checkpoint
+    (`model_best.pt`, falling back to `model_final.pt`); per-system
+    embedding extraction requires a forward-hook on the post-trunk
+    readout and the 70 system graphs. That is the natural extension once
+    retrained Tier C checkpoints land — kept as a stub here so the
+    notebook still runs without them.
+    """)
     return
 
 
@@ -1152,17 +1147,26 @@ def _(HAS_TORCH, MembranePropertyGNN, REPO, glob, mo, torch):
                 ),
             ])
     ckpt_render
-    return (ckpt,)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"## 8. Conclusions")
+    mo.md(r"""
+    ## 8. Conclusions
+    """)
     return
 
 
 @app.cell
-def _(K_ARCHETYPES, lipid_df_arch, mo, n_current_found, n_families, n_lipidome):
+def _(
+    K_ARCHETYPES,
+    lipid_df_arch,
+    mo,
+    n_current_found,
+    n_families,
+    n_lipidome,
+):
     _arch_with_current = int(
         (lipid_df_arch.groupby("archetype")["is_current"].sum() > 0).sum()
     )
