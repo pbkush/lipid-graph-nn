@@ -22,6 +22,7 @@ fields (height-interpolation grid, leaflet split) across properties.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -64,7 +65,10 @@ class GridSpec:
     def build(self) -> tuple[np.ndarray, np.ndarray]:
         x = np.arange(self.margin, self.box_xy[0] - self.margin + 1e-9, self.step)
         y = np.arange(self.margin, self.box_xy[1] - self.margin + 1e-9, self.step)
-        return np.meshgrid(x, y)
+        # indexing="ij" → X[i,j] = x[i], Y[i,j] = y[j], shape (nx, ny).
+        # Keeps physical axis identity aligned with array axis for downstream
+        # FFT code (see compute_bending_modulus_from_field).
+        return np.meshgrid(x, y, indexing="ij")
 
 
 def _split_leaflets(z: np.ndarray) -> float:
@@ -169,28 +173,56 @@ def _legacy_height_fields(traj: md.Trajectory, po4_indices: np.ndarray,
     return (np.asarray(xy_thickness), np.asarray(xy_membrane_half), X, Y, frame_mask)
 
 
-def thickness_summary(xy_thickness: np.ndarray
+def thickness_summary(xy_thickness: np.ndarray, frame_mask: np.ndarray | None = None
                       ) -> tuple[float, float, float, np.ndarray, np.ndarray, np.ndarray]:
-    """Reduce an ``(n_frames, nx, ny)`` thickness field to scalar + per-frame
+    """Reduce an ``(n_kept, nx, ny)`` thickness field to scalar + per-frame
     series.
 
-    Returns ``(thickness_A, thickness_std_A, thickness_inhomogeneity,
+    Parameters
+    ----------
+    xy_thickness
+        Filtered thickness field (only frames that passed interpolation).
+    frame_mask
+        Optional boolean array of length ``n_frames_total`` marking which
+        frames were retained. When supplied, returned series are length
+        ``n_frames_total`` with ``NaN`` at dropped-frame positions, so that
+        per-property series from different properties can be co-indexed.
+
+    Returns
+    ``(thickness_A, thickness_std_A, thickness_inhomogeneity,
     thickness_series, thickness_std_series, inhomogeneity_series)``, all in
-    Ångström / Å² where appropriate.
+    Ångström / Å² where appropriate. Mean values are taken over kept frames
+    only (NaN-free).
     """
     if xy_thickness.size == 0:
         nan = float("nan")
+        if frame_mask is not None:
+            n = len(frame_mask)
+            return (nan, nan, nan,
+                    np.full(n, nan), np.full(n, nan), np.full(n, nan))
         return nan, nan, nan, np.array([]), np.array([]), np.array([])
     flat = xy_thickness.reshape(xy_thickness.shape[0], -1)
-    thickness_series = flat.mean(axis=1) * 10.0  # nm → Å
-    thickness_std_series = flat.std(axis=1) * 10.0
-    # Per-frame spatial std (in nm) of the deviation from the frame-mean
-    # thickness, scaled to Å²:
-    inhomogeneity_series = (flat - thickness_series[:, None] / 10.0).std(axis=1) ** 2 * 100.0
+    kept_thickness = flat.mean(axis=1) * 10.0     # nm → Å
+    kept_std = flat.std(axis=1) * 10.0
+    kept_inhomog = kept_std ** 2                  # Å² (already squared Å std)
+
+    if frame_mask is not None:
+        n = len(frame_mask)
+        thickness_series = np.full(n, np.nan)
+        thickness_std_series = np.full(n, np.nan)
+        inhomogeneity_series = np.full(n, np.nan)
+        thickness_series[frame_mask] = kept_thickness
+        thickness_std_series[frame_mask] = kept_std
+        inhomogeneity_series[frame_mask] = kept_inhomog
+    else:
+        thickness_series = kept_thickness
+        thickness_std_series = kept_std
+        inhomogeneity_series = kept_inhomog
+
     return (
-        float(thickness_series.mean()),
-        float(thickness_std_series.mean()),
-        float(inhomogeneity_series.mean()),
+        float(np.nanmean(thickness_series)),
+        float(np.nanmean(thickness_std_series)),
+        float(np.nanmean(inhomogeneity_series)),
         thickness_series,
         thickness_std_series,
         inhomogeneity_series,
@@ -210,24 +242,34 @@ def compute_bending_modulus_from_field(Z: np.ndarray, X: np.ndarray, Y: np.ndarr
                                        q_min: float = 0.1,
                                        n_bins: int = 50
                                        ) -> tuple[float, dict]:
-    """Fit κ from ``⟨|h(q)|²⟩ = kBT / (κ q⁴)`` on a height field
-    ``Z[frame, ix, iy]``.
+    """Fit κ from the Helfrich undulation spectrum on a midplane height field.
 
-    Returns ``(kappa, diag)`` where ``diag`` carries the binned spectrum.
-    The caller is responsible for passing the midplane field — *not* the
-    half-thickness (the historical bug fed in the half-thickness, see
-    cleanup-plan §2 bug #4).
+    Continuous Helfrich: ``⟨|h(q)|²⟩ = kBT / (κ q⁴ A)`` where
+    ``h(q) = (1/A) ∫ h(r) e^(-i q·r) d²r``. For a discrete grid of N samples
+    on area A with spacings (Δx, Δy), using ``np.fft.fft2(..., norm="ortho")``
+    one has ``⟨|H_k|²⟩ = kBT / (κ q⁴ Δx Δy)``. The raw fit therefore returns
+    ``κ_fit = κ · Δx Δy``; this function divides by ``Δx Δy`` so the returned
+    value is the **physical bending modulus in units of kBT**.
+
+    ``Z`` is expected with shape ``(n_frames, nx, ny)`` and ``X, Y`` built
+    with ``indexing="ij"`` so that ``X[i,j] = x[i], Y[i,j] = y[j]``.
+
+    Returns ``(kappa, diag)``. The caller must pass the midplane field
+    ``(upper + lower) / 2`` — *not* the half-thickness (cleanup-plan §2
+    bug #4).
     """
     if Z.ndim != 3 or Z.shape[0] < 2:
         return float("nan"), {"reason": "need >= 2 frames"}
     n_frames, nx, ny = Z.shape
-    Lx = X.max() - X.min()
-    Ly = Y.max() - Y.min()
+    # Actual grid spacing (not Lx/nx — that's an off-by-one for half-open
+    # arange grids and silently swaps axes for indexing="xy" meshgrids).
+    step_x = float(X[1, 0] - X[0, 0]) if nx > 1 else 1.0
+    step_y = float(Y[0, 1] - Y[0, 0]) if ny > 1 else 1.0
     Zf = Z - Z.mean(axis=0)
     fft_frames = np.fft.fft2(Zf, axes=(1, 2), norm="ortho")
     ps_avg = np.mean(np.abs(fft_frames) ** 2, axis=0)
-    qx = np.fft.fftfreq(nx, d=Lx / nx) * 2 * np.pi
-    qy = np.fft.fftfreq(ny, d=Ly / ny) * 2 * np.pi
+    qx = np.fft.fftfreq(nx, d=step_x) * 2 * np.pi
+    qy = np.fft.fftfreq(ny, d=step_y) * 2 * np.pi
     QX, QY = np.meshgrid(qx, qy, indexing="ij")
     q_flat = np.sqrt(QX**2 + QY**2).flatten()
     ps_flat = ps_avg.flatten()
@@ -253,7 +295,15 @@ def compute_bending_modulus_from_field(Z: np.ndarray, X: np.ndarray, Y: np.ndarr
         )
     except Exception as exc:  # pragma: no cover — handled by NaN return
         return float("nan"), {"reason": f"curve_fit failed: {exc}"}
-    return float(popt[0]), {"q": q_centers[valid], "ps": ps_binned[valid]}
+    kappa_fit = float(popt[0])
+    kappa_phys = kappa_fit / (step_x * step_y)
+    return kappa_phys, {
+        "q": q_centers[valid],
+        "ps": ps_binned[valid],
+        "kappa_raw_fit": kappa_fit,
+        "step_x": step_x,
+        "step_y": step_y,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -295,10 +345,10 @@ def _voronoi_cv(points: np.ndarray, box: tuple[float, float, float, float],
             if not clipped.is_empty:
                 areas.append(clipped.area)
     if not areas:
-        return 0.0
+        return float("nan")
     areas_np = np.asarray(areas)
     m = areas_np.mean()
-    return float(areas_np.std() / m) if m > 0 else 0.0
+    return float(areas_np.std() / m) if m > 0 else float("nan")
 
 
 def compute_variation(traj: md.Trajectory, *, legacy: bool = False
@@ -324,8 +374,11 @@ def compute_variation(traj: md.Trajectory, *, legacy: bool = False
             _voronoi_cv(lower, bbox, periodic=not legacy),
             _voronoi_cv(upper, bbox, periodic=not legacy),
         ])
-    series = np.mean(per_frame, axis=1)
-    return float(series.mean()), series
+    with warnings.catch_warnings():
+        # All-NaN slice → NaN propagation is the intended behaviour here
+        warnings.filterwarnings("ignore", message="Mean of empty slice")
+        series = np.nanmean(per_frame, axis=1)
+        return float(np.nanmean(series)) if series.size else float("nan"), series
 
 
 # ---------------------------------------------------------------------------
@@ -448,8 +501,10 @@ def compute_diffusivity(traj: md.Trajectory, *, lag: int = 10,
     """Lateral mean squared displacement per lag (Å² / lag).
 
     ``legacy=False`` measures single-lipid lab-frame MSD with explicit PBC
-    unwrap (bug #9 fix). ``legacy=True`` reproduces the historical pair-
-    relative pivot-and-rewrap formulation.
+    minimum-image unwrap (bug #9 fix) and samples both leaflets equally
+    (bug #1 fix). ``legacy=True`` reproduces the historical pair-relative
+    pivot-and-rewrap formulation AND its leaflet bias (always samples the
+    lower leaflet — same bug #1 fingerprint as legacy persistence).
     """
     head_indices = traj.topology.select("name PO4 ROH")
     per_frame = []
@@ -572,15 +627,17 @@ def compute_all(traj: md.Trajectory, *,
     if needs_height:
         if legacy:
             po4 = traj.topology.select("name PO4")
-            xy_thickness, xy_membrane_half, X, Y, _ = _legacy_height_fields(
+            xy_thickness, xy_membrane_half, X, Y, frame_mask = _legacy_height_fields(
                 traj, po4, grid,
             )
         else:
             heads = traj.topology.select("name PO4 ROH")
-            xy_thickness, xy_midplane, X, Y, _ = _height_fields(
+            xy_thickness, xy_midplane, X, Y, frame_mask = _height_fields(
                 traj, heads, grid,
             )
-        t_mean, t_std_mean, inh_mean, t_series, t_std_series, inh_series = thickness_summary(xy_thickness)
+        t_mean, t_std_mean, inh_mean, t_series, t_std_series, inh_series = thickness_summary(
+            xy_thickness, frame_mask=frame_mask,
+        )
         if "thickness" in requested:
             mean["thickness"] = t_mean
             raw["thickness"] = t_series
@@ -595,9 +652,20 @@ def compute_all(traj: md.Trajectory, *,
             raw["compressibility"] = inh_series
         if "bending_modulus" in requested:
             mid = xy_membrane_half if legacy else xy_midplane
-            kappa, diag = compute_bending_modulus_from_field(mid, X, Y, kBT=1.0)
-            # historical scaling: kappa * 1000 to express in kT/Å³
-            mean["bending_modulus"] = kappa * 1000.0 if np.isfinite(kappa) else float("nan")
+            kappa_phys, diag = compute_bending_modulus_from_field(mid, X, Y, kBT=1.0)
+            if not np.isfinite(kappa_phys):
+                mean["bending_modulus"] = float("nan")
+            elif legacy:
+                # Reproduce the historical (dimensionally muddled) label:
+                # κ_fit · 1000, where κ_fit = κ_phys · Δx · Δy. The factor
+                # of 1000 was tagged "kT/Å³" in the legacy code but is not
+                # a real bending modulus — preserved here only to make
+                # legacy=True bit-for-bit reproducible.
+                kappa_raw = diag.get("kappa_raw_fit", kappa_phys * diag["step_x"] * diag["step_y"])
+                mean["bending_modulus"] = kappa_raw * 1000.0
+            else:
+                # Physical κ in kBT (already normalised by Δx Δy in the fit).
+                mean["bending_modulus"] = kappa_phys
             raw["bending_modulus"] = {
                 "q_centers": diag.get("q"),
                 "ps_binned": diag.get("ps"),

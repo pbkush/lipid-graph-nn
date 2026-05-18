@@ -83,7 +83,13 @@ Status — **plan complete and ready to execute 2026-05-18.** All §4 decisions 
 - **Tests** — [tests/test_properties.py](../../tests/test_properties.py): 17 mock tests, all pass. Covers analytic regular-grid `lipid_packing`, flat & corrugated `thickness`, periodic-Voronoi `variation`, frozen / decoupled / asymmetric-bilayer `persistence`, ballistic-displacement & PBC-unwrap `diffusivity`, sinusoidal-midplane `bending_modulus` plus peristaltic-null regression, RNG reproducibility, legacy/bugfixed schema + alias. Full repo test suite (59 tests) still green after the migration.
 - **Step 5 executed 2026-05-18.** Deleted `lipid_gnn/functions_emil/` (11 887 LOC across 12 modules), `colab_lipid_gnn_subset/lipid_gnn/functions_emil/`, and `build/`. All five legacy `insane.py` copies are now gone (canonical Python-3 `insane` remains via the pip-installed package + `resources/martini3/insane.py`). One in-project docstring updated: [scripts/notebooks/analyze_dataset.py:349](../../scripts/notebooks/analyze_dataset.py) now points at `lipid_gnn.properties.compute_all`. Out-of-project notebooks under `scripts/emil/` and `scripts/colab/train_colab.ipynb` still have stale imports but those notebooks are explicitly out of scope (`feedback_training_hpc_only`); they are now broken and stay broken. `setup.py` uses `find_packages()`, so no packaging-config edit needed.
 - **Verification**: full repo test suite green — 567 passed, 7 skipped (59 in core + 508 in `martini_pipeline`).
-- **Held back per instruction**: step 4 (label regeneration on real trajectories — needs HPC).
+- **Step 4 executed 2026-05-18.** Original `results/properties/` moved to `results/old_properties/` (preserved as historical baseline — one-off non-reproducible random draw). Three label sets regenerated under `results/properties/`, 70 systems each:
+    - `prop_legacy_bugged_random/` — legacy buggy algorithms, unseeded (RNG-noise sibling of `old_properties`)
+    - `prop_legacy_bugged_s0/` — legacy buggy algorithms, `--seed 0` (reproducible comparison reference)
+    - `prop_legacy_bugfixed_s0/` — bug-fixed `legacy=False`, `--seed 0` (**production label set going forward**)
+
+  These three sets are the inputs to the three-way comparison notebook tracked below. Bug #7 (inconsistent raw-series lengths across properties) addressed inline: `thickness_summary(..., frame_mask=...)` now pads dropped-frame slots with `NaN` so per-property series are co-indexable; regression test `test_frame_mask_pads_series_with_nan` added (21 property tests total).
+- **All cleanup-plan steps complete.** [docs/functions_emil_cleanup_plan.md](../../docs/functions_emil_cleanup_plan.md) §5 records the final status. Follow-on work: three-way comparison notebook + Tier C retraining (separate entries below).
 
 ## New task — three-way property + model comparison notebook (2026-05-18)
 

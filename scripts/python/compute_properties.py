@@ -36,9 +36,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Root directory containing <composition>/run/prun.{xtc,gro}.",
     )
     p.add_argument(
-        "--out-dir", type=Path, default=Path("results/properties_v2"),
+        "--out-dir", type=Path, default=Path("results/properties"),
         help=(
-            "Output directory for <comp>.h5 files. Default 'results/properties_v2/' "
+            "Output directory for <comp>.h5 files. Default 'results/properties/' "
             "keeps the legacy results/properties/ untouched per the cleanup plan."
         ),
     )

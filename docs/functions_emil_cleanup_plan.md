@@ -250,7 +250,12 @@ Each mock test is independently constructed and runs in < 1 s — no fixture tra
 1. Add `lipid_gnn/io.py`. Switch the 3 in-project `pkl_load` import sites to it.
 2. Add `lipid_gnn/properties.py` with the per-property functions, `compute_all`, and the `legacy=` switch. Add tests.
 3. Add `scripts/python/compute_properties.py` CLI.
-4. **Regenerate labels (not optional, per 2026-05-18 decision)**. After the bug fixes land, recompute `results/properties/<comp>.h5` for the 70-system corpus under `legacy=False`, into a fresh directory (e.g. `results/properties_v2/`). The original `results/properties/` is preserved untouched as the historical-bug baseline. This feeds the comparison notebook in §6 (separate task in memory bank). Coordinates with the already-planned legacy→M3-ITP resimulation: the new property pipeline is run on **both** label sets — the bugged-trajectory corpus and the re-simulated M3 corpus — so the three-way comparison in §6 has all data points.
+4. **Regenerate labels — DONE 2026-05-18.** The original `results/properties/<comp>.h5` files have been moved to `results/old_properties/` (one-off non-reproducible random draw, preserved as the historical baseline). Three fresh label sets recomputed under `results/properties/` to support the three-way comparison notebook:
+    - `results/properties/prop_legacy_bugged_random/` — 70 files. Legacy buggy algorithms, unseeded (matches the non-determinism of the original draw; differs from `old_properties` only by the realised RNG state).
+    - `results/properties/prop_legacy_bugged_s0/` — 70 files. Legacy buggy algorithms, `--seed 0` (reproducible reference for the comparison).
+    - `results/properties/prop_legacy_bugfixed_s0/` — 70 files. Bug-fixed `legacy=False` pipeline, `--seed 0` (production label set going forward).
+
+   Bug #7 (inconsistent raw-series lengths across properties) addressed in-line during regeneration: `thickness_summary(..., frame_mask=...)` pads dropped-frame slots with `NaN` so every series has the same length as the trajectory and can be co-indexed. New regression test `test_frame_mask_pads_series_with_nan`.
 5. Delete `lipid_gnn/functions_emil/` and its `__pycache__` / `.ipynb_checkpoints`. Drop the directory from `pyproject.toml` / `MANIFEST.in` if listed. Then sweep the four other legacy `insane.py` copies enumerated in §4: `colab_lipid_gnn_subset/lipid_gnn/functions_emil/insane.py`, `colab_lipid_gnn_subset/lipid_gnn/functions_emil/.ipynb_checkpoints/insane-checkpoint.py`, and `build/lib/lipid_gnn/functions_emil/insane.py`. Easiest: delete the entire `colab_lipid_gnn_subset/lipid_gnn/functions_emil/` tree (whole subset is legacy reference per `feedback_training_hpc_only`) and `build/` (regenerated on `pip install`). Close the `project_insane_legacy_cleanup` memo as subsumed.
 
 ---
@@ -286,3 +291,7 @@ All §4 questions resolved.
 ## 5. Status
 
 - 2026-05-18 — Plan written. Execution not started; do not begin without explicit go-ahead.
+- 2026-05-18 — Steps 1–3 + tests executed. `lipid_gnn/io.py`, `lipid_gnn/properties.py`, `scripts/python/compute_properties.py`, `tests/test_properties.py` landed; 3 in-project `pkl_load` import sites migrated. All bug fixes #1–#12 implemented in `legacy=False`; `legacy=True` reproduces the buggy algorithms under seeded RNG. Property rename `compressibility → thickness_inhomogeneity` (legacy alias kept). Full test suite green.
+- 2026-05-18 — Step 5 executed. `lipid_gnn/functions_emil/` deleted (12 files, 11 887 LOC); the four other legacy `insane.py` copies removed; `colab_lipid_gnn_subset/lipid_gnn/functions_emil/` and `build/` swept. `project_insane_legacy_cleanup` memo closed as subsumed.
+- 2026-05-18 — Step 4 executed. Original `results/properties/` moved to `results/old_properties/`; three fresh label sets regenerated under `results/properties/{prop_legacy_bugged_random,prop_legacy_bugged_s0,prop_legacy_bugfixed_s0}/` (70 systems each). Bug #7 (raw-series length inconsistency) addressed via `thickness_summary(frame_mask=...)` NaN-padding.
+- **Cleanup plan complete.** All §3 migration steps done. Follow-on work (three-way comparison notebook, Tier C retraining on the bug-fixed labels) tracked separately in [`.claude/memory-bank/activeContext.md`](../.claude/memory-bank/activeContext.md).

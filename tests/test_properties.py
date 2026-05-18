@@ -24,6 +24,7 @@ from lipid_gnn.properties import (
     _height_fields,
     _legacy_height_fields,
 )
+from lipid_gnn import properties as _properties_mod
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,32 @@ class TestThickness:
         # midplane = (2 + 5) / 2 = 3.5 nm everywhere; std across grid = 0
         assert xy_mid.std() == pytest.approx(0.0, abs=1e-5)
 
+    def test_frame_mask_pads_series_with_nan(self):
+        """``thickness_summary(frame_mask=...)`` pads dropped-frame slots
+        with NaN so the series has the same length as the trajectory and
+        is co-indexable with other per-property series."""
+        # 3 kept frames out of 5 total
+        n_kept = 3
+        nx = ny = 4
+        xy_t = np.ones((n_kept, nx, ny)) * 0.3        # 3 nm thickness
+        mask = np.array([True, False, True, True, False])
+        t_mean, t_std, t_inh, t_series, t_std_series, t_inh_series = thickness_summary(
+            xy_t, frame_mask=mask,
+        )
+        # All output series have length 5
+        assert t_series.shape == (5,)
+        assert t_std_series.shape == (5,)
+        assert t_inh_series.shape == (5,)
+        # NaN at dropped frames (positions 1 and 4)
+        assert np.isnan(t_series[1]) and np.isnan(t_series[4])
+        # Finite at kept frames (positions 0, 2, 3): 0.3 nm → 3 Å
+        for i in (0, 2, 3):
+            assert t_series[i] == pytest.approx(3.0, abs=1e-9)
+        # Scalar means use np.nanmean over kept frames only
+        assert t_mean == pytest.approx(3.0, abs=1e-9)
+        assert t_std == pytest.approx(0.0, abs=1e-9)
+        assert t_inh == pytest.approx(0.0, abs=1e-9)
+
     def test_corrugated_upper_known_inhomogeneity(self):
         """Upper plane = Z_hi + A·cos(2π x / Lx). Spatial std of thickness
         per frame is A/√2 (in nm)."""
@@ -182,6 +209,77 @@ class TestBendingModulus:
         assert np.isfinite(kappa)
         # fit on a single-q test: κ should be positive
         assert kappa > 0
+
+    def test_physical_kappa_recovered_from_helfrich_field(self):
+        """Synthetic Gaussian random field with the analytic Helfrich
+        spectrum ``<|H_k_ortho|²> = kBT / (κ q⁴ Δx Δy)``. The fit must
+        recover the input κ in kBT.
+
+        This is the key test for the bugfix: previously the function
+        returned ``κ_raw_fit = κ_phys × Δx × Δy`` and the orchestrator
+        multiplied by 1000 ("kT/Å³") — dimensionally wrong. With the fix,
+        the returned κ matches the input κ directly in kBT.
+        """
+        rng = np.random.default_rng(42)
+        target_kappa = 20.0  # kBT
+        kBT = 1.0
+        nx = ny = 64
+        Lx = Ly = 20.0
+        step = Lx / nx
+        n_frames = 1500
+
+        x = np.arange(nx) * step
+        y = np.arange(ny) * step
+        X, Y = np.meshgrid(x, y, indexing="ij")
+
+        qx = np.fft.fftfreq(nx, d=step) * 2 * np.pi
+        qy = np.fft.fftfreq(ny, d=step) * 2 * np.pi
+        QX, QY = np.meshgrid(qx, qy, indexing="ij")
+        q2 = QX**2 + QY**2
+        # target |H_k_ortho|² per mode
+        target_spectrum = np.zeros_like(q2)
+        nonzero = q2 > 1e-12
+        target_spectrum[nonzero] = kBT / (target_kappa * q2[nonzero] ** 2 * step ** 2)
+
+        amp = np.sqrt(target_spectrum)
+        Z = np.empty((n_frames, nx, ny))
+        for f in range(n_frames):
+            noise = rng.standard_normal((nx, ny))
+            noise_fft = np.fft.fft2(noise, norm="ortho")
+            scaled = noise_fft * amp  # amp is Hermitian-symmetric (depends on |q|²)
+            Z[f] = np.fft.ifft2(scaled, norm="ortho").real
+
+        kappa, diag = compute_bending_modulus_from_field(
+            Z, X, Y, kBT=kBT, q_min=0.5,
+        )
+        # Recovery within 25% — driven by spectrum binning + finite frames
+        assert kappa == pytest.approx(target_kappa, rel=0.25)
+        # Sanity-check the dimensional relationship: kappa_phys = kappa_fit / (Δx Δy)
+        assert diag["step_x"] == pytest.approx(step, abs=1e-10)
+        assert diag["step_y"] == pytest.approx(step, abs=1e-10)
+        assert kappa == pytest.approx(
+            diag["kappa_raw_fit"] / (diag["step_x"] * diag["step_y"]),
+            rel=1e-10,
+        )
+
+    def test_non_square_grid_uses_correct_axis_spacing(self):
+        """For nx ≠ ny or step_x ≠ step_y the fftfreq spacings must be
+        per-axis. Previously the code used ``d = Lx / nx`` for *both*
+        axes after an ``indexing="xy"`` meshgrid silently swapped them —
+        wrong on non-square grids."""
+        rng = np.random.default_rng(0)
+        nx, ny = 32, 48
+        step_x = 0.20
+        step_y = 0.15
+        x = np.arange(nx) * step_x
+        y = np.arange(ny) * step_y
+        X, Y = np.meshgrid(x, y, indexing="ij")
+        Z = rng.normal(scale=0.05, size=(50, nx, ny))
+        kappa, diag = compute_bending_modulus_from_field(Z, X, Y, kBT=1.0)
+        assert np.isfinite(kappa)
+        assert diag["step_x"] == pytest.approx(step_x, abs=1e-10)
+        assert diag["step_y"] == pytest.approx(step_y, abs=1e-10)
+        assert diag["step_x"] != diag["step_y"]
 
     def test_legacy_vs_bugfixed_use_different_fields(self):
         """The legacy path receives the half-thickness; the rewrite receives
@@ -244,6 +342,21 @@ class TestVariation:
         m_new, _ = compute_variation(traj, legacy=False)
         # Periodic path: square lattice → analytic CV is exactly 0
         assert m_new == pytest.approx(0.0, abs=1e-5)
+
+    def test_variation_nan_when_voronoi_fails_everywhere(self, monkeypatch):
+        """If ``_voronoi_cv`` returns NaN on every leaflet (e.g. degenerate
+        point sets), ``compute_variation`` propagates NaN instead of
+        silently averaging zeros (which biased the mean downward)."""
+        pos, (Lx, Ly) = _flat_bilayer_positions(6, spacing=0.6,
+                                                z_low=2.0, z_high=5.0)
+        traj = _trajectory(pos[None, ...],
+                           _single_bead_topology(len(pos)),
+                           box_xy=(Lx, Ly))
+        monkeypatch.setattr(_properties_mod, "_voronoi_cv",
+                            lambda *a, **kw: float("nan"))
+        m, series = compute_variation(traj, legacy=False)
+        assert np.isnan(m)
+        assert np.all(np.isnan(series))
 
     def test_legacy_misses_some_cells_on_corner_lattice(self):
         """Corner-aligned lattice (point at (0,0)) — the legacy non-
