@@ -1,5 +1,15 @@
 # Dataset Expansion Plan
 
+## Status (2026-05-19)
+
+- **`popc_interpolation` (3a)**: CHOL-free cells **done**; CHOL partner column **pending**.
+- **`dppc_corner` + `dopc_corner` (3b)**: CHOL-free cells **done**; CHOL partner column **pending**.
+- **Legacy 70-system M3-ITP resimulation (11e)**: **pending** — required input for the `prop_m3_bugfixed_s0/` label set used in the three-way comparison notebook §6.
+
+`scan_completed_systems.py` results live under [resources/simulation_tables/](../resources/simulation_tables/); rescan there before each resubmit so `--completed-csv` is current. CHOL-containing cells are partners within the existing three grids (capped at 40 % CHOL per Decision 35) — there is no separate "CHOL grid", just rerun the same three `--missing-from-grid` commands with the refreshed CSV gate.
+
+---
+
 Based on the dataset analysis of the 70 Martini 3 membrane compositions, the following hybrid approach is proposed for expanding the simulation dataset. This plan aims to address current model limitations (MAE spikes on extreme mixtures) and test generalization to more realistic biological compositions.
 
 ## Coverage Analysis (quantitative basis for prioritisation)

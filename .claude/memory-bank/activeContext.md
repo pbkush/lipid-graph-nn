@@ -1,5 +1,56 @@
 # Active Context
 
+## Simulation status: 3a + 3b CHOL-free done; CHOL + legacy resim pending (2026-05-19)
+
+Simulation grids 3a (`popc_interpolation`) and 3b (`dppc_corner`, `dopc_corner`) have finished on `general1` for **all non-CHOL cells**. The two remaining buckets of work:
+
+1. **CHOL-containing cells across all three grids** (capped at 40 % CHOL per Decision 35) — not yet run. Resubmit each grid with the CSV gate; already-finished CHOL-free cells will be auto-skipped.
+2. **Legacy 70-system M3-ITP resimulation** (step 11e) — feeds the `prop_m3_bugfixed_s0/` label set the three-way notebook §6 is still waiting on.
+
+[resources/simulation_tables/](../../resources/simulation_tables/) is the canonical home for `scan_completed_systems.py` outputs. **Two distinct CSVs** are maintained because the submitter uses them in opposite senses:
+
+- `done.csv` (153 rows as of 2026-05-19) — the *skip list* fed to `submit_simulations.sh --completed-csv` (rows here are excluded from new submits). Spans both legacy and pipeline roots; 70 legacy + 83 new pipeline systems.
+- `legacy.csv` (70 rows) — the *work list* fed to `submit_simulations.sh --from-csv` (every row here is resimulated). Scoped to the pre-pipeline systems only via `--status-filter legacy_no_manifest`, so the M3-ITP resim does not re-run already-finished new cells.
+
+Rescan into the same folder before each resubmit so the gate is fresh.
+
+**Scan commands** (run locally where `data/membrane_only/` + `data/martini_pipeline/` live):
+
+```bash
+# 1) Full done.csv — merge against the prior CSV so legacy rows survive even
+#    if a root path moves, and require the authoritative finish-line signal
+#    so half-finished runs do NOT count as done.
+python scripts/python/scan_completed_systems.py \
+    --out resources/simulation_tables/done.csv \
+    --merge-with resources/simulation_tables/done.csv \
+    --min-ns 1000 --require-actual
+
+# 2) Legacy-only work list. Status-scoped so only the pre-pipeline 70 land
+#    in this file; --min-ns is intentionally dropped — we want to resim every
+#    legacy system regardless of its original production length.
+python scripts/python/scan_completed_systems.py \
+    --out resources/simulation_tables/legacy.csv \
+    --status-filter legacy_no_manifest
+```
+
+Upload both CSVs to HPC, then submit:
+
+```bash
+# CHOL-containing cells across the three grids — done.csv is the SKIP list
+for grid in popc_interpolation dppc_corner dopc_corner; do
+  bash scripts/bash/submit_simulations.sh \
+      --missing-from-grid "$grid" \
+      --completed-csv resources/simulation_tables/done.csv \
+      --prod-ns 1000 --partition general1
+done
+
+# Legacy 70-system M3-ITP resim — legacy.csv is the WORK list
+bash scripts/bash/submit_simulations.sh \
+    --from-csv resources/simulation_tables/legacy.csv \
+    --rename-lipid DIPC=DLPC \
+    --prod-ns 1000 --partition general1
+```
+
 ## Locked-split JSON for preprocess_graphs.py (2026-05-19)
 
 [scripts/training/preprocess_graphs.py](../../scripts/training/preprocess_graphs.py) gained two new flags so the three-way bugfix comparison can train all four models on **the same per-system train/val/test partition**:
