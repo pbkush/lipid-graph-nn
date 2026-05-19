@@ -18,7 +18,10 @@ tqdm>=4.67.0
 PyYAML>=6.0
 
 # Simulation pipeline
-insane>=1.2.0
+# The PyPI insane-1.2.0 wheel is a stale pre-release snapshot (in-code
+# __version__='1.1-dev', no M3.CHOL in lipids.dat, no -dat option).  Pin
+# to the upstream git commit that actually ships those features.
+insane @ git+https://github.com/Tsjerk/Insane.git@11de0c7f1abac2f5296ce1ab74285f904afc2125
 
 # Testing
 pytest>=8.0.0

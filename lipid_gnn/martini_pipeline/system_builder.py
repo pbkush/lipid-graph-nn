@@ -144,8 +144,13 @@ def build_system(
             fh.write(result.stderr)
 
     if result.returncode != 0:
+        # insane writes lipid-lookup errors to stdout (core.py setup_membrane),
+        # not stderr — include both tails so the cause is visible in the
+        # traceback without having to fish out insane.log.
         raise RuntimeError(
-            f"insane exited {result.returncode}:\n{result.stderr[-500:]}"
+            f"insane exited {result.returncode} (log: {log_path})\n"
+            f"--- stdout tail ---\n{result.stdout[-1000:]}\n"
+            f"--- stderr tail ---\n{result.stderr[-500:]}"
         )
 
     _finalise_topology(top_path)
