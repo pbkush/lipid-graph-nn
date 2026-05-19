@@ -1,10 +1,10 @@
-# HP search plan — `gnn_only` on 2 properties, Goethe-HLR
+# HP search plan — 2 properties, Goethe-HLR
 
 ## Context
 
 The 2-property (`lipid_packing` + `thickness`) baseline reproduces around **MSE ≈ 0.138** with the Colab-era config, but hyperparameters were never swept systematically on the new chunk layout (11 Å cutoff, 25 frames/system, train/val/test split by system, 8-column `y` sliced at training time). With the Goethe-HLR pipeline now landed (`sbatch_sweep.sh`, `CHUNKS_DIR` env, ROCm 7.2.0 PyTorch), we can run real sweeps.
 
-This plan lays out a **stage-based HP search** for the `gnn_only` variant on 2 properties. Goal: find a config that beats the 0.138 baseline (and ideally pushes per-property MSE below **0.056** for `lipid_packing` and **0.219** for `thickness` — the current best individual-target numbers) before moving on to Tier A (4 properties) as described in [multi_property_training_plan.md](multi_property_training_plan.md).
+This plan lays out a **stage-based HP search** on 2 properties. Goal: find a config that beats the 0.138 baseline (and ideally pushes per-property MSE below **0.056** for `lipid_packing` and **0.219** for `thickness` — the current best individual-target numbers) before moving on to Tier A (4 properties) as described in [multi_property_training_plan.md](multi_property_training_plan.md).
 
 ## Baseline config
 
@@ -69,7 +69,7 @@ Sorted by expected impact. First four are primary; rest are secondary/optional.
 
 ## Staged search plan
 
-Each stage edits `FIXED`/`SWEEP` in `run_sweep.py`, commits the change, and submits one `sbatch_sweep.sh` job. `properties=['lipid_packing', 'thickness']`, `comp_mode=['gnn_only']` throughout.
+Each stage edits `FIXED`/`SWEEP` in `run_sweep.py`, commits the change, and submits one `sbatch_sweep.sh` job. `properties=['lipid_packing', 'thickness']` throughout.
 
 ### Stage 0 — Baseline reproduction (1 sbatch, ~3 h)
 
@@ -77,7 +77,7 @@ Confirm the cited baseline reproduces overall MSE ≈ 0.138 on the new 3-directo
 
 ```python
 FIXED = {"epochs": 100, "batch_size": 2, "num_workers": 6}
-SWEEP = {"comp_mode": ["gnn_only"], "hidden_dim": [64], "num_layers": [2],
+SWEEP = {"hidden_dim": [64], "num_layers": [2],
          "learning_rate": [5e-4], "weight_decay": [5e-3], "seed": [0, 1, 2]}
 ```
 

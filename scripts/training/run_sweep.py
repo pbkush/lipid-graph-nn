@@ -28,7 +28,6 @@ sys.path.insert(0, str(root_dir))
 
 from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import MartiniDiskDataset
-from lipid_gnn.lipid_graph import LIPID_COMP_DIM
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.plotting import plot_property_accuracies
 
@@ -52,11 +51,7 @@ FIXED = {
 }
 
 # ── Sweep grid: every combination produces one run ────────────────────────────
-# comp_mode: "gnn_only"      — message passing only
-#            "gnn_plus_comp" — GNN output + lipid composition vector
-#            "comp_only"     — composition vector through MLP only (ablation)
 SWEEP = {
-    "comp_mode":     ["gnn_only"],
     "hidden_dim":    [CONFIG.model.hidden_dim],         # locked: 128  (Stage 3)
     "num_layers":    [CONFIG.model.num_layers],         # locked: 2    (Stage 3)
     "learning_rate": [CONFIG.training.learning_rate],   # locked: 1e-4 (Stage 1)
@@ -106,15 +101,13 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     seed       = cfg["seed"]
     properties = cfg["properties"]
     prop_cols  = [ALL_PROPERTIES.index(p) for p in properties]
-    comp_mode  = cfg["comp_mode"]
 
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     run_id = wandb.util.generate_id()
     run_name = (
-        f"{comp_mode}"
-        f"_h{cfg['hidden_dim']}"
+        f"h{cfg['hidden_dim']}"
         f"_l{cfg['num_layers']}"
         f"_lr{cfg['learning_rate']:.0e}"
         f"_wd{cfg['weight_decay']:.0e}"
@@ -156,15 +149,11 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
     val_loader   = DataLoader(val_dataset,   **_eval_loader_kw)
     test_loader  = DataLoader(test_dataset,  **_eval_loader_kw)
 
-    use_comp = comp_mode in ("gnn_plus_comp", "comp_only")
-    comp_dim = LIPID_COMP_DIM if use_comp else 0
-
     model = MembranePropertyGNN(
         in_channels=CONFIG.model.in_channels,
         hidden_dim=cfg["hidden_dim"],
         num_layers=cfg["num_layers"],
         out_dim=len(properties),
-        comp_dim=comp_dim,
     ).to(device)
 
     optimizer = torch.optim.Adam(
@@ -185,11 +174,10 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
         return (y - s_mean) / s_scale
 
     def forward(batch):
-        comp_vec       = batch.comp_vec.to(device) if use_comp else None
         edge_attr_dict = batch.edge_attr_dict if hasattr(batch, 'edge_attr_dict') else None
         return model(
             batch.x_dict, batch.edge_index_dict, batch.batch_dict,
-            edge_attr_dict, comp_vec=comp_vec,
+            edge_attr_dict,
         )
 
     # Best-model selector: tail-mean of val/loss_total over last K epochs,
@@ -348,7 +336,6 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
                 "hidden_dim": cfg["hidden_dim"],
                 "num_layers": cfg["num_layers"],
                 "out_dim": len(properties),
-                "comp_dim": comp_dim,
             },
             "properties": list(properties),
             "scaler_mean": scaler.mean_[prop_cols],
@@ -370,7 +357,6 @@ def train_one_run(cfg, scaler, train_dataset, val_dataset, test_dataset):
                     "hidden_dim": cfg["hidden_dim"],
                     "num_layers": cfg["num_layers"],
                     "out_dim": len(properties),
-                    "comp_dim": comp_dim,
                 },
                 "properties": list(properties),
                 "scaler_mean": scaler.mean_[prop_cols],

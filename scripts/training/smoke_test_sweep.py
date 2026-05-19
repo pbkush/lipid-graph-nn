@@ -19,7 +19,7 @@ root_dir = Path(__file__).resolve().parents[2]
 sys.path.append(str(root_dir))
 
 from lipid_gnn.config import CONFIG
-from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder, LIPID_COMP_DIM
+from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
 from lipid_gnn.membrane_prop_gnn import MembranePropertyGNN
 from lipid_gnn.io import pkl_load
 
@@ -86,20 +86,9 @@ def load_data(target_properties=['lipid_packing'], spatial_cutoff=None, test_siz
     return train_graphs, test_graphs
 
 def train_experiment(config, train_graphs, test_graphs):
-    """
-    Runs a single training experiment with the given configuration.
-
-    Supports three modes via config['comp_mode']:
-      'gnn_only'   : standard GNN, comp_vec not used  (comp_dim=0)
-      'gnn_plus_comp' : GNN + composition vector injected before MLP  (comp_dim=LIPID_COMP_DIM)
-      'comp_only'  : trivial MLP applied directly to comp_vec, no message passing
-    """
+    """Runs a single training experiment with the given configuration."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"\n>>> Starting Experiment: {config['run_name']} ({config.get('comp_mode','gnn_only')}) on {device}")
-
-    comp_mode = config.get('comp_mode', 'gnn_only')
-    use_comp = comp_mode in ('gnn_plus_comp', 'comp_only')
-    comp_dim = LIPID_COMP_DIM if use_comp else 0
+    print(f"\n>>> Starting Experiment: {config['run_name']} on {device}")
 
     # DataLoaders
     train_loader = DataLoader(train_graphs, batch_size=config['batch_size'], shuffle=True)
@@ -107,11 +96,10 @@ def train_experiment(config, train_graphs, test_graphs):
 
     # Model Initialization
     model = MembranePropertyGNN(
-        in_channels=config['in_channels'], 
-        hidden_dim=config['hidden_dim'], 
-        num_layers=config['num_layers'], 
+        in_channels=config['in_channels'],
+        hidden_dim=config['hidden_dim'],
+        num_layers=config['num_layers'],
         out_dim=config['out_dim'],
-        comp_dim=comp_dim,
     ).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=config['learning_rate'],
@@ -129,24 +117,10 @@ def train_experiment(config, train_graphs, test_graphs):
     with open(log_file, "w") as f:
         f.write(f"Training Run: {run_id}\nConfig: {config}\nModel:\n{model}\n" + "="*40 + "\n")
 
-    def _get_comp_vec(batch):
-        """Extract and stack per-graph composition vectors from a batch."""
-        if not use_comp:
-            return None
-        # batch.comp_vec is shape [batch_size, LIPID_COMP_DIM] after PyG batching
-        return batch.comp_vec.to(device)
-
     def _forward(batch):
-        """Unified forward pass supporting all three comp_modes."""
-        comp_vec = _get_comp_vec(batch)
-        if comp_mode == 'comp_only':
-            # Skip message passing; feed comp_vec directly through an identity GNN
-            # by passing a zero x_dict — the comp_vec in the MLP carries all signal.
-            # We still run the GNN, but its pooled output is dominated by comp_vec.
-            pass  # comp_vec will be appended; GNN output acts as learned noise
         edge_attr_dict = batch.edge_attr_dict if hasattr(batch, 'edge_attr_dict') else None
         return model(batch.x_dict, batch.edge_index_dict, batch.batch_dict,
-                     edge_attr_dict, comp_vec=comp_vec)
+                     edge_attr_dict)
 
     # Training Loop
     train_losses, test_losses = [], []
@@ -190,7 +164,7 @@ def train_experiment(config, train_graphs, test_graphs):
     plt.plot(range(1, config['epochs'] + 1), test_losses, label='Test MSE')
     plt.xlabel('Epochs')
     plt.ylabel('MSE Loss')
-    plt.title(f'Training Curve — {config["run_name"]}\n({comp_mode})')
+    plt.title(f'Training Curve — {config["run_name"]}')
     plt.legend()
     plt.savefig(train_res_dir / 'loss_curve.png')
     plt.close()
@@ -215,7 +189,7 @@ def train_experiment(config, train_graphs, test_graphs):
         plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', label='Perfect Accuracy')
     plt.xlabel('Actual lipid_packing (z-scored)')
     plt.ylabel('Predicted lipid_packing (z-scored)')
-    plt.title(f'{config["run_name"]} — {comp_mode}\nTest MSE={final_test_mse:.4f}')
+    plt.title(f'{config["run_name"]}\nTest MSE={final_test_mse:.4f}')
     plt.legend()
     plt.savefig(train_res_dir / 'accuracy_scatter.png')
     plt.close('all')
@@ -228,12 +202,12 @@ if __name__ == "__main__":
     target_properties = ['lipid_packing']
     train_graphs, test_graphs = load_data(target_properties=target_properties)
 
-    # 2. Phase 1 Comparison Sweep
-    # Three modes × best config from sweep 2 (nl=2, wd=0.005, bs=1, lr=5e-4, h=32)
-    # Each mode run 3 times to account for random seed variance.
-    # Smoke-test overrides: epochs/batch/seeds are intentionally small and
+    # 2. Single smoke-test run. Smoke-test overrides (small epochs/batch)
     # stay inline rather than coming from CONFIG.training.
-    base_config = {
+    seed = 0
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    cfg = {
         'property_label': 'lipid_packing',
         'target_properties': target_properties,
         'in_channels': CONFIG.model.in_channels,
@@ -244,36 +218,8 @@ if __name__ == "__main__":
         'batch_size': 1,
         'learning_rate': 5e-4,
         'weight_decay': 5e-3,
+        'run_name': f"smoke_seed{seed}",
     }
-
-    experiments = []
-    for mode in ['gnn_only', 'gnn_plus_comp', 'comp_only']:
-        for seed in [0]:  # Smoke test: 1 seed only
-            cfg = base_config.copy()
-            cfg.update({
-                'comp_mode': mode,
-                'run_name': f"phase1_{mode}_seed{seed}",
-            })
-            experiments.append(cfg)
-
-    print(f"Total experiments to run: {len(experiments)}")
-
-    results = {}
-    for exp_cfg in experiments:
-        # Seed for reproducibility
-        seed = int(exp_cfg['run_name'].split('seed')[-1])
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        test_mse = train_experiment(exp_cfg, train_graphs, test_graphs)
-        mode = exp_cfg['comp_mode']
-        results.setdefault(mode, []).append(test_mse)
-
-    # Summary
-    print("\n" + "=" * 50)
-    print("  Phase 1 Summary — Test MSE (3 seeds each)")
-    print("=" * 50)
-    for mode, mses in sorted(results.items()):
-        arr = np.array(mses)
-        print(f"  {mode:20s}: mean={arr.mean():.4f}  std={arr.std():.4f}  runs={mses}")
-    print("=" * 50)
+    test_mse = train_experiment(cfg, train_graphs, test_graphs)
+    print(f"\nSmoke test Test MSE: {test_mse:.4f}")
     print("Linear baseline (LOO-CV Ridge): MSE=0.3989  R²=0.601")

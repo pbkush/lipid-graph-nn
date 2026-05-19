@@ -18,10 +18,8 @@ Input graphs are built by `MartiniHeteroGraphBuilder` ([lipid_gnn/lipid_graph.py
 
 - Input `Linear(4 → hidden_dim)` bead embedding
 - `N × HeteroConv({bonded: GATv2Conv, spatial: GATv2Conv})` with `GraphNorm` per layer
-- Readout: `global_mean_pool` + `global_max_pool` concatenated, with optional 10-dim composition vector (per-lipid fractions) appended
+- Readout: `global_mean_pool` + `global_max_pool` concatenated
 - MLP head → multi-property output
-
-Three composition modes, toggled via `comp_dim`: `gnn_only`, `gnn_plus_comp`, `comp_only`.
 
 ## Installation
 
@@ -42,7 +40,7 @@ Before training with W&B logging, run `wandb login` once. Raw trajectory data li
 python3 scripts/training/smoke_test_sweep.py
 ```
 
-Runs 1 epoch × 1 seed across the 3 composition modes. Use it to verify the install and data paths before committing to long runs.
+Runs 1 epoch × 1 seed. Use it to verify the install and data paths before committing to long runs.
 
 ### Local sweep
 

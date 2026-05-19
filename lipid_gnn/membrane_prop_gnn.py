@@ -7,7 +7,7 @@ from lipid_gnn.config import CONFIG
 
 
 class MembranePropertyGNN(torch.nn.Module):
-    def __init__(self, in_channels=None, hidden_dim=None, num_layers=None, out_dim=1, heads=None, comp_dim=None):
+    def __init__(self, in_channels=None, hidden_dim=None, num_layers=None, out_dim=1, heads=None):
         """
         Args:
             in_channels (int): Number of continuous physical parameters per bead (e.g. 4 for mass, charge, sigma, epsilon).
@@ -15,8 +15,6 @@ class MembranePropertyGNN(torch.nn.Module):
             num_layers (int): Number of message passing layers.
             out_dim (int): Number of target properties to predict (e.g., 1 for Area Per Lipid).
             heads (int): Number of parallel attention mechanisms for bonded interactions. 1 maintains VRAM scaling exactly identical to SAGEConv topologies.
-            comp_dim (int): Size of the optional composition fraction vector to concatenate before the MLP head.
-                            Set to 0 (default) for GNN-only mode. Set to LIPID_COMP_DIM (10) for GNN+comp mode.
         """
         super().__init__()
         if in_channels is None:
@@ -27,9 +25,6 @@ class MembranePropertyGNN(torch.nn.Module):
             num_layers = CONFIG.model.num_layers
         if heads is None:
             heads = CONFIG.model.heads
-        if comp_dim is None:
-            comp_dim = CONFIG.model.comp_dim
-        self.comp_dim = comp_dim
 
         # 1. Node Embedding: Converts continuous physical vectors into dense hidden representations
         self.bead_embedding = nn.Linear(in_channels, hidden_dim)
@@ -54,8 +49,8 @@ class MembranePropertyGNN(torch.nn.Module):
             self.norms.append(GraphNorm(hidden_dim))
 
         # 3. Readout / Prediction Head
-        # MLP input = mean+max pooled graph repr + optional composition vector
-        mlp_in = hidden_dim * 2 + comp_dim
+        # MLP input = mean+max pooled graph repr
+        mlp_in = hidden_dim * 2
         self.mlp = nn.Sequential(
             nn.Linear(mlp_in, hidden_dim),
             nn.ReLU(),
@@ -65,18 +60,15 @@ class MembranePropertyGNN(torch.nn.Module):
             nn.Linear(hidden_dim // 2, out_dim)
         )
 
-    def forward(self, x_dict, edge_index_dict, batch_dict, edge_attr_dict=None, comp_vec=None):
+    def forward(self, x_dict, edge_index_dict, batch_dict, edge_attr_dict=None):
         """
         Forward pass for a batch of HeteroData graphs.
-        
+
         Args:
             x_dict: Dictionary containing node features.
             edge_index_dict: Dictionary containing edge indices.
             batch_dict: Dictionary mapping nodes to their respective graphs in a batch.
             edge_attr_dict: Dictionary containing mapping variables evaluating continuous topological parameters natively!
-            comp_vec: Optional composition fraction vector of shape [batch_size, comp_dim].
-                      When provided, it is concatenated to the pooled graph representation
-                      before the MLP head. Enables the GNN+comp comparison mode.
         """
         # Project physical node parameters [num_nodes, in_channels] -> [num_nodes, hidden_dim]
         x = self.bead_embedding(x_dict['bead'])
@@ -108,12 +100,6 @@ class MembranePropertyGNN(torch.nn.Module):
         # Concatenate [Batch_size, hidden_dim] -> [Batch_size, hidden_dim * 2]
         graph_repr = torch.cat([pool_mean, pool_max], dim=1)
 
-        # Optionally append composition fraction vector
-        if comp_vec is not None and self.comp_dim > 0:
-            # Reshape ensures [BatchSize, comp_dim] even if input was 1D [comp_dim]
-            comp_vec = comp_vec.view(-1, self.comp_dim)
-            graph_repr = torch.cat([graph_repr, comp_vec], dim=1)
-        
         # Final Regression Prediction
         out = self.mlp(graph_repr)
         

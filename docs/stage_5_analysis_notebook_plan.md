@@ -307,7 +307,7 @@ All implemented in cell 16 (`stat-tests`):
    property. Report CI bounds in the headline table.
 3. **Bootstrap 95 % CI on test MSE**: same procedure for the headline number.
 4. **Per-property gate check**: `lipid_packing < 0.056`, `thickness < 0.219`
-   (val MSE thresholds from [gnn_only_hp_search_plan.md:171](gnn_only_hp_search_plan.md#L171)).
+   (val MSE thresholds from [hp_search_plan.md:171](hp_search_plan.md#L171)).
    Report PASS / FAIL with margin in σ.
 
 All numerical outputs persisted to `results/figures/stage_5/headline_numbers.json`

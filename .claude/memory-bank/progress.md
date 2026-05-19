@@ -2,9 +2,9 @@
 
 ## What Works
 
-- **Graph construction pipeline**: `MartiniHeteroGraphBuilder` successfully converts MD trajectories to `HeteroData` with continuous physics features, bonded + spatial edges, and composition vectors
+- **Graph construction pipeline**: `MartiniHeteroGraphBuilder` successfully converts MD trajectories to `HeteroData` with continuous physics features, bonded + spatial edges
 - **Chunked dataset loading**: `MartiniDiskDataset` streams data from disk without OOM
-- **Model forward pass**: `MembranePropertyGNN` runs in both GNN-only and GNN+composition modes
+- **Model forward pass**: `MembranePropertyGNN` runs over the heterogeneous graph (composition-blind by construction)
 - **Force field parsing**: `ff_parser.py` extracts parameters from Martini 3 `.itp` files into JSON maps
 - **Training infrastructure**: Local `run_sweep.py` (chunk-based + W&B + AMP, mirrors the Colab notebook), linear baseline, smoke tests, result summarization all functional
 - **HP analysis tooling**: `scripts/python/download_wandb_runs.py` pulls W&B groups to `logs/training/`; `scripts/notebooks/analyze_hp_search.ipynb` aggregates over seeds, ranks HP cells, and produces 7 visualizations (loss curves, heatmap, training stats, system metrics).
@@ -69,7 +69,7 @@ Full report: [results/figures/stage_5b/stage_5b_analysis_report.md](../../result
 
 **GPU memory clarification**: earlier "97 % peak = OOM danger" was a misread of W&B's `memoryAllocated` (reserved pool, not live tensors). Real proxy `torch.cuda.max_memory_allocated()` added to `run_sweep.py` as `gpu/peak_mem_actual_gb` (per-epoch reset). Live peak ~8 GB out of 64 GB. Tier B/C have huge memory headroom.
 
-**Run-name schema (collision-proof)**: schema is `{comp_mode}_h{h}_l{l}_lr{lr:.0e}_wd{wd:.0e}_e{e}_s{seed}_{run_id}`. W&B `run.id` suffix (8 chars, globally unique) guarantees no collision even for same-(HPs, seed) retries. `download_wandb_runs.py` writes `.wandb_run_id` marker file and raises `RuntimeError` on mismatch (defence-in-depth). Preserve trailing `_{run.id}` in all future stages.
+**Run-name schema (collision-proof)**: schema is `h{h}_l{l}_lr{lr:.0e}_wd{wd:.0e}_e{e}_s{seed}_{run_id}`. W&B `run.id` suffix (8 chars, globally unique) guarantees no collision even for same-(HPs, seed) retries. `download_wandb_runs.py` writes `.wandb_run_id` marker file and raises `RuntimeError` on mismatch (defence-in-depth). Preserve trailing `_{run.id}` in all future stages. (Historical runs through 2026-05 carried an extra `gnn_only_` prefix; the prefix was dropped together with the composition-mode toggle.)
 
 **R² added to analyze_hp_search.ipynb**: complementary reporting metric (selection still MSE-driven). 4 cells modified: `cell-load-fn`, `cell-detect-hps`, `cell-aggregate`, `cell-ranking-table`, `cell-recommendation`. R² uses `_tail_mean()` (not `_tail_min()`) to avoid amplifying favourable noise spikes on the small val set.
 
@@ -175,8 +175,7 @@ Seed 3 was excluded — recurring dead-init on `variation` (same as Tier A's see
 1. **Integer vocab → continuous physics features**: Switched to continuous `[mass, charge, sigma, epsilon]` from Martini 3 FF.
 2. **Single graph type → heterogeneous graph**: Moved to `HeteroData` with bonded and spatial edge types.
 3. **Full in-memory loading → chunked disk streaming**: Added `MartiniDiskDataset`.
-4. **GNN-only → optional composition mode**: Added composition vector concatenation.
-5. **Random split → stratified split**: Fixed test-narrowness bug (test std 4× narrower than train).
-6. **Live config at execution → frozen env vars at submission**: `submit_sweep.sh` + `_apply_submission_overrides()` to prevent queue-drift corruption.
-7. **2-prop lr=1e-4 → 4-prop lr=3e-5**: `variation` property only learns at lower lr; grid spacing too coarse — refinement sweep needed (Stage 1b').
-8. **100 → 200 epochs (Tier A default)**: Stage 1d found slow-escaper seeds need >100 epochs to break through `variation` plateau.
+4. **Random split → stratified split**: Fixed test-narrowness bug (test std 4× narrower than train).
+5. **Live config at execution → frozen env vars at submission**: `submit_sweep.sh` + `_apply_submission_overrides()` to prevent queue-drift corruption.
+6. **2-prop lr=1e-4 → 4-prop lr=3e-5**: `variation` property only learns at lower lr; grid spacing too coarse — refinement sweep needed (Stage 1b').
+7. **100 → 200 epochs (Tier A default)**: Stage 1d found slow-escaper seeds need >100 epochs to break through `variation` plateau.

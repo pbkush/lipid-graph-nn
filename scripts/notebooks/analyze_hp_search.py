@@ -52,7 +52,7 @@ def _(mo):
     2. Set `GROUP` in the Configuration cell to the downloaded group name.
     3. Run all cells. The recommendation prints at the bottom.
 
-    **Selection rule** (from `docs/gnn_only_hp_search_plan.md`):
+    **Selection rule** (from `docs/hp_search_plan.md`):
     rank by **min val/loss_total over the last 10 epochs, mean over seeds**.
     Test MSE is shown as an overfit guard only — not the selection signal.
 
@@ -86,7 +86,7 @@ def _(Path):
     OCCAM_TOL = 0.01
 
     HP_COLS = [
-        "comp_mode", "hidden", "num_layers", "lr", "weight_decay",
+        "hidden", "num_layers", "lr", "weight_decay",
         "dropout", "batch_size", "rbf_type", "cutoff_type",
     ]
 
@@ -346,7 +346,7 @@ def _(mo):
 @app.cell
 def _(PROPS, VARYING_HPS, np, pd, runs_df):
 
-    GROUP_BY = VARYING_HPS if VARYING_HPS else (['comp_mode'] if 'comp_mode' in runs_df.columns else ['run_name'])
+    GROUP_BY = VARYING_HPS if VARYING_HPS else ['run_name']
 
 
     def agg_cells(df: pd.DataFrame, group_by: list[str]) -> pd.DataFrame:
@@ -829,7 +829,7 @@ def _(mo):
     mo.md(r"""
     ## Recommendation
 
-    Selection rules (from `docs/gnn_only_hp_search_plan.md` §Verification):
+    Selection rules (from `docs/hp_search_plan.md` §Verification):
     1. **Primary**: lowest `val_mean` (= mean over seeds of min val/loss_total last 10 epochs).
     2. **Tie-break** within `OCCAM_TOL` of leader: smaller `val_std` → smaller `gap` → smaller model.
     3. **Gate check**: per-property val MSE vs. Stage-5 acceptance thresholds.
@@ -924,7 +924,7 @@ def _(GROUPS, HP_COLS, agg_cells, load_group, mo, np, pd, plt, save_fig):
             try:
                 _gdf, _, _ = load_group(_g)
                 _ghps = [c for c in HP_COLS if c in _gdf.columns and _gdf[c].nunique() > 1]
-                _gby  = _ghps if _ghps else ['comp_mode']
+                _gby  = _ghps if _ghps else ['run_name']
                 _gcells = agg_cells(_gdf, _gby)
                 _group_bests.append({
                     'group':     _g,

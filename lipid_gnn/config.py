@@ -70,10 +70,6 @@ class VocabConfig:
     all_properties: list
     active_properties: list
 
-    @property
-    def lipid_comp_dim(self) -> int:
-        return len(self.lipid_types)
-
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -82,7 +78,6 @@ class ModelConfig:
     num_layers: int
     heads: int
     dropout: float
-    comp_dim: int
     bonded_edge_attr_dim: int
     spatial_edge_attr_dim: int
 

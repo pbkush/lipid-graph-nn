@@ -18,11 +18,6 @@ def test_paths_resolved_absolute():
     assert CONFIG.paths.chunks_dir.is_absolute()
 
 
-def test_vocab_lipid_comp_dim():
-    assert CONFIG.vocab.lipid_comp_dim == len(CONFIG.vocab.lipid_types)
-    assert CONFIG.vocab.lipid_comp_dim == 10
-
-
 def test_rbf_stop_equals_spatial_cutoff():
     assert CONFIG.dataset.rbf_stop == CONFIG.dataset.spatial_cutoff
 

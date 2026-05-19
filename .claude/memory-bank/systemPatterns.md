@@ -55,7 +55,6 @@ MD Trajectory (.tpr + .xtc/.trr)
 
 - **Stateful builder pattern**: `MartiniHeteroGraphBuilder` caches static topology on init, then efficiently generates per-frame graphs via `build_frame()`
 - **Force field indirection**: Raw `.itp` files → `ff_parser.py` → JSON maps → loaded at graph build time. Separates parsing from training.
-- **Modal architecture**: `comp_dim=0` for GNN-only, `comp_dim=10` for GNN+composition — single model class, toggled by constructor arg
 - **Test-before-integrate**: Discrete components are validated locally with dedicated tests (e.g., `test_dataset.py`) before integration into the heavy `train_colab.ipynb` loop
 - **Preprocessing separation**: Graph construction and chunk saving happen in preprocessing scripts; training only loads pre-built `.pt` files
 - **Docstrings**: Write docstrings for all functions and classes. Write small descriptions for parameters if deemed necessary.
@@ -70,7 +69,7 @@ MD Trajectory (.tpr + .xtc/.trr)
 - **Central config (YAML + dataclass loader)**: Project-wide paths, vocabulary, and experiment defaults live in [config.yaml](config.yaml); [lipid_gnn/config.py](lipid_gnn/config.py) parses it into frozen `@dataclass` sections and exposes a module-level `CONFIG` singleton. Rule of thumb: if a value is referenced by more than one file (paths, `LIPID_TYPES`, `ALL_PROPERTIES`, `spatial_cutoff`, `rbf_num_gaussians`, model defaults, training defaults), it belongs in `config.yaml`; single-use locals stay where they are.
   - Callers consume via `from lipid_gnn.config import CONFIG` and the `None`-sentinel pattern for function defaults (`def fn(x=None): if x is None: x = CONFIG.foo.bar`) so explicit callers still override.
   - Env-var overrides are applied at the raw-dict layer inside `load_config()` — today: `CHUNKS_DIR`, `WANDB_MODE`, `WANDB_GROUP`.
-  - Derived values are `@property` methods, not duplicated keys (`DatasetConfig.rbf_stop == spatial_cutoff`, `VocabConfig.lipid_comp_dim == len(lipid_types)`).
+  - Derived values are `@property` methods, not duplicated keys (`DatasetConfig.rbf_stop == spatial_cutoff`).
   - Validation in `load_config()` catches cross-section invariants (e.g. `spatial_edge_attr_dim == rbf_num_gaussians`, `active_properties ⊆ all_properties`).
   - Bash consumes the config through [scripts/python/print_config_var.py](scripts/python/print_config_var.py) — a tiny stdlib shim; lists are space-separated for word-splitting into CLI args. Bash scripts do NOT hardcode Python-derived values.
   - CLI arg defaults in scripts source from `CONFIG` rather than being hardcoded literals. This composes with the "CLI for tunable runnable scripts" pattern above: config is the default, CLI is the override, hardcoded literals in script bodies are a smell.

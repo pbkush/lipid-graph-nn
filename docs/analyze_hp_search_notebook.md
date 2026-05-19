@@ -154,7 +154,7 @@ Three side-by-side subplots covering compute cost.
 ## Recommendation cell
 
 After all plots, the recommendation cell applies the selection rules from
-[docs/gnn_only_hp_search_plan.md](gnn_only_hp_search_plan.md):
+[docs/hp_search_plan.md](hp_search_plan.md):
 
 1. **Primary**: lowest `val_mean`.
 2. **Tie-break** (within `OCCAM_TOL = 1%` of leader): smallest `val_std` → smallest `gap` → smaller model.

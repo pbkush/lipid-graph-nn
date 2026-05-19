@@ -10,7 +10,7 @@ The project asks: **can we learn a useful, transferable embedding of membrane sy
 
 **Inputs**: 70 Martini 3 membrane compositions drawn from a 10-lipid pool, MD frames `[50:667]` from 1 µs equilibrated production runs. 8 target properties pre-computed per composition (`properties.md`); the model predicts a configurable subset.
 
-**Initial architecture**: Heterogeneous GNN with two edge types (bonded topology + spatial cutoff) over CG beads carrying continuous Martini 3 force-field features `[mass, charge, σ, ε]`. `GATv2Conv` per edge type via `HeteroConv`, `GraphNorm`, mean+max pool readout, optional composition-vector concatenation at the readout. Reasoning: physically meaningful node features beat learned vocab embeddings, attention beats SAGE for weighting bond vs. spatial edges, and the `comp_dim=0` / `comp_dim=10` toggle lets us probe how much the topology+geometry alone contributes.
+**Initial architecture**: Heterogeneous GNN with two edge types (bonded topology + spatial cutoff) over CG beads carrying continuous Martini 3 force-field features `[mass, charge, σ, ε]`. `GATv2Conv` per edge type via `HeteroConv`, `GraphNorm`, mean+max pool readout. Reasoning: physically meaningful node features beat learned vocab embeddings, and attention beats SAGE for weighting bond vs. spatial edges. The encoder is composition-blind by construction so the embedding can transfer to unseen lipid types and to protein+membrane systems.
 
 ---
 

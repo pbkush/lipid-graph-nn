@@ -14,7 +14,6 @@ from lipid_gnn.config import CONFIG
 # Re-exported from config for backwards compatibility with callers that did
 # `from lipid_gnn.lipid_graph import LIPID_TYPES`.
 LIPID_TYPES = CONFIG.vocab.lipid_types
-LIPID_COMP_DIM = CONFIG.vocab.lipid_comp_dim
 
 
 def create_global_encoder(*args, **kwargs):
@@ -109,33 +108,8 @@ class MartiniHeteroGraphBuilder:
         else:
             self.ff_edge_params = None
 
-        # 3.6 Compute and cache composition fraction vector
-        self.composition_vec = self._compute_composition_vector()
-        
         # 4. Cache Index Mapping & Bonded Topology (Static)
         self._cache_topology()
-
-    def _compute_composition_vector(self) -> torch.Tensor:
-        """
-        Computes the molar fraction of each lipid type present in the membrane.
-
-        Returns a fixed-length float32 tensor of shape (LIPID_COMP_DIM,) where
-        each element is the fraction of residues of that lipid type.
-        The lipid order matches LIPID_TYPES (e.g. POPC, DOPC, DIPC, ...).
-
-        Residue types not in LIPID_TYPES are silently ignored (e.g. water,
-        ions are already filtered out by the selection string).
-        """
-        resnames = self.lipids.resnames
-        unique_res, counts = np.unique(resnames, return_counts=True)
-        total_residues = counts.sum()
-
-        vec = np.zeros(LIPID_COMP_DIM, dtype=np.float32)
-        for resname, count in zip(unique_res, counts):
-            if resname in LIPID_TYPES:
-                vec[LIPID_TYPES.index(resname)] = count / total_residues
-
-        return torch.tensor(vec, dtype=torch.float32)
 
     def _cache_topology(self):
         """Pre-computes and caches the bonded edge index."""
@@ -273,9 +247,6 @@ class MartiniHeteroGraphBuilder:
         data['bead', 'spatial', 'bead'].edge_index = spatial_index
         data['bead', 'spatial', 'bead'].edge_attr = spatial_attr
 
-        # Composition descriptor (graph-level feature, same for all frames)
-        data.comp_vec = self.composition_vec  # shape: (LIPID_COMP_DIM,)
-        
         return data
 
 def main():

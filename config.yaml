@@ -52,7 +52,6 @@ model:
   num_layers: 2
   heads: 4
   dropout: 0.3
-  comp_dim: 0
   bonded_edge_attr_dim: 2
   spatial_edge_attr_dim: 16
 
