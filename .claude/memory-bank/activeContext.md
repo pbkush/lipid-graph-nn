@@ -99,27 +99,57 @@ Status — **plan complete and ready to execute 2026-05-18.** All §4 decisions 
     - **Implication for the three-way notebook**: `bending_modulus` between `prop_legacy_bugged_*` (× 1000 "kT/Å³") and `prop_legacy_bugfixed_s0` (κ in kBT) differs by a factor of ~10 *before* the half-thickness-vs-midplane field change kicks in. Plot on log-y or with a per-set unit note. Property is still out of the active training set per the §4 decision log; the fix matters only if `bending_modulus` is re-evaluated for trainability.
 - **All cleanup-plan steps complete.** [docs/functions_emil_cleanup_plan.md](../../docs/functions_emil_cleanup_plan.md) §5 records the final status. Follow-on work: three-way comparison notebook + Tier C retraining (separate entries below).
 
-## New task — three-way property + model comparison notebook (2026-05-18)
+## Three-way property + model comparison notebook (plan + skeleton, 2026-05-19)
 
-Follow-on to the cleanup plan. Once the property pipeline rewrite lands and the new Tier C training-with-checkpoint-saving runs are submitted, build a marimo notebook `scripts/notebooks/compare_bugfix_three_way.py` per the `marimo-data-analysis` skill. Two parallel comparisons.
+Plan: [docs/compare_bugfix_three_way_plan.md](../../docs/compare_bugfix_three_way_plan.md).
+Notebook: [scripts/notebooks/compare_bugfix_three_way.py](../../scripts/notebooks/compare_bugfix_three_way.py).
 
-**Property comparison** — three label sets on the 70-composition corpus:
+**Design upgraded to 4 label sets / 4 contrasts** after the realisation
+that bug #8 (unseeded RNG) means the historical labels are one of an
+ensemble of possible draws; the seed effect is therefore a confounder
+of the bug-fix contrast and worth measuring separately.
 
-1. **`bugged_legacy_traj`** — current `results/properties/` (legacy `functions_emil` code on legacy GMX-2 trajectories).
-2. **`bugfixed_legacy_traj`** — new `lipid_gnn/properties.py` (post-cleanup) re-run on the same legacy trajectories. Isolates the *bug-fix* effect on each property.
-3. **`bugfixed_m3_traj`** — new `lipid_gnn/properties.py` re-run on the M3-ITP resimulated trajectories (the `--from-csv resources/done.csv --rename-lipid DIPC=DLPC` pass). Isolates the *force-field / trajectory* effect on top of (2).
+Directory layout under `results/properties/`:
 
-Pairs on `canonical_name`. Reuse the section layout from [scripts/notebooks/compare_legacy_vs_new_m3.py](../../scripts/notebooks/compare_legacy_vs_new_m3.py): coverage, per-property paired summary (mean / std / t-test / signed Δ), scatter / Bland–Altman / KDE per property, top-N movers, composition-space PCA with Δ overlay. New section that the legacy notebook doesn't have: **per-property variance decomposition** — for each property, partition `Var(label) = Var(bug-fix) + Var(FF) + interaction` across the 70 systems, so the relative magnitude of "bugs vs. force-field" is visible at a glance.
+- `prop_legacy_bugged_random/` (existing, the shipped labels; unseeded)
+- `prop_legacy_bugged_s0/` (legacy code rerun, `--seed 0`)
+- `prop_legacy_bugfixed_s0/` (bugfixed code on legacy trajectories, `--seed 0`)
+- `prop_m3_bugfixed_s0/` (bugfixed code on M3-rerun trajectories, `--seed 0`)
 
-**Model comparison** — three GNN models trained on the three label sets:
+Naming `prop_<traj>_<method>_<seed>`. Step 4 of the cleanup plan
+populated three of the four; `prop_m3_bugfixed_s0/` is pending the M3
+resimulation run.
 
-1. **`model_bugged_legacy`** — the existing Tier C 5d models (seeds {0,1,4,5,6,8}) downloaded from W&B. No retraining; just final-epoch `model_final.pt` artefacts.
-2. **`model_bugfixed_legacy`** — new Tier C run on `bugfixed_legacy_traj` labels. Same locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`), same 6 seeds. New W&B group e.g. `stage_5d_tier_c_bugfix_legacy_traj`.
-3. **`model_bugfixed_m3`** — new Tier C run on `bugfixed_m3_traj` labels. Same setup. New W&B group e.g. `stage_5d_tier_c_bugfix_m3_traj`.
+Three primary contrasts + one bonus, all paired on `canonical_name`:
 
-Per-property test MSE / pooled R² for all three models in a single table; paired t-tests across the same train/test split-system membership; per-system error scatter to localise where the new labels help vs hurt. Confirms (or refutes) that bug fixes preserve GNN performance and that the new M3 trajectories don't silently move targets out of the achievable band.
+- **seed** (bonus): `legacy_bugged_s0 − legacy_bugged_random`. Same code,
+  same trajectories, RNG differs. Sets the noise floor.
+- **bugfix**: `legacy_bugfixed_s0 − legacy_bugged_s0`. Code differs only.
+- **ff**: `m3_bugfixed_s0 − legacy_bugfixed_s0`. Trajectories differ only.
+- **total**: `m3_bugfixed_s0 − legacy_bugged_random` (current shipped → final product).
 
-Status — **task captured 2026-05-18, blocked on:** (a) cleanup plan execution → new property pipeline lands; (b) regeneration of `results/properties_v2/` on both trajectory sets; (c) two new Tier C training runs land with `model_final.pt` artefacts. Do not start before all three are in place. Decision deferred until then: whether the comparison includes the candidate new properties (`S_CC` etc.) — if any are added to the active set before this notebook, plumb them through.
+Identity drives §4 variance decomposition: `Var(d_total) = Var(d_seed) + Var(d_bugfix) + Var(d_ff) + 2·(three covariances)`.
+
+**Notebook sections implemented**:
+
+- §0 vocab / §1 paths + DIPC↔DLPC rename rules + coverage; §2 ITP SHA-1 diff + `properties.py` mtime; §3a seed-only sanity panel + callout; §3b paired summary table across four contrasts; §3c 7×4 quadruple-scatter; §3d 7×4 Bland–Altman; §3e KDE overlay across all four label sets; §3f top-5 movers per (property, contrast); §4 variance decomposition (stacked signed bar + table via `mo.vstack`) + auto-generated callout naming the dominant component; §5 PCA on composition matrix with dropdown to switch contrast overlay; §6 model loaders for four W&B groups, per-property MSE/R² tables, paired t-tests across pairs, per-system residual scatter coloured by lipid family (largest-mol-fraction wins, with CHOL-mix override), cross-model prediction-spread vs residual-spread; §7 four-branch verdict callout.
+
+**Implementation notes**:
+
+- **DIPC ↔ DLPC normalisation** wired in as a `mo.ui.text` widget (default `DLPC=DIPC`). The M3 resimulation submitted via `submit_simulations.sh --rename-lipid DIPC=DLPC` writes `DLPC*` stems while every legacy set is `DIPC*`; without normalisation, the four-way `paired_all` intersection drops every DIPC/DLPC-containing composition. The widget parses comma-separated `OLD=NEW` rules, applies them per-stem, and re-canonicalises lipid tokens alphabetically so `POPC50_DLPC50` → `DIPC50_POPC50` matches the legacy stem.
+- **Family bucketing in §6c** is "largest mol fraction wins, but any CHOL collapses to `CHOL-mix`". Two known cliffs: a 49/51 split flips families on a 1-mol-% change, and the CHOL override hides DPPC-rich-vs-DOPC-rich CHOL substructure. Documented; not changed.
+- **§4 layout follows the skill rule** for matrix-shaped data: table + plot rendered together via `mo.vstack` in a single cell.
+- **§6 `model_legacy_bugged_random`** is the existing `stage_5d_tier_c_confirm` group (trained on the unseeded shipped labels); it is loaded as a fourth, optional model so the property-seed effect can be tested on the model side too (`model_legacy_bugged_random` vs `model_legacy_bugged_s0`). Three *new* W&B groups need to land before §6 is interpretable: `stage_5d_tier_c_legacy_bugged_s0`, `stage_5d_tier_c_legacy_bugfixed_s0`, `stage_5d_tier_c_m3_bugfixed_s0`. All at locked HPs (`lr=3e-5, wd=1e-3, h=128, l=2, e=200`, 6 GNN seeds).
+- **Empty-state safe** via `mo.stop` after the §1 load and §6 inventory: with only `prop_legacy_bugged_random/` and `stage_5d_tier_c_confirm/` present today, every cell renders a skeleton or `no data` placeholder rather than erroring. Each contrast comes alive independently as its two label sets land.
+
+Verified with `uvx marimo check` (no critical issues; cosmetic markdown-indentation warnings only) and `uv run scripts/notebooks/compare_bugfix_three_way.py` (exit 0). Skill audit fixed: `import datetime` moved to cell 1, unused `json` import removed, variance table+plot merged via vstack, PCA explained-variance summary added, prose cells added above §0 vocab + §1 coverage.
+
+**Status — skeleton ready 2026-05-19, blocked on:**
+
+- (a) `prop_m3_bugfixed_s0/` regeneration — needs the M3 resimulation to finish + property-pipeline run on those trajectories.
+- (b) Three new Tier C W&B groups (`*_legacy_bugged_s0`, `*_legacy_bugfixed_s0`, `*_m3_bugfixed_s0`) — submit after labels land.
+
+Decision deferred to execution time: include candidate new properties (`S_CC` etc.) or not. v1 ships with the existing 7 Tier C properties only.
 
 ## Currently Running / Pending on HPC (2026-05-17)
 
