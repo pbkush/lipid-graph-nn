@@ -1,7 +1,7 @@
 """
 Local training sweep — mirrors scripts/colab/train_colab_rev.ipynb.
 
-Reads preprocessed .pt chunks produced by scripts/training/prepare_colab_subset.py,
+Reads preprocessed .pt chunks produced by scripts/training/preprocess_graphs.py,
 expands FIXED + SWEEP into a list of experiments, and runs each via train_one_run()
 with Weights & Biases logging. Run `wandb login` once before first use.
 """
@@ -421,7 +421,7 @@ def _load_datasets_and_scaler():
     if not train_chunks:
         raise FileNotFoundError(
             f"No chunk_*.pt files found in {PROCESSED_DIR / 'train'}. "
-            f"Run scripts/training/prepare_colab_subset.py first."
+            f"Run scripts/training/preprocess_graphs.py first."
         )
 
     print(f"Train chunks : {len(train_chunks)}")

@@ -112,7 +112,7 @@ def test_train_val_test_splits_are_disjoint(mock_pkl_load, mock_builder_class, t
     """
     After a system-level train/val/test split, no membrane composition (identified
     by its unique y value) should appear in more than one split directory.
-    Mirrors the split logic used by prepare_colab_subset.prepare_colab_subset().
+    Mirrors the split logic used by preprocess_graphs.preprocess_graphs().
     """
     n_systems = 6
     # Each system has a unique target so any overlap is detectable.
@@ -141,7 +141,7 @@ def test_train_val_test_splits_are_disjoint(mock_pkl_load, mock_builder_class, t
         for i in range(n_systems)
     ]
 
-    # Replicate the split logic from prepare_colab_subset using config defaults.
+    # Replicate the split logic from preprocess_graphs using config defaults.
     val_frac  = CONFIG.dataset.val_frac
     test_frac = CONFIG.dataset.test_frac
     rng = _random.Random(CONFIG.dataset.split_seed)

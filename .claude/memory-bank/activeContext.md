@@ -1,5 +1,32 @@
 # Active Context
 
+## Preprocessing script renamed + new graph-dataset layout (2026-05-19)
+
+`scripts/training/prepare_colab_subset.py` → [scripts/training/preprocess_graphs.py](../../scripts/training/preprocess_graphs.py). Public function `prepare_colab_subset()` → `preprocess_graphs()`. Colab is no longer in the training path (HPC-only per `feedback_training_hpc_only`); the script now exists purely to turn simulations into graph chunks.
+
+**New output layout** under `data/preprocessed_graphs/` (a sibling of `data/membrane_only/`; lives under `data/` because chunks are derived training **inputs**, not analysis outputs):
+
+```text
+data/preprocessed_graphs/
+├── <run-name>/                <- one preprocessing run
+│   ├── train/  val/  test/
+└── archives/
+    └── <run-name>.zip         <- HPC-transfer zip (chunks only, code via git)
+```
+
+`<run-name>` defaults to the new required `--props-set` flag, so different property folders never overwrite each other.
+
+**CLI changes**:
+
+- New required `--props-set` (e.g. `prop_legacy_bugfixed_s0`) → subfolder of `--props-base`.
+- `--props-base` (default `CONFIG.paths.props_dir` = `results/properties/`) replaces the old `--props-dir` (effective path = `props_base / props_set`).
+- `--parent-dir` (default `CONFIG.paths.preprocessed_graphs_dir` = `data/preprocessed_graphs/`).
+- `--run-name` (default = `--props-set`) replaces the old `--subset-name`.
+
+**Config**: dropped `paths.subset_bundle_dir`, added `paths.preprocessed_graphs_dir: data/preprocessed_graphs`. `paths.chunks_dir` default updated to `data/preprocessed_graphs/active` (no functional impact — HPC overrides via `CHUNKS_DIR` env var).
+
+**Touched callers**: [scripts/bash/sbatch_preprocess.sh](../../scripts/bash/sbatch_preprocess.sh) (now requires `PROPS_SET`), [scripts/bash/gc_transfer_files.sh](../../scripts/bash/gc_transfer_files.sh) (takes run-name arg, rsyncs new archive path), docstring/comment refs in [scripts/training/run_sweep.py](../../scripts/training/run_sweep.py), [scripts/training/linear_baseline.py](../../scripts/training/linear_baseline.py), [lipid_gnn/io.py](../../lipid_gnn/io.py), [tests/test_stratified_split.py](../../tests/test_stratified_split.py), [tests/test_multi_frame_loading.py](../../tests/test_multi_frame_loading.py). [README.md](../../README.md) "Colab sweep" section replaced with an HPC preprocessing section. Tests green (8 affected).
+
 ## Design notes — protein+membrane extension & EFA reopened (2026-05-18)
 
 New design doc at [docs/protein_membrane_embedding_thoughts.md](../../docs/protein_membrane_embedding_thoughts.md).

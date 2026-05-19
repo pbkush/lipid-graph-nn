@@ -1,7 +1,7 @@
 """Pickle-based load/save helpers.
 
 Replaces the relevant surface of ``lipid_gnn.functions_emil.functions`` for
-the in-project call sites (``dataset.py``, ``prepare_colab_subset.py``,
+the in-project call sites (``dataset.py``, ``preprocess_graphs.py``,
 ``smoke_test_sweep.py``). The historical helper supported glob expansion and
 imported ``cv2`` / ``nglview`` at module top; neither is used here.
 """

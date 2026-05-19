@@ -34,7 +34,7 @@ class PathsConfig:
     ff_edge_params_file: Path
     ff_node_mapping_file: Path
     chunks_dir: Path
-    subset_bundle_dir: Path
+    preprocessed_graphs_dir: Path
     results_dir: Path
     training_results_dir: Path
     logs_dir: Path
@@ -218,7 +218,7 @@ def _build_paths(raw: dict) -> PathsConfig:
         ff_edge_params_file=_resolve_path(raw["ff_edge_params_file"]),
         ff_node_mapping_file=_resolve_path(raw["ff_node_mapping_file"]),
         chunks_dir=_resolve_path(raw["chunks_dir"]),
-        subset_bundle_dir=_resolve_path(raw["subset_bundle_dir"]),
+        preprocessed_graphs_dir=_resolve_path(raw["preprocessed_graphs_dir"]),
         results_dir=_resolve_path(raw["results_dir"]),
         training_results_dir=_resolve_path(raw["training_results_dir"]),
         logs_dir=_resolve_path(raw["logs_dir"]),

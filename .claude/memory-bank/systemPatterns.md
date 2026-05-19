@@ -64,7 +64,7 @@ MD Trajectory (.tpr + .xtc/.trr)
   - Use `nargs="+"` for list-valued params, `choices=` when the valid set is enumerable, `type=int`/`type=float` for numerics
   - Enumerate valid choices in the `--help` string (e.g., `Available: a, b, c`) so users don't have to read source
   - Parse in a `_parse_args()` helper and pass values as function kwargs — keep the core function callable from other modules without the CLI
-  - Applied in [scripts/training/prepare_colab_subset.py](scripts/training/prepare_colab_subset.py) (PR #4)
+  - Applied in [scripts/training/preprocess_graphs.py](scripts/training/preprocess_graphs.py) (PR #4; renamed from `prepare_colab_subset.py` on 2026-05-19)
   - NOT a candidate: [scripts/training/run_sweep.py](scripts/training/run_sweep.py) — mixes FIXED hyperparams with a SWEEP grid (cartesian product) that is clumsy on the command line and belongs in code. Decision recorded after considering CLI-ifying `FIXED` and rejecting it
 
 - **Central config (YAML + dataclass loader)**: Project-wide paths, vocabulary, and experiment defaults live in [config.yaml](config.yaml); [lipid_gnn/config.py](lipid_gnn/config.py) parses it into frozen `@dataclass` sections and exposes a module-level `CONFIG` singleton. Rule of thumb: if a value is referenced by more than one file (paths, `LIPID_TYPES`, `ALL_PROPERTIES`, `spatial_cutoff`, `rbf_num_gaussians`, model defaults, training defaults), it belongs in `config.yaml`; single-use locals stay where they are.

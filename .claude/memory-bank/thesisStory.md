@@ -21,7 +21,7 @@ These are the methodological choices that pre-date the HP search proper but mate
 - **Continuous physics features over learned embeddings** — a deliberate "physics-informed" choice over vocab-style integer IDs.
 - **Two edge types** (bonded static, spatial dynamic) with **Gaussian RBF distance encoding** (16 basis functions) — separates chemistry from geometry.
 - **Chunked disk streaming** (`MartiniDiskDataset`) — avoids RAM pressure; carried over from Colab era.
-- **Stratified system-level split** (`prepare_colab_subset.py --split-method stratified`) — replaced random split after discovering the test set's y-range was 4× narrower than train, masking generalisation failures. K-means in z-scored y-space.
+- **Stratified system-level split** (`preprocess_graphs.py --split-method stratified`) — replaced random split after discovering the test set's y-range was 4× narrower than train, masking generalisation failures. K-means in z-scored y-space.
 - **HPC migration (Goethe MI210 / ROCm)** — Colab notebooks frozen as legacy reference; all training now goes through `submit_sweep.sh` → SLURM. Prevents queue-drift corruption via `FREEZE_*` env vars consumed by `_apply_submission_overrides()`.
 - **W&B-only logging + offline parquet pull** — `download_wandb_runs.py` pulls a group to disk; `analyze_hp_search.ipynb` operates on parquet. Decouples analysis from live W&B API.
 

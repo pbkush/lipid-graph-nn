@@ -33,11 +33,14 @@ CHUNK_SIZE=$(python scripts/python/print_config_var.py dataset.chunk_size)
 SPATIAL_CUTOFF=$(python scripts/python/print_config_var.py dataset.spatial_cutoff)
 PROPS=$(python scripts/python/print_config_var.py vocab.active_properties)
 
-python scripts/training/prepare_colab_subset.py \
+: "${PROPS_SET:?set PROPS_SET to the property subfolder name (e.g. prop_legacy_bugfixed_s0)}"
+
+python scripts/training/preprocess_graphs.py \
     --no-zip \
-    --sims-dir  "$WORK/data/membrane_only" \
-    --props-dir "$WORK/results/properties" \
-    --out-dir   "$WORK/chunks" \
+    --props-set "$PROPS_SET" \
+    --sims-dir   "$WORK/data/membrane_only" \
+    --props-base "$WORK/results/properties" \
+    --out-dir    "$WORK/preprocessed_graphs/$PROPS_SET" \
     --properties $PROPS \
     --num-frames "$NUM_FRAMES" \
     --chunk-size "$CHUNK_SIZE" \

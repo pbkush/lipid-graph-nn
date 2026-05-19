@@ -52,13 +52,18 @@ python3 scripts/training/run_sweep.py
 
 Main training entry point. Hyperparameters and target properties are hardcoded at the top of the script — edit the config there (no CLI flags). Results (loss curves, accuracy plots, metrics JSON) land under `results/training/`.
 
-### Colab sweep
+### HPC preprocessing
 
-For full sweeps on Colab GPUs:
+Preprocess Martini trajectories into chunked `.pt` graph datasets for training:
 
-1. `python3 scripts/training/prepare_colab_subset.py` — preprocesses trajectories into `.pt` chunks and bundles them with the `lipid_gnn/` package into `colab_lipid_gnn_subset.zip`.
-2. Upload the zip to Google Drive.
-3. Open [scripts/colab/train_colab_rev.ipynb](scripts/colab/train_colab_rev.ipynb), edit the `FIXED` and `SWEEP` dicts, and run all cells. The notebook mounts Drive, streams chunks via `MartiniDiskDataset`, and logs each run to Weights & Biases.
+```bash
+python3 scripts/training/preprocess_graphs.py --props-set prop_legacy_bugfixed_s0
+```
+
+Output: `data/preprocessed_graphs/<run-name>/{train,val,test}/` with a zip
+mirror at `data/preprocessed_graphs/archives/<run-name>.zip`. `<run-name>`
+defaults to `--props-set` so successive property sets do not overwrite each
+other. Pass `--no-zip` on the HPC.
 
 ### Expected data layout
 

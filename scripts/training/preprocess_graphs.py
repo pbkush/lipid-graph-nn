@@ -1,3 +1,14 @@
+"""Preprocess Martini trajectories into chunked .pt graph datasets for training.
+
+Outputs go to ``<preprocessed_graphs_dir>/<run-name>/{train,val,test}/``;
+zip archives (when not ``--no-zip``) go to
+``<preprocessed_graphs_dir>/archives/<run-name>.zip``. The run name defaults
+to the ``--props-set`` value so successive preprocessing runs over different
+property sets never overwrite each other.
+
+Training is HPC-only — the zip is for HPC transfer; on the HPC use
+``--no-zip`` and point ``--out-dir`` at ``/work/...``.
+"""
 import argparse
 import gc
 import os
@@ -72,20 +83,22 @@ def _stratified_split_systems(
     return train_sims, val_sims, test_sims
 
 
-def prepare_colab_subset(
+def preprocess_graphs(
     target_properties,
     num_frames,
     chunk_size,
     spatial_cutoff,
+    props_set,
     shuffle_seed=42,
     val_frac=0.15,
     test_frac=0.15,
     split_seed=0,
     split_method="stratified",
     stratify_on=None,
-    subset_name=None,
+    run_name=None,
     sims_dir=None,
-    props_dir=None,
+    props_base=None,
+    parent_dir=None,
     out_dir=None,
     no_zip=False,
 ):
@@ -94,33 +107,39 @@ def prepare_colab_subset(
 
     Systems are split into train/val/test at the system level (before
     preprocessing) using split_seed. Each split gets its own subdirectory
-    of interleaved chunks: processed/train/, processed/val/, processed/test/.
+    of interleaved chunks: <run>/train/, <run>/val/, <run>/test/.
     This guarantees no membrane composition appears in more than one split.
 
     Raw .tpr/.xtc files are NOT included in the output — all graph features and
     target properties are baked in at preprocessing time.
 
     By default a zip of the processed chunks is created for easy transfer.
-    Code is NOT bundled — training is HPC-only and code is synced via git.
+    The zip lives in ``<parent_dir>/archives/<run-name>.zip``. Code is NOT
+    bundled — training is HPC-only and code is synced via git.
 
-    When `no_zip=True`, only the processed chunks are written (to `out_dir` if
-    given, else `<root>/<subset_name>/processed`). This is the HPC entry point.
+    When ``no_zip=True``, only the processed chunks are written (to ``out_dir``
+    if given, else ``<parent_dir>/<run-name>``). This is the HPC entry point.
     """
-    root_dir      = Path(__file__).resolve().parent.parent.parent
-    data_dir      = Path(sims_dir)  if sims_dir  else CONFIG.paths.data_dir
-    props_dir     = Path(props_dir) if props_dir else CONFIG.paths.props_dir
-    resources_dir = CONFIG.paths.resources_dir
+    data_dir   = Path(sims_dir)   if sims_dir   else CONFIG.paths.data_dir
+    props_base = Path(props_base) if props_base else CONFIG.paths.props_dir
+    parent_dir = Path(parent_dir) if parent_dir else CONFIG.paths.preprocessed_graphs_dir
+
+    props_dir = props_base / props_set
+    if not props_dir.is_dir():
+        raise FileNotFoundError(
+            f"Property folder not found: {props_dir}. "
+            f"Pass --props-set <subfolder of {props_base}>."
+        )
 
     ff_params_path       = CONFIG.paths.ff_params_file
     ff_edge_params_path  = CONFIG.paths.ff_edge_params_file
     ff_node_mapping_path = CONFIG.paths.ff_node_mapping_file
 
-    if subset_name is None:
-        subset_dir = CONFIG.paths.subset_bundle_dir
-    else:
-        subset_dir = root_dir / subset_name
+    if run_name is None:
+        run_name = props_set
+    run_dir = parent_dir / run_name
 
-    proc_dest = Path(out_dir) if out_dir else subset_dir / 'processed'
+    proc_dest = Path(out_dir) if out_dir else run_dir
 
     # --- Collect sim tuples -----------------------------------------------
     compositions = sorted(
@@ -144,6 +163,9 @@ def prepare_colab_subset(
 
     # --- System-level train / val / test split ----------------------------
     print(f"\nFound {len(sim_tuples)} complete systems.")
+    print(f"Property set      : {props_set}  ({props_dir})")
+    print(f"Run name          : {run_name}")
+    print(f"Output dir        : {proc_dest}")
 
     if split_method == "stratified":
         if stratify_on is None:
@@ -224,26 +246,37 @@ def prepare_colab_subset(
         return
 
     # --- Zip chunks only (no library — code is synced via git on HPC) -----
-    zip_path = root_dir / f"{subset_dir.name}.zip"
+    archives_dir = parent_dir / "archives"
+    archives_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = archives_dir / f"{run_name}.zip"
     print(f"Creating archive: {zip_path} ...")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(proc_dest):
             for file in files:
                 file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, root_dir)
+                arcname = os.path.relpath(file_path, proc_dest.parent)
                 zipf.write(file_path, arcname)
 
-    print(f"Done! Archive at {zip_path.name} (chunks only — transfer to HPC and extract).")
+    print(f"Done! Archive at {zip_path} (chunks only — transfer to HPC and extract).")
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Preprocess Martini trajectories into chunked .pt graph files. "
-            "Writes train/val/test subdirectories under the output directory. "
-            "Use --no-zip to skip archiving (HPC mode). "
-            "Without --no-zip, creates a zip of chunks only for transfer."
+            "Writes train/val/test subdirectories under "
+            "<preprocessed_graphs_dir>/<run-name>/. Use --no-zip to skip "
+            "archiving (HPC mode). Without --no-zip, a zip is written to "
+            "<preprocessed_graphs_dir>/archives/<run-name>.zip."
         )
+    )
+    parser.add_argument(
+        "--props-set", required=True,
+        help=(
+            "Subfolder of --props-base holding the per-system .h5 property "
+            "files for this run (e.g. 'prop_legacy_bugfixed_s0'). Also the "
+            "default --run-name."
+        ),
     )
     parser.add_argument(
         "--properties",
@@ -305,44 +338,58 @@ def _parse_args():
         ),
     )
     parser.add_argument(
-        "--subset-name", default=None,
-        help=f"Output directory and zip name (default: {CONFIG.paths.subset_bundle_dir.name}).",
+        "--run-name", default=None,
+        help=(
+            "Output subfolder name under --parent-dir (default: --props-set). "
+            "Use this to tag variants (e.g. different num-frames or cutoff) "
+            "without overwriting earlier runs."
+        ),
     )
     parser.add_argument(
         "--sims-dir", default=None,
         help="Override directory holding <COMP>/run/prun.{tpr,xtc} (default: <repo>/data/membrane_only).",
     )
     parser.add_argument(
-        "--props-dir", default=None,
-        help="Override directory holding <COMP>.h5 property files (default: <repo>/results/properties).",
+        "--props-base", default=None,
+        help="Base directory containing per-set property folders (default: <repo>/results/properties).",
+    )
+    parser.add_argument(
+        "--parent-dir", default=None,
+        help=(
+            "Parent directory under which each preprocessing run gets its own "
+            "subfolder and the 'archives/' zip folder lives "
+            "(default: <repo>/data/preprocessed_graphs)."
+        ),
     )
     parser.add_argument(
         "--out-dir", default=None,
-        help="Output directory for chunks when --no-zip (default: <repo>/<subset-name>/processed).",
+        help="Override output directory for chunks (default: <parent-dir>/<run-name>).",
     )
     parser.add_argument(
         "--no-zip", action="store_true",
-        help="Write chunks only; skip lipid_gnn bundling and zip creation. Use for HPC/remote training.",
+        help="Write chunks only; skip zip creation. Use for HPC/remote training.",
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
-    prepare_colab_subset(
+    preprocess_graphs(
         target_properties=args.properties,
         num_frames=args.num_frames,
         chunk_size=args.chunk_size,
         spatial_cutoff=args.spatial_cutoff,
+        props_set=args.props_set,
         shuffle_seed=args.shuffle_seed,
         val_frac=args.val_frac,
         test_frac=args.test_frac,
         split_seed=args.split_seed,
         split_method=args.split_method,
         stratify_on=args.stratify_on,
-        subset_name=args.subset_name,
+        run_name=args.run_name,
         sims_dir=args.sims_dir,
-        props_dir=args.props_dir,
+        props_base=args.props_base,
+        parent_dir=args.parent_dir,
         out_dir=args.out_dir,
         no_zip=args.no_zip,
     )

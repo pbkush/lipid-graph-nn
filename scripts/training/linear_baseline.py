@@ -242,7 +242,7 @@ def run_stratified_baseline(chunks_dir=None, properties=None, out_npz=None):
     analyze_stage_5.ipynb can load both GNN and baseline side by side.
 
     Requires chunks preprocessed with composition + system_idx labels
-    (prepare_colab_subset.py → preprocess_and_save in dataset.py).
+    (preprocess_graphs.py → preprocess_and_save in dataset.py).
 
     Args:
         chunks_dir: Root directory with train/, val/, test/ subdirs.
@@ -281,7 +281,7 @@ def run_stratified_baseline(chunks_dir=None, properties=None, out_npz=None):
                 if comp is None:
                     raise RuntimeError(
                         f"Graph in {chunk_path} has no .composition attribute. "
-                        "Re-run prepare_colab_subset.py to regenerate chunks."
+                        "Re-run preprocess_graphs.py to regenerate chunks."
                     )
                 sidx = int(getattr(g, 'system_idx', torch.tensor([-1])).item())
                 key = (sidx, comp)

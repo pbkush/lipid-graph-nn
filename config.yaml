@@ -9,8 +9,8 @@ paths:
   ff_params_file: resources/martini_ff_params.json
   ff_edge_params_file: resources/martini_ff_edge_params.json
   ff_node_mapping_file: resources/martini_ff_node_mapping.json
-  chunks_dir: colab_lipid_gnn_subset/processed
-  subset_bundle_dir: colab_lipid_gnn_subset
+  chunks_dir: data/preprocessed_graphs/active
+  preprocessed_graphs_dir: data/preprocessed_graphs
   results_dir: results
   training_results_dir: results/training
   logs_dir: logs

@@ -1,6 +1,6 @@
 """
 Tests for the stratified system-level split in
-scripts/training/prepare_colab_subset._stratified_split_systems.
+scripts/training/preprocess_graphs._stratified_split_systems.
 
 The original random-shuffle split (split_seed=0, N=70 systems, 15% test)
 happened to produce a test set with std ≈ 4× narrower than train on
@@ -18,7 +18,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.training.prepare_colab_subset import _stratified_split_systems
+from scripts.training.preprocess_graphs import _stratified_split_systems
 
 
 def _make_sim_tuples(tmp_path, y_per_system, prop_names):
