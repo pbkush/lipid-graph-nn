@@ -1,0 +1,23 @@
+; Extra lipid definitions supplied to insane via -dat.
+;
+; Older insane versions (pre-1.2.0) ship a lipids.dat without M3.CHOL —
+; only "CHOL" (legacy 8-bead M2 topology) and "M2.CHOL".  Looking up
+; `liplist['M3.CHOL']` then raises KeyError during membrane setup, even
+; though our registry asks insane for the M3 variant explicitly.
+;
+; This file restores the M3.CHOL definition (copied verbatim from
+; upstream insane 1.2.0 lipids.dat) so the build works regardless of
+; the installed insane version.  insane's read_lipids() reads this
+; after the bundled lipids.dat, so any duplicate keys are harmlessly
+; overwritten by an identical entry.
+;
+; Format reminder: each `[ section ]` resets the (x, y, z) coordinate
+; templates; the next three non-comment lines are read as x, y, z
+; rows, and every subsequent line is one lipid definition.
+
+[ sterols ]
+             0   0   0   0   0   0   0   0   1   0   1   0   0   0   0   0   0   0
+             0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0
+             0   0   0   0   0   0  5.3 4.5 3.9 3.3  3 2.6  1.4  0   0   0   0   0
+;            1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
+M3.CHOL  0   -   -   -   -   -   -  ROH  R1  R2 R3  R4  R5  R6  C1  C2   -   -   -

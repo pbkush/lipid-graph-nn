@@ -10,6 +10,10 @@ from dataclasses import dataclass
 
 from lipid_gnn.martini_pipeline import INSANE_CMD, MARTINI3_ITP_DIR
 
+_INSANE_EXTRA_LIPIDS_DAT = os.path.join(
+    os.path.dirname(__file__), "templates", "insane_extra_lipids.dat"
+)
+
 _MARTINI3_ITPS = (
     # Core force field — must come first
     "martini_v3.0.0.itp",
@@ -97,6 +101,9 @@ def build_command(
             "-y", str(box.xy_nm),
             "-z", str(box.z_nm),
             "-pbc", box.pbc]   # always explicit — insane defaults to hexagonal
+    # insane <1.2.0 ships a lipids.dat without M3.CHOL; supply our copy so
+    # the M3 sterol resolves regardless of the installed insane version.
+    argv += ["-dat", _INSANE_EXTRA_LIPIDS_DAT]
     for name, ratio in ratios.items():
         keyword = _insane_keyword(name)
         argv += ["-l", f"{keyword}:{ratio}"]
@@ -343,7 +350,10 @@ def _parse_molecule_counts(top_path: str) -> dict:
                 if stripped.startswith("["):
                     break
                 if stripped and not stripped.startswith(";"):
-                    parts = stripped.split()
+                    # Strip inline comments (insane appends `; Defined in '...'`
+                    # for lipids loaded via -dat) before splitting NAME COUNT.
+                    payload = stripped.split(";", 1)[0].strip()
+                    parts = payload.split()
                     if len(parts) == 2:
                         counts[parts[0]] = counts.get(parts[0], 0) + int(parts[1])
     return counts

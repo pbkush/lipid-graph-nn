@@ -70,6 +70,7 @@ def _write_fake_insane(path: str) -> None:
         p.add_argument("-o"); p.add_argument("-p")
         p.add_argument("-x"); p.add_argument("-y"); p.add_argument("-z")
         p.add_argument("-pbc")
+        p.add_argument("-dat", action="append", default=[])
         p.add_argument("-l", action="append", dest="lipids")
         p.add_argument("-sol"); p.add_argument("-salt"); p.add_argument("-charge")
         p.add_argument("-center", action="store_true")
