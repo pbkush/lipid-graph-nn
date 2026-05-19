@@ -1,5 +1,41 @@
 # Active Context
 
+## Locked-split JSON for preprocess_graphs.py (2026-05-19)
+
+[scripts/training/preprocess_graphs.py](../../scripts/training/preprocess_graphs.py) gained two new flags so the three-way bugfix comparison can train all four models on **the same per-system train/val/test partition**:
+
+- `--write-split-json PATH` — after the split is computed (any method), dump `{source_run, train, val, test}` composition-name lists to JSON.
+- `--split-from-json PATH` — bypass `--split-method`/`--split-seed`/`--stratify-on` and route each composition by JSON membership instead.
+
+**Why**: the existing stratification is k-means in z-scored y-space, so the split depends on the y-values, not just `--split-seed`. The four three-way label sets (`prop_*_random`, `prop_legacy_bugged_s0`, `prop_legacy_bugfixed_s0`, `prop_m3_bugfixed_s0`) have y-values that differ by construction — running the stratifier independently on each can land the same composition in different splits across runs. The notebook's §6b paired-`t` over per-point squared errors needs identical `(seed, system_idx)` triples across models, so the partition has to be frozen.
+
+**Workflow for the three-way comparison**:
+
+```bash
+# 1) Compute the canonical split once on the random labels, persist to JSON.
+python scripts/training/preprocess_graphs.py \
+    --props-set prop_legacy_bugged_random \
+    --write-split-json results/splits/three_way_canonical.json \
+    --no-zip
+
+# 2) Reuse that split for the other three label sets.
+for set in prop_legacy_bugged_s0 prop_legacy_bugfixed_s0 prop_m3_bugfixed_s0; do
+    python scripts/training/preprocess_graphs.py \
+        --props-set $set \
+        --split-from-json results/splits/three_way_canonical.json \
+        --no-zip
+done
+```
+
+**Loader behaviour**:
+
+- A composition in `sim_tuples` but not in the JSON is a hard `ValueError` (silent drops are how paired comparisons get corrupted).
+- A composition in the JSON but not in `sim_tuples` is a soft warning (the JSON may have been written on a superset corpus, e.g. before some `.h5` files landed).
+- A composition appearing in two splits in the JSON is a hard `ValueError`.
+- The JSON's `source_run` is informational only; it's echoed on load so the reader can see which preprocessing run originated the split.
+
+**Tests** (in [tests/test_stratified_split.py](../../tests/test_stratified_split.py)): 5 new — `_composition_of` against the production `<comp>/run/prun.tpr` layout, JSON round-trip, unassigned-composition rejection, missing-from-sims warning, duplicate-membership rejection. Full repo suite 576 passed / 7 skipped (was 571 + 5).
+
 ## Preprocessing script renamed + new graph-dataset layout (2026-05-19)
 
 `scripts/training/prepare_colab_subset.py` → [scripts/training/preprocess_graphs.py](../../scripts/training/preprocess_graphs.py). Public function `prepare_colab_subset()` → `preprocess_graphs()`. Colab is no longer in the training path (HPC-only per `feedback_training_hpc_only`); the script now exists purely to turn simulations into graph chunks.

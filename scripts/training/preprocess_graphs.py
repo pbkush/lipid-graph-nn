@@ -11,6 +11,7 @@ Training is HPC-only — the zip is for HPC transfer; on the HPC use
 """
 import argparse
 import gc
+import json
 import os
 import random
 import time
@@ -23,6 +24,80 @@ from lipid_gnn.config import CONFIG
 from lipid_gnn.dataset import preprocess_and_save
 from lipid_gnn.io import pkl_load
 from lipid_gnn.lipid_graph import MartiniHeteroGraphBuilder
+
+
+def _composition_of(sim_tuple):
+    """Extract the composition (canonical_name) from a (tpr, xtc, h5) tuple."""
+    tpr_path, _, _ = sim_tuple
+    return Path(tpr_path).parent.parent.name
+
+
+def _split_from_json(sim_tuples, json_path):
+    """Look up each sim tuple's composition in a {train,val,test} JSON and
+    route it. Compositions in the JSON that aren't in sim_tuples are warned
+    about; compositions in sim_tuples missing from the JSON raise."""
+    with open(json_path) as f:
+        spec = json.load(f)
+
+    missing = [s for s in ("train", "val", "test") if s not in spec]
+    if missing:
+        raise ValueError(f"split JSON {json_path} missing keys: {missing}")
+
+    membership = {}
+    for split_name in ("train", "val", "test"):
+        for comp in spec[split_name]:
+            if comp in membership:
+                raise ValueError(
+                    f"composition {comp!r} appears in multiple splits in {json_path}"
+                )
+            membership[comp] = split_name
+
+    routed = {"train": [], "val": [], "test": []}
+    unassigned = []
+    for sim in sim_tuples:
+        comp = _composition_of(sim)
+        if comp in membership:
+            routed[membership[comp]].append(sim)
+        else:
+            unassigned.append(comp)
+
+    if unassigned:
+        raise ValueError(
+            f"{len(unassigned)} composition(s) in --sims-dir have no split "
+            f"assignment in {json_path}: {unassigned[:5]}{'...' if len(unassigned) > 5 else ''}"
+        )
+
+    found_comps = {_composition_of(s) for s in sim_tuples}
+    extras = [c for c in membership if c not in found_comps]
+    if extras:
+        print(
+            f"WARNING: {len(extras)} composition(s) in {json_path} not found "
+            f"in --sims-dir (skipped): {extras[:5]}{'...' if len(extras) > 5 else ''}"
+        )
+
+    print(
+        f"\nSplit loaded from {json_path} (source: "
+        f"{spec.get('source_run', 'unspecified')}): "
+        f"train={len(routed['train'])}, val={len(routed['val'])}, "
+        f"test={len(routed['test'])}"
+    )
+    return routed["train"], routed["val"], routed["test"]
+
+
+def _write_split_json(train_sims, val_sims, test_sims, json_path, source_run):
+    """Persist a {train,val,test} composition-name split for later reuse via
+    ``--split-from-json``."""
+    spec = {
+        "source_run": source_run,
+        "train": sorted(_composition_of(s) for s in train_sims),
+        "val": sorted(_composition_of(s) for s in val_sims),
+        "test": sorted(_composition_of(s) for s in test_sims),
+    }
+    json_path = Path(json_path)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(json_path, "w") as f:
+        json.dump(spec, f, indent=2)
+    print(f"Wrote split spec to {json_path}")
 
 AVAILABLE_PROPERTIES = CONFIG.vocab.all_properties
 
@@ -95,6 +170,8 @@ def preprocess_graphs(
     split_seed=0,
     split_method="stratified",
     stratify_on=None,
+    split_from_json=None,
+    write_split_json=None,
     run_name=None,
     sims_dir=None,
     props_base=None,
@@ -167,7 +244,10 @@ def preprocess_graphs(
     print(f"Run name          : {run_name}")
     print(f"Output dir        : {proc_dest}")
 
-    if split_method == "stratified":
+    if split_from_json is not None:
+        train_sims, val_sims, test_sims = _split_from_json(sim_tuples, split_from_json)
+        effective_method = f"from_json:{Path(split_from_json).name}"
+    elif split_method == "stratified":
         if stratify_on is None:
             stratify_on = list(CONFIG.vocab.active_properties)
         missing = [p for p in stratify_on if p not in target_properties]
@@ -179,6 +259,7 @@ def preprocess_graphs(
         train_sims, val_sims, test_sims = _stratified_split_systems(
             sim_tuples, stratify_on, val_frac, test_frac, split_seed,
         )
+        effective_method = "stratified"
     elif split_method == "random":
         rng = random.Random(split_seed)
         shuffled = list(sim_tuples)
@@ -188,10 +269,14 @@ def preprocess_graphs(
         test_sims  = shuffled[:n_test]
         val_sims   = shuffled[n_test:n_test + n_val]
         train_sims = shuffled[n_test + n_val:]
+        effective_method = "random"
     else:
         raise ValueError(f"Unknown split_method: {split_method!r}")
 
-    print(f"Split (method={split_method}, seed={split_seed}): "
+    if write_split_json is not None:
+        _write_split_json(train_sims, val_sims, test_sims, write_split_json, run_name)
+
+    print(f"Split (method={effective_method}, seed={split_seed}): "
           f"train={len(train_sims)}, val={len(val_sims)}, test={len(test_sims)}")
     print(f"Target properties : {target_properties}")
     print(f"Frames per system : {num_frames}")
@@ -338,6 +423,25 @@ def _parse_args():
         ),
     )
     parser.add_argument(
+        "--split-from-json", default=None,
+        help=(
+            "Path to a {train,val,test} JSON spec (as written by "
+            "--write-split-json). When given, overrides --split-method/--split-seed/"
+            "--stratify-on and routes each composition by JSON membership. "
+            "Use this to reuse one canonical split across multiple property "
+            "sets so per-system errors stay paired across runs (e.g. for the "
+            "three-way bugfix comparison)."
+        ),
+    )
+    parser.add_argument(
+        "--write-split-json", default=None,
+        help=(
+            "Path to write the resulting {train,val,test} composition lists as "
+            "JSON for later reuse via --split-from-json. Composes with all three "
+            "split methods (stratified, random, from_json)."
+        ),
+    )
+    parser.add_argument(
         "--run-name", default=None,
         help=(
             "Output subfolder name under --parent-dir (default: --props-set). "
@@ -386,6 +490,8 @@ if __name__ == "__main__":
         split_seed=args.split_seed,
         split_method=args.split_method,
         stratify_on=args.stratify_on,
+        split_from_json=args.split_from_json,
+        write_split_json=args.write_split_json,
         run_name=args.run_name,
         sims_dir=args.sims_dir,
         props_base=args.props_base,

@@ -18,7 +18,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.training.preprocess_graphs import _stratified_split_systems
+from scripts.training.preprocess_graphs import (
+    _composition_of,
+    _split_from_json,
+    _stratified_split_systems,
+    _write_split_json,
+)
 
 
 def _make_sim_tuples(tmp_path, y_per_system, prop_names):
@@ -170,3 +175,110 @@ def test_stratified_split_4d_tier_a(tmp_path):
         assert 0.5 <= ratio <= 2.0, (
             f"{p}: test/train std ratio {ratio:.3f} outside [0.5, 2.0]"
         )
+
+
+def _make_canonical_sim_tuples(tmp_path, comp_names):
+    """Build sim_tuples whose tpr paths follow the production layout
+    ``<root>/<comp>/run/prun.tpr`` so ``_composition_of`` returns ``<comp>``."""
+    sim_tuples = []
+    for comp in comp_names:
+        run_dir = tmp_path / comp / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        sim_tuples.append((
+            run_dir / "prun.tpr",
+            run_dir / "prun.xtc",
+            tmp_path / f"{comp}.h5",  # h5 sibling, unused in these tests
+        ))
+    return sim_tuples
+
+
+def test_composition_of_matches_production_layout(tmp_path):
+    sims = _make_canonical_sim_tuples(tmp_path, ["POPC100", "DPPC50_DOPC50"])
+    assert _composition_of(sims[0]) == "POPC100"
+    assert _composition_of(sims[1]) == "DPPC50_DOPC50"
+
+
+def test_split_json_roundtrip(tmp_path):
+    """Write a split via _write_split_json, read it back via _split_from_json,
+    and confirm composition-membership is preserved exactly."""
+    comps = [f"SYS{i:02d}" for i in range(20)]
+    sims = _make_canonical_sim_tuples(tmp_path, comps)
+    train_sims = sims[:14]
+    val_sims = sims[14:17]
+    test_sims = sims[17:]
+
+    json_path = tmp_path / "split.json"
+    _write_split_json(train_sims, val_sims, test_sims, json_path, source_run="unit_test")
+    assert json_path.exists()
+
+    train2, val2, test2 = _split_from_json(sims, json_path)
+    assert [_composition_of(s) for s in train2] == [_composition_of(s) for s in train_sims]
+    assert [_composition_of(s) for s in val2] == [_composition_of(s) for s in val_sims]
+    assert [_composition_of(s) for s in test2] == [_composition_of(s) for s in test_sims]
+
+
+def test_split_from_json_rejects_unassigned_composition(tmp_path):
+    """A composition present in sim_tuples but absent from the JSON is a
+    hard error — silent drops are how paired comparisons get corrupted."""
+    comps = [f"SYS{i:02d}" for i in range(10)]
+    sims = _make_canonical_sim_tuples(tmp_path, comps)
+
+    spec = {
+        "source_run": "partial",
+        "train": comps[:6],
+        "val": comps[6:8],
+        "test": comps[8:9],  # SYS09 deliberately omitted
+    }
+    json_path = tmp_path / "partial_split.json"
+    with open(json_path, "w") as f:
+        import json as _json
+        _json.dump(spec, f)
+
+    with pytest.raises(ValueError, match="no split assignment"):
+        _split_from_json(sims, json_path)
+
+
+def test_split_from_json_warns_on_extra(tmp_path, capsys):
+    """A composition in the JSON but not in sim_tuples is allowed — just
+    warn; the JSON may have been written on a larger corpus."""
+    comps = [f"SYS{i:02d}" for i in range(5)]
+    sims = _make_canonical_sim_tuples(tmp_path, comps)
+
+    spec = {
+        "source_run": "superset",
+        "train": comps[:3] + ["SYS99"],  # SYS99 not in sims
+        "val": [comps[3]],
+        "test": [comps[4]],
+    }
+    json_path = tmp_path / "superset_split.json"
+    with open(json_path, "w") as f:
+        import json as _json
+        _json.dump(spec, f)
+
+    train, val, test = _split_from_json(sims, json_path)
+    assert {_composition_of(s) for s in train} == set(comps[:3])
+    assert {_composition_of(s) for s in val} == {comps[3]}
+    assert {_composition_of(s) for s in test} == {comps[4]}
+    out = capsys.readouterr().out
+    assert "not found" in out and "SYS99" in out
+
+
+def test_split_from_json_rejects_duplicate_membership(tmp_path):
+    """A composition that appears in two splits is malformed JSON; the
+    loader must refuse rather than picking one silently."""
+    comps = [f"SYS{i:02d}" for i in range(4)]
+    sims = _make_canonical_sim_tuples(tmp_path, comps)
+
+    spec = {
+        "source_run": "bad",
+        "train": [comps[0], comps[1]],
+        "val": [comps[1]],  # SYS01 in both train and val
+        "test": [comps[2], comps[3]],
+    }
+    json_path = tmp_path / "dup_split.json"
+    with open(json_path, "w") as f:
+        import json as _json
+        _json.dump(spec, f)
+
+    with pytest.raises(ValueError, match="multiple splits"):
+        _split_from_json(sims, json_path)
