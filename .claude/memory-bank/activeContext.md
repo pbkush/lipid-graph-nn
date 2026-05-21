@@ -1,5 +1,22 @@
 # Active Context
 
+## Three-way bugfix training queued on HPC (2026-05-21)
+
+Stage 5d-style retraining on the three pre-`prop_m3_bugfixed_s0` label sets, to populate notebook §6's per-graph-set model comparison while the M3 resim is still running. **Top 3 Stage 5d seeds by `test/mse_total`**: seed 6 (0.1118) > seed 5 (0.1216) > seed 1 (0.1307). Rank derived from `logs/training/stage_5d_tier_c_confirm/*/summary.json`; full table includes seeds 0/4/8 too (all worse).
+
+Three serial-sweep submissions, one per label set, each running seeds {6, 5, 1} sequentially against the matching preprocessed-graph dir under `/work/cellmembrane/pberger/lipid-data/preprocessed_graphs/<set>/`:
+
+```bash
+for set in prop_legacy_bugged_random prop_legacy_bugged_s0 prop_legacy_bugfixed_s0; do
+    bash scripts/bash/submit_sweep_serial.sh \
+        --group "stage_5d_${set#prop_}" \
+        --seeds "6 5 1" \
+        --chunks-dir /work/cellmembrane/pberger/lipid-data/preprocessed_graphs/$set
+done
+```
+
+(W&B groups: `stage_5d_legacy_bugged_random`, `stage_5d_legacy_bugged_s0`, `stage_5d_legacy_bugfixed_s0`.) Locked Tier C HPs apply (h=128, l=2, lr=3e-5, wd=1e-3, 200 ep, 7 active properties). Once the M3 resim lands, the fourth contrast (`prop_m3_bugfixed_s0`) repeats the same template; the three groups above are the model-side input for the four-branch verdict callout in [scripts/notebooks/compare_bugfix_three_way.py](../../scripts/notebooks/compare_bugfix_three_way.py) §6.
+
 ## Simulation status: 3a + 3b CHOL-free done; CHOL + legacy resim pending (2026-05-19)
 
 Simulation grids 3a (`popc_interpolation`) and 3b (`dppc_corner`, `dopc_corner`) have finished on `general1` for **all non-CHOL cells**. The two remaining buckets of work:

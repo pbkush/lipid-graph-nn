@@ -27,10 +27,10 @@ module load "$(python scripts/python/print_config_var.py hpc.module_rocm)"
 USER=pberger
 GROUP_HPC="$(python scripts/python/print_config_var.py hpc.group)"
 WORK_SUBPATH="$(python scripts/python/print_config_var.py hpc.work_subpath)"
-CHUNKS_REL="$(python scripts/python/print_config_var.py paths.chunks_dir)"
-# paths.chunks_dir resolves absolute against REPO_ROOT; strip to get the tail.
-CHUNKS_BASENAME="$(basename "$(dirname "$CHUNKS_REL")")/$(basename "$CHUNKS_REL")"
-WORK="/work/${GROUP_HPC}/${USER}/${WORK_SUBPATH}/${CHUNKS_BASENAME}"
+# On HPC the preprocessed graphs live flat under preprocessed_graphs/ (the
+# train/val/test split dirs are direct children) — no swap-able 'active'
+# subdir like the local layout has.
+WORK="/work/${GROUP_HPC}/${USER}/${WORK_SUBPATH}/preprocessed_graphs"
 
 # W&B: set WANDB_MODE=offline in your environment if compute nodes are air-gapped;
 # then after the job: wandb sync "$WORK"/wandb/offline-run-*
